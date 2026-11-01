@@ -1,0 +1,15 @@
+{
+  "name": "Jimit Pet LLP",
+  "short_name": "Jimit Pet",
+  "description": "Jimit Pet LLP Packing Management System",
+  "start_url": "./index.html",
+  "scope": "./",
+  "display": "standalone",
+  "orientation": "any",
+  "background_color": "#1a237e",
+  "theme_color": "#1a237e",
+  "icons": [
+    {"src": "icon-192.png", "sizes": "192x192", "type": "image/png", "purpose": "any maskable"},
+    {"src": "icon-512.png", "sizes": "512x512", "type": "image/png", "purpose": "any maskable"}
+  ]
+}
