@@ -176,10 +176,10 @@ const DEFAULT_CATS  = ["Jar","Bottle","Lunchbox","Diwali Item"];
 const INIT_USERS    = [{id:1,username:"admin",password:"admin123",role:"admin",name:"Admin User",
   permissions:{packing:true,pendingStock:true,stockSummary:true,dispatch:true,dispatchRegister:true,
     po:true,pendingOrder:true,mtPo:true,mtDispatch:true,mtPending:true,mtPacking:true,userManagement:true}}];
-const PERMS = ["gatePass","packing","pendingStock","stockSummary","dispatch","dispatchRegister","po","pendingOrder","orderVsAvailable","mtPo","mtDispatch","mtPending","mtPacking","mtVehReq","planner","store","inventoryStock","productionReport","mtPlanner","home","minStock","mtReport","mtSalesDashboard","programStock"];
+const PERMS = ["gatePass","packing","pendingStock","stockSummary","dispatch","dispatchRegister","po","pendingOrder","orderVsAvailable","mtPo","mtDispatch","mtPending","mtPacking","mtVehReq","planner","store","inventoryStock","productionReport","mtPlanner","home","minStock","mtReport","mtSalesDashboard","programStock","canMake"];
 const PERM_LABELS = {gatePass:"Gate Pass",packing:"Packing",pendingStock:"Pending Stock",stockSummary:"Stock Summary",dispatch:"Dispatch",
   dispatchRegister:"Dispatch Register",po:"Purchase Order",pendingOrder:"Pending Orders",orderVsAvailable:"Order vs Available",
-  mtPo:"MT PO",mtDispatch:"MT Dispatch",mtPending:"MT Pending",mtPacking:"MT Packing",mtVehReq:"MT Vehicle Req",planner:"Production Planner",store:"Store / Inventory",inventoryStock:"Inventory Stock",mtPlanner:"MT Production Planner",mtSalesDashboard:"MT Sales Dashboard",productionReport:"Production Report",home:"Home Dashboard",minStock:"Min Stock & Purchase List",mtReport:"MT Delivery Report",programStock:"Program Stock Check"};
+  mtPo:"MT PO",mtDispatch:"MT Dispatch",mtPending:"MT Pending",mtPacking:"MT Packing",mtVehReq:"MT Vehicle Req",planner:"Production Planner",store:"Store / Inventory",inventoryStock:"Inventory Stock",mtPlanner:"MT Production Planner",mtSalesDashboard:"MT Sales Dashboard",productionReport:"Production Report",home:"Home Dashboard",minStock:"Min Stock & Purchase List",mtReport:"MT Delivery Report",programStock:"Program Stock Check",canMake:"Can Make Report"};
 
 // ── STATE ─────────────────────────────────────
 let state = {
@@ -1017,7 +1017,7 @@ function shellHtml(){
     {key:"mtPlanner",label:"🧮 MT Planner",perm:"mtPlanner"},
     {key:"mtSalesDashboard",label:"📊 MT Sales Dashboard",perm:"mtSalesDashboard"},
     {key:"store",label:"🏬 Store",perm:"store"},
-    {key:"inventoryStock",label:"📦 Inventory Stock",perm:"inventoryStock"},{key:"productionReport",label:"📊 Production Report",perm:"productionReport"},{key:"minStock",label:"🛒 Min Stock & Purchase",perm:"minStock"},{key:"mtReport",label:"📈 MT Delivery Report",perm:"mtReport"},{key:"programStock",label:"✅ Program Stock Check",perm:"programStock"},
+    {key:"inventoryStock",label:"📦 Inventory Stock",perm:"inventoryStock"},{key:"canMake",label:"✅ Can Make Report",perm:"canMake"},{key:"productionReport",label:"📊 Production Report",perm:"productionReport"},{key:"minStock",label:"🛒 Min Stock & Purchase",perm:"minStock"},{key:"mtReport",label:"📈 MT Delivery Report",perm:"mtReport"},{key:"programStock",label:"✅ Program Stock Check",perm:"programStock"},
     ...(state.currentUser.role==="admin"?[{key:"userManagement",label:"👥 Users",perm:"userManagement"},{key:"recycleBin",label:"🗑️ Recycle Bin",perm:"userManagement"}]:[])
   ].filter(t=>can(t.perm));
   // ── TAB GROUPS (sirf navigation grouping; tabs ka kaam same hai) ──
@@ -1026,7 +1026,7 @@ function shellHtml(){
     {k:"dispatchGrp",label:"🚚 DISPATCH",keys:["dispatch","dispatchRegister","gatePass"]},
     {k:"ordersGrp",label:"📝 ORDERS",keys:["po","pendingOrder","orderVsAvailable"]},
     {k:"mtGrp",label:"🏪 MT",keys:["mtPo","mtDispatch","mtPending","mtPacking","mtVehReq","mtPlanner","mtSalesDashboard","mtReport"]},
-    {k:"storeGrp",label:"🏬 STORE/REPORTS",keys:["store","inventoryStock","productionReport","minStock","programStock"]},
+    {k:"storeGrp",label:"🏬 STORE/REPORTS",keys:["store","inventoryStock","canMake","productionReport","minStock","programStock"]},
     {k:"adminGrp",label:"👥 ADMIN",keys:["userManagement","recycleBin"]}
   ];
   window.__tabGroups={};
@@ -1052,7 +1052,7 @@ function shellHtml(){
       <div style="display:flex;align-items:center;gap:8px">
         <button class="btn" style="background:rgba(46,125,50,.85);border:1px solid rgba(255,255,255,.4);padding:4px 10px;font-size:11px" onclick="App.downloadBackup()" title="Poora data ek .json backup file mein save karo">⬇️ Backup</button>
         ${state.currentUser.role==="admin"?`<button class="btn" style="background:rgba(230,81,0,.9);border:1px solid rgba(255,255,255,.4);padding:4px 10px;font-size:11px" onclick="App.openImportModal()" title="Excel se bulk data import karo">📥 Import Excel</button>`:""}
-        ${state.currentUser.role==="admin"?`<button class="btn" style="background:rgba(21,101,192,.85);border:1px solid rgba(255,255,255,.4);padding:4px 10px;font-size:11px" onclick="document.getElementById('restoreFileInput').click()" title="Backup file se poora data wapas laao">⬆️ Restore</button><input type="file" id="restoreFileInput" accept=".json" style="display:none" onchange="App.restoreBackup(event)">`:""}
+        ${state.currentUser.role==="admin"?`<button class="btn" style="background:rgba(21,101,192,.85);border:1px solid rgba(255,255,255,.4);padding:4px 10px;font-size:11px" onclick="document.getElementById('restoreFileInput').click()" title="Backup file se poora data wapas laao">⬆️ Restore</button><input type="file" id="restoreFileInput" style="display:none" onchange="App.restoreBackup(event)">`:""}
         ${state.currentUser.role==="admin"?`<button class="btn" style="background:rgba(198,40,40,.85);border:1px solid rgba(255,255,255,.4);padding:4px 10px;font-size:11px" onclick="App.clearAllEntries()" title="Packing, PO, MT PO, MT Packing ki saari entries fresh kar do">🗑️ Clear All Entries</button>`:""}
         <span style="font-size:13px">👤 ${esc(state.currentUser.name)}</span>
         <button class="btn" style="background:rgba(255,255,255,.2);border:1px solid rgba(255,255,255,.4);padding:5px 14px" onclick="App.logout()">Logout</button>
@@ -1069,7 +1069,7 @@ function renderTabContent(){
   const fns={packing:renderPackingTab,pendingStock:renderPendingStockTab,stockSummary:renderStockSummaryTab,
     dispatch:renderDispatchTab,dispatchRegister:renderDispatchRegisterTab,gatePass:renderGatePassTab,po:renderPOTab,
     pendingOrder:renderPendingOrderTab,orderVsAvailable:renderOrderVsAvailableTab,mtPo:renderMTPoTab,mtDispatch:renderMTDispatchTab,
-    mtPending:renderMTPendingTab,mtPacking:renderMTPackingTab,mtVehReq:renderMtVehReqTab,planner:renderPlannerTab,store:renderStoreTab,inventoryStock:renderInventoryStockTab,productionReport:renderProductionReportTab,home:renderHomeTab,minStock:renderMinStockTab,mtReport:renderMtReportTab,programStock:renderProgramStockTabV2,mtPlanner:renderMtPlannerTab,mtSalesDashboard:renderMtSalesDashboardTab,userManagement:renderUserManagementTab,recycleBin:renderRecycleBinTab};
+    mtPending:renderMTPendingTab,mtPacking:renderMTPackingTab,mtVehReq:renderMtVehReqTab,planner:renderPlannerTab,store:renderStoreTab,inventoryStock:renderInventoryStockTab,canMake:renderCanMakeTab,productionReport:renderProductionReportTab,home:renderHomeTab,minStock:renderMinStockTab,mtReport:renderMtReportTab,programStock:renderProgramStockTabV2,mtPlanner:renderMtPlannerTab,mtSalesDashboard:renderMtSalesDashboardTab,userManagement:renderUserManagementTab,recycleBin:renderRecycleBinTab};
   el.innerHTML=(fns[state.activeTab]||(() =>""))();
   const mr=document.getElementById("modalRoot");if(mr)mr.innerHTML=renderItemMasterModal()+renderMtItemModal();
   setTimeout(registerAC,0);
@@ -4226,15 +4226,32 @@ const AuthApp={
     render();
     setTimeout(()=>alert("✅ Packing, PO, MT PO aur MT Packing ki saari entries fresh kar di gayi hain."),300);
   },
-  downloadBackup(){
+  async downloadBackup(){
     const backup=buildBackupData();
-    const blob=new Blob([JSON.stringify(backup,null,2)],{type:"application/json"});
+    const json=JSON.stringify(backup,null,2);
+    const ts=new Date().toISOString().slice(0,19).replace(/[:T]/g,"-");
+    const fname=`JimitPetLLP-Backup-${ts}.json`;
+    // Mobile: pehle Share (WhatsApp / Drive / Files me save) try karo
+    const isMobile=/Android|iPhone|iPad|iPod/i.test(navigator.userAgent)||(navigator.maxTouchPoints>1&&window.innerWidth<900);
+    if(isMobile&&navigator.share&&navigator.canShare){
+      for(const mime of ["application/json","text/plain"]){
+        try{
+          const f=new File([json],fname,{type:mime});
+          if(navigator.canShare({files:[f]})){
+            await navigator.share({files:[f],title:"Jimit Pet LLP Backup"});
+            showSyncPill("ok","Backup share ho gayi!",4000);
+            return;
+          }
+        }catch(e){ if(e&&e.name==="AbortError")return; }
+      }
+    }
+    // Normal download (PC / fallback)
+    const blob=new Blob([json],{type:"application/json"});
     const url=URL.createObjectURL(blob);
     const a=document.createElement("a");
-    const ts=new Date().toISOString().slice(0,19).replace(/[:T]/g,"-");
-    a.href=url; a.download=`JimitPetLLP-Backup-${ts}.json`;
-    document.body.appendChild(a); a.click(); a.remove();
-    URL.revokeObjectURL(url);
+    a.href=url; a.download=fname; a.style.display="none";
+    document.body.appendChild(a); a.click();
+    setTimeout(()=>{a.remove();URL.revokeObjectURL(url);},60000);
     showSyncPill("ok","Backup file download ho gayi!",4000);
   },
   restoreBackup(evt){
@@ -4409,6 +4426,71 @@ function renderMinStockTab(){
     <div style="max-height:620px;overflow-y:auto;border:1px solid #e0e0e0;border-radius:6px"><table class="tbl" style="margin:0"><thead><tr style="background:#1a237e;color:#fff;position:sticky;top:0;z-index:5"><th>Accessory</th><th style="text-align:right">Current Stock</th><th style="text-align:right">Minimum</th><th style="text-align:right">Kitna Kam Hai</th><th>Last Supplier</th><th>Status</th></tr></thead><tbody>${body}</tbody></table></div>
   </div></div>`;
 }
+// ── CAN MAKE REPORT: BOM + store stock se kaun sa item poora ban sakta hai ──
+function cmCompute(){
+  const src=temp.cmSrc==="mt"?"mt":"gen";
+  const boms=(src==="mt"?state.mtBomMaster:state.bomMaster)||[];
+  const waste=Math.max(0,Number(temp.cmWaste)||0);
+  const bal={},known=new Set();
+  (state.storeLedger||[]).forEach(l=>{known.add(l.itemName);const q=Number(l.qty||0);bal[l.itemName]=(bal[l.itemName]||0)+((l.type==="plan_out"||l.type==="internal_issue")?-q:q);});
+  const seen=new Set(),rows=[];
+  boms.forEach(b=>{
+    if(!b||!b.productName||seen.has(b.productName))return;
+    seen.add(b.productName);
+    const lines=(b.items||[]).filter(i=>i&&i.name&&Number(i.qtyPerBox)>0).map(i=>{
+      const perBox=Number(i.qtyPerBox)*(1+waste/100);
+      const stock=Math.round((bal[i.name]||0)*100)/100;
+      const can=Math.floor(Math.max(0,stock)/perBox+1e-9);
+      return{name:i.name,unit:i.unit||"",qtyPerBox:Number(i.qtyPerBox),perBox:Math.round(perBox*1000)/1000,stock,can,notInStore:!known.has(i.name)};
+    });
+    if(!lines.length){rows.push({product:b.productName,batch:b.batch||"",status:"empty",maxBoxes:0,lines:[],limiting:[]});return;}
+    const maxBoxes=Math.min(...lines.map(l=>l.can));
+    rows.push({product:b.productName,batch:b.batch||"",status:maxBoxes>0?"ready":"no",maxBoxes,lines,limiting:lines.filter(l=>l.can===maxBoxes)});
+  });
+  const ord={ready:0,no:1,empty:2};
+  rows.sort((a,b)=>(ord[a.status]-ord[b.status])||(a.status==="ready"?b.maxBoxes-a.maxBoxes:0)||a.product.localeCompare(b.product));
+  return rows;
+}
+function cmFiltered(all){
+  const q=(temp.cmSearch||"").toLowerCase().trim(),fl=temp.cmFilter||"all";
+  return all.filter(r=>(!q||r.product.toLowerCase().includes(q)||(r.batch||"").toLowerCase().includes(q))&&(fl==="all"||(fl==="ready"&&r.status==="ready")||(fl==="no"&&r.status!=="ready")));
+}
+function renderCanMakeTab(){
+  const all=cmCompute();
+  const rows=cmFiltered(all);
+  window.__cmNames=rows.map(r=>r.product);
+  const nReady=all.filter(r=>r.status==="ready").length;
+  const nEmpty=all.filter(r=>r.status==="empty").length;
+  const nNo=all.length-nReady-nEmpty;
+  const nName=all.filter(r=>r.lines.some(l=>l.notInStore)).length;
+  const limTxt=r=>{
+    if(r.status==="empty")return"BOM me accessory nahi hai";
+    const ls=r.limiting,nm=ls.slice(0,3).map(l=>esc(l.name)).join(", ")+(ls.length>3?" +"+(ls.length-3)+" aur":"");
+    return r.status==="ready"?"Limit: "+nm:"Kam / khatam: "+nm;
+  };
+  const detail=r=>`<tr><td colspan="5" style="background:#fafafa;padding:8px 14px"><table class="tbl" style="margin:0"><thead><tr style="background:#e8eaf6"><th>Accessory</th><th style="text-align:right">Qty / Box</th><th style="text-align:right">Stock</th><th style="text-align:right">Kitne Box Ban Sakte</th><th>Note</th></tr></thead><tbody>${[...r.lines].sort((a,b)=>a.can-b.can).map(l=>`<tr style="${l.can===0?"background:#ffebee":(l.can===r.maxBoxes?"background:#fff8e1":"")}"><td>${esc(l.name)}</td><td style="text-align:right">${l.perBox} ${esc(l.unit)}</td><td style="text-align:right;font-weight:700;color:${l.stock<=0?"#c62828":"#2e7d32"}">${l.stock}</td><td style="text-align:right;font-weight:700">${l.can}</td><td style="font-size:11px;color:#e65100">${l.notInStore?"⚠️ Store me is naam ki koi entry nahi — naam check karo":""}</td></tr>`).join("")}</tbody></table></td></tr>`;
+  const body=rows.map((r,i)=>{
+    const open=!!(temp.cmOpen||{})[r.product];
+    const badge=r.status==="ready"?`<span class="badge" style="background:#2e7d32">✅ BAN SAKTA</span>`:(r.status==="empty"?`<span class="badge" style="background:#757575">BOM khaali</span>`:`<span class="badge" style="background:#c62828">❌ NAHI BAN SAKTA</span>`);
+    const warn=r.lines.some(l=>l.notInStore)?` <span title="Kuch accessory ka naam store me nahi mila" style="color:#e65100">⚠️</span>`:"";
+    return`<tr style="cursor:pointer;${r.status==="ready"?"":"background:#fff8f8"}" onclick="App.cmToggle(${i})"><td>${open?"▾":"▸"} <b>${esc(r.product)}</b>${warn}</td><td>${r.batch?`<span class="badge" style="background:#c5cae9;color:#1a237e">${esc(r.batch)}</span>`:"—"}</td><td style="text-align:right;font-size:16px;font-weight:800;color:${r.status==="ready"?"#2e7d32":"#c62828"}">${r.status==="empty"?"—":r.maxBoxes}</td><td>${badge}</td><td style="font-size:12px;color:#555">${limTxt(r)}</td></tr>${open&&r.lines.length?detail(r):""}`;
+  }).join("");
+  const box=(t,n,c)=>`<div style="flex:1;min-width:130px;background:#fff;border:1px solid #e0e0e0;border-left:4px solid ${c};border-radius:8px;padding:10px 14px"><div style="font-size:11px;color:#777">${t}</div><div style="font-size:22px;font-weight:800;color:${c}">${n}</div></div>`;
+  return`<div class="card"><div class="card-title">✅ Can Make Report — Kaun Sa Item Poora Ban Sakta Hai</div><div class="card-body">
+    <div style="background:#e3f2fd;border:1px solid #90caf9;border-radius:8px;padding:10px 14px;font-size:12px;color:#0d47a1;margin-bottom:14px">ℹ️ Ye report <b>BOM Master</b> aur <b>Store stock</b> se banti hai. Har item ke liye dekhta hai ki uski sabse kam wali accessory se kitne <b>box</b> ban sakte hain. Har item ko <b>akela</b> maana gaya hai — do items ek hi accessory share karte hon to dono ek saath utne nahi banenge. Approved programs ka stock pehle hi store se kat chuka hota hai.</div>
+    <div style="display:flex;gap:10px;flex-wrap:wrap;margin-bottom:14px">${box("Total Items (BOM wale)",all.length,"#1a237e")}${box("✅ Ban Sakte Hain",nReady,"#2e7d32")}${box("❌ Nahi Ban Sakte",nNo,"#c62828")}${box("BOM khaali",nEmpty,"#757575")}${box("⚠️ Naam store me nahi mila",nName,"#e65100")}</div>
+    <div style="display:flex;gap:8px;flex-wrap:wrap;align-items:flex-end;margin-bottom:14px">
+      <div><label class="lbl">BOM Type</label><select class="inp" style="width:170px;margin-bottom:0" onchange="App.cmSet('cmSrc',this.value)"><option value="gen" ${temp.cmSrc!=="mt"?"selected":""}>Normal BOM</option><option value="mt" ${temp.cmSrc==="mt"?"selected":""}>MT BOM</option></select></div>
+      <div><label class="lbl">Extra % (wastage)</label><input class="inp" type="number" min="0" step="0.5" value="${esc(temp.cmWaste||"")}" placeholder="0" style="width:110px;margin-bottom:0" onchange="App.cmSet('cmWaste',this.value)"></div>
+      <div><label class="lbl">Item Search</label><input class="inp" id="cmSearchInput" value="${esc(temp.cmSearch||"")}" placeholder="Item / batch..." style="width:200px;margin-bottom:0" oninput="App.cmSet('cmSearch',this.value)"></div>
+      <div><label class="lbl">Dikhao</label><select class="inp" style="width:170px;margin-bottom:0" onchange="App.cmSet('cmFilter',this.value)"><option value="all" ${(temp.cmFilter||"all")==="all"?"selected":""}>Sab</option><option value="ready" ${temp.cmFilter==="ready"?"selected":""}>Sirf ban sakte hain</option><option value="no" ${temp.cmFilter==="no"?"selected":""}>Sirf nahi ban sakte</option></select></div>
+      <button class="btn btn-success" onclick="App.cmExport(false)">📥 List Export</button>
+      <button class="btn" style="background:#37474f;color:#fff" onclick="App.cmExport(true)">📥 Detail Export</button>
+    </div>
+    <div style="max-height:620px;overflow:auto;border:1px solid #e0e0e0;border-radius:6px"><table class="tbl" style="margin:0"><thead><tr style="background:#1a237e;color:#fff;position:sticky;top:0;z-index:5"><th>Item</th><th>Batch</th><th style="text-align:right">Max Box</th><th>Status</th><th>Limit / Kami</th></tr></thead><tbody>${body||`<tr><td colspan="5" style="text-align:center;color:#999;padding:24px">${all.length?"Koi item nahi mila":"BOM Master me abhi koi item nahi hai"}</td></tr>`}</tbody></table></div>
+    <div style="font-size:11px;color:#777;margin-top:8px">Kisi item par click karke uski saari accessories dekho. Peeli line = wahi accessory limit laga rahi hai, laal line = stock khatam.</div>
+  </div></div>`;
+}
 function purchaseListRows(){return msRows().filter(r=>r.stock<r.min);}
 
 // ── MT DELIVERY REPORT ──
@@ -4466,6 +4548,20 @@ function renderProgramStockTabV2(){
 // ── APP HANDLERS ──
 const Batch1App={
   toggleHomeFgPending(v){temp.homeFgOnlyPending=!!v;renderTabContent();},
+  cmSet(k,v){temp[k]=v;renderTabContent();if(k==="cmSearch")setTimeout(()=>{const el=document.getElementById("cmSearchInput");if(el){el.focus();el.setSelectionRange(el.value.length,el.value.length);}},0);},
+  cmToggle(i){const n=(window.__cmNames||[])[i];if(n==null)return;temp.cmOpen=temp.cmOpen||{};temp.cmOpen[n]=!temp.cmOpen[n];renderTabContent();},
+  cmExport(detail){
+    const rows=cmFiltered(cmCompute());
+    if(!rows.length){alert("Export karne ke liye koi item nahi hai");return;}
+    const st={ready:"Ban sakta hai",no:"Nahi ban sakta",empty:"BOM khaali"};
+    if(detail){
+      const out=[];
+      rows.forEach(r=>r.lines.forEach(l=>out.push([r.product,r.batch,l.name,l.perBox,l.stock,l.can,l.notInStore?"NAHI":"Haan"])));
+      exportCSV(["Item","Batch","Accessory","Qty/Box","Stock","Kitne Box Ban Sakte","Store me naam mila?"],out,"can_make_detail.csv");
+    }else{
+      exportCSV(["Item","Batch","Status","Max Box","Limit / Kam Accessory"],rows.map(r=>[r.product,r.batch,st[r.status],r.status==="empty"?"":r.maxBoxes,r.limiting.map(l=>l.name).join(", ")]),"can_make_list.csv");
+    }
+  },
   onMsSearch(v){temp.msSearch=v;renderTabContent();setTimeout(()=>{const el=document.getElementById("msSearchInput");if(el){el.focus();el.setSelectionRange(el.value.length,el.value.length);}},0);},
   toggleMsOnlyLow(v){temp.msOnlyLow=!!v;renderTabContent();},
   setMinStock(name,val){
