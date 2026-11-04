@@ -4367,7 +4367,7 @@ function getFinishGoodsLowList(){
   const avail=getAvailableStockMap();
   const pend=getPendingQtyInCartonsByProduct();
   const names=[...new Set([...state.itemMaster.map(i=>i.name),...state.packings.map(p=>p.productName)])].filter(Boolean);
-  return names.map(n=>{const a=avail[n];return{name:n,cts:a?a.availCartons:0,pend:Math.round((pend[n]||0)*100)/100};}).filter(r=>r.cts<=1);
+  return names.map(n=>{const a=avail[n];const im=state.itemMaster.find(i=>i.name===n);return{name:n,category:(im&&im.category)||"",cts:a?a.availCartons:0,pend:Math.round((pend[n]||0)*100)/100};}).filter(r=>r.cts<=1);
 }
 const fmtInr=n=>"₹"+Math.round(n||0).toLocaleString("en-IN");
 
@@ -4377,31 +4377,34 @@ function renderHomeTab(){
   const tp=state.packings.filter(p=>p.date===today);
   const tpCtn=tp.reduce((s,p)=>s+(Number(p.cartons)||0),0);
   const td=state.dispatches.filter(d=>d.date===today);
+  const tdMt=state.mtDispatches.filter(d=>d.date===today);
   const pendPos=new Set(getPendingOrderRows().map(r=>r.poNo)).size;
   const overdue=getMtOverdueList();
-  const low=getAllStoreItemNames().map(n=>({name:n,stock:getStoreStock(n),min:getMinStock(n)})).filter(r=>r.stock<r.min).sort((a,b)=>(a.stock/a.min)-(b.stock/b.min));
+  const low=getAllStoreItemNames().map(n=>({name:n,stock:getStoreStock(n),min:getMinStock(n)})).filter(r=>r.stock<r.min).sort((a,b)=>String(a.name).localeCompare(String(b.name)));
   let fg=getFinishGoodsLowList();
   const fgAll=fg.length;
+  const fgCats=[...new Set([...(state.categories||[]),...fg.map(r=>r.category).filter(Boolean)])];
   if(temp.homeFgOnlyPending)fg=fg.filter(r=>r.pend>0);
-  fg.sort((a,b)=>b.pend-a.pend||a.cts-b.cts||a.name.localeCompare(b.name));
+  if(temp.homeFgCat)fg=fg.filter(r=>temp.homeFgCat==="__none"?!r.category:r.category===temp.homeFgCat);
+  fg.sort((a,b)=>String(a.name).localeCompare(String(b.name)));
   const card=(bg,fgc,title,val,sub,tab)=>`<div class="stat-card" style="background:${bg};${tab&&can(tab)?"":"cursor:default"}" ${tab&&can(tab)?`onclick="App.switchTab('${tab}')"`:""}><div style="font-size:12px;color:${fgc};font-weight:700">${title}</div><div style="font-size:28px;font-weight:800;color:${fgc}">${val}</div><div style="font-size:11px;color:#666">${sub}</div></div>`;
-  const lowRows=low.slice(0,12).map(r=>`<tr><td><b>${esc(r.name)}</b></td><td style="text-align:right;font-weight:700;color:${r.stock<=0?"#c62828":"#e65100"}">${esc(r.stock)}</td><td style="text-align:right">${esc(r.min)}</td></tr>`).join("")||`<tr><td colspan="3" style="text-align:center;color:#2e7d32;padding:14px">✅ Koi accessory kam stock me nahi hai</td></tr>`;
+  const lowRows=low.map(r=>`<tr><td><b>${esc(r.name)}</b></td><td style="text-align:right;font-weight:700;color:${r.stock<=0?"#c62828":"#e65100"}">${esc(r.stock)}</td><td style="text-align:right">${esc(r.min)}</td></tr>`).join("")||`<tr><td colspan="3" style="text-align:center;color:#2e7d32;padding:14px">✅ Koi accessory kam stock me nahi hai</td></tr>`;
   const ovRows=overdue.slice(0,10).map(p=>`<tr><td><b>${esc(p.poNo)}</b></td><td>${esc(p.dc)}</td><td style="text-align:right">${esc(fmtDate(p.deliveryDate))}</td><td style="text-align:center"><span class="badge" style="background:#b71c1c">${Math.abs(p.days)} din</span></td><td style="text-align:right">${Math.round(p.pendBox)}</td></tr>`).join("")||`<tr><td colspan="5" style="text-align:center;color:#2e7d32;padding:14px">✅ Koi overdue MT PO nahi hai</td></tr>`;
   const fgRows=fg.map(r=>`<tr><td><b>${esc(r.name)}</b></td><td style="text-align:center;font-weight:800;color:${r.cts===0?"#c62828":"#e65100"}">${r.cts===0?"Nill":"1 Cts"}</td><td style="text-align:right;font-weight:700;color:${r.pend>0?"#1565c0":"#999"}">${r.pend>0?r.pend+" Cts":"—"}</td></tr>`).join("")||`<tr><td colspan="3" style="text-align:center;color:#999;padding:14px">Koi item nahi mila</td></tr>`;
   return`<div style="font-size:12px;color:#666;margin-bottom:10px">📅 ${esc(fmtDate(today))} ka summary</div>
   <div style="display:grid;grid-template-columns:repeat(auto-fit,minmax(170px,1fr));gap:14px;margin-bottom:20px">
     ${card("#e8f5e9","#2e7d32","📦 Aaj ki Packing",tpCtn+" Ctn",tp.length+" entries","packing")}
-    ${card("#e3f2fd","#1565c0","🚚 Aaj ka Dispatch",td.length,"challan","dispatchRegister")}
+    ${card("#e3f2fd","#1565c0","🚚 Aaj ka Dispatch",td.length+tdMt.length,"General "+td.length+" + MT "+tdMt.length+" challan","dispatchRegister")}
     ${card("#fff3e0","#e65100","⏳ Pending PO",pendPos,"General pending orders","pendingOrder")}
     ${card("#ffebee","#b71c1c","⏰ MT Overdue PO",overdue.length,"delivery date nikal gayi","mtReport")}
     ${card("#fff8e1","#f57f17","🧂 Kam Stock Accessory",low.length,"minimum se neeche","minStock")}
     ${card("#f3e5f5","#6a1b9a","📭 Nill / 1 Cts Finish Goods",fgAll,"finish goods","pendingStock")}
   </div>
   <div style="display:grid;grid-template-columns:repeat(auto-fit,minmax(360px,1fr));gap:16px">
-    <div class="card"><div class="card-title">🧂 Kam Stock Accessories ${low.length>12?`<span style="font-weight:400;font-size:12px">(top 12 / ${low.length})</span>`:""}</div><div class="card-body" style="overflow-x:auto"><table class="tbl"><thead><tr style="background:#37474f;color:#fff"><th>Accessory</th><th style="text-align:right">Stock</th><th style="text-align:right">Minimum</th></tr></thead><tbody>${lowRows}</tbody></table></div></div>
+    <div class="card"><div class="card-title">🧂 Kam Stock Accessories <span style="font-weight:400;font-size:12px">(${low.length}) · A–Z</span></div><div class="card-body"><div style="max-height:420px;overflow:auto;border:1px solid #e0e0e0;border-radius:6px"><table class="tbl" style="margin:0"><thead><tr style="background:#37474f;color:#fff;position:sticky;top:0;z-index:5"><th>Accessory</th><th style="text-align:right">Stock</th><th style="text-align:right">Minimum</th></tr></thead><tbody>${lowRows}</tbody></table></div></div></div>
     <div class="card"><div class="card-title">⏰ MT Overdue POs ${overdue.length>10?`<span style="font-weight:400;font-size:12px">(top 10 / ${overdue.length})</span>`:""}</div><div class="card-body" style="overflow-x:auto"><table class="tbl"><thead><tr style="background:#37474f;color:#fff"><th>PO No.</th><th>DC</th><th style="text-align:right">Delivery</th><th>Overdue</th><th style="text-align:right">Pend Box</th></tr></thead><tbody>${ovRows}</tbody></table></div></div>
   </div>
-  <div class="card"><div class="card-title" style="display:flex;justify-content:space-between;align-items:center;flex-wrap:wrap;gap:8px"><span>📭 Finish Goods — Nill ya 1 Cts stock wale (${fg.length})</span><label style="font-size:12px;font-weight:400;cursor:pointer"><input type="checkbox" ${temp.homeFgOnlyPending?"checked":""} onchange="App.toggleHomeFgPending(this.checked)"> Sirf jinka order pending hai</label></div><div class="card-body"><div style="max-height:520px;overflow-y:auto;border:1px solid #e0e0e0;border-radius:6px"><table class="tbl" style="margin:0"><thead><tr style="background:#1a237e;color:#fff;position:sticky;top:0;z-index:5"><th>Product</th><th style="text-align:center">Stock</th><th style="text-align:right">Pending Order</th></tr></thead><tbody>${fgRows}</tbody></table></div></div></div>`;
+  <div class="card"><div class="card-title" style="display:flex;justify-content:space-between;align-items:center;flex-wrap:wrap;gap:8px"><span>📭 Finish Goods — Nill ya 1 Cts stock wale (${fg.length})</span><div style="display:flex;gap:12px;align-items:center;flex-wrap:wrap;font-weight:400"><select class="inp" style="width:170px;margin:0;padding:4px 8px;font-size:12px" onchange="App.setHomeFgCat(this.value)"><option value="">Sab Category</option>${fgCats.map(c=>`<option value="${esc(c)}" ${temp.homeFgCat===c?"selected":""}>${esc(c)}</option>`).join("")}<option value="__none" ${temp.homeFgCat==="__none"?"selected":""}>Category nahi</option></select><label style="font-size:12px;font-weight:400;cursor:pointer"><input type="checkbox" ${temp.homeFgOnlyPending?"checked":""} onchange="App.toggleHomeFgPending(this.checked)"> Sirf jinka order pending hai</label></div></div><div class="card-body"><div style="max-height:520px;overflow-y:auto;border:1px solid #e0e0e0;border-radius:6px"><table class="tbl" style="margin:0"><thead><tr style="background:#1a237e;color:#fff;position:sticky;top:0;z-index:5"><th>Product</th><th style="text-align:center">Stock</th><th style="text-align:right">Pending Order</th></tr></thead><tbody>${fgRows}</tbody></table></div></div></div>`;
 }
 
 // ── MIN STOCK & PURCHASE LIST ──
@@ -4548,6 +4551,7 @@ function renderProgramStockTabV2(){
 // ── APP HANDLERS ──
 const Batch1App={
   toggleHomeFgPending(v){temp.homeFgOnlyPending=!!v;renderTabContent();},
+  setHomeFgCat(v){temp.homeFgCat=v||"";renderTabContent();},
   cmSet(k,v){temp[k]=v;renderTabContent();if(k==="cmSearch")setTimeout(()=>{const el=document.getElementById("cmSearchInput");if(el){el.focus();el.setSelectionRange(el.value.length,el.value.length);}},0);},
   cmToggle(i){const n=(window.__cmNames||[])[i];if(n==null)return;temp.cmOpen=temp.cmOpen||{};temp.cmOpen[n]=!temp.cmOpen[n];renderTabContent();},
   cmExport(detail){
@@ -4774,10 +4778,24 @@ function gpCartonCount(items){
   return nos.size+blank;
 }
 function gpDispatchRows(date){
-  const out=[];
-  state.dispatches.filter(d=>d.date===date).forEach(d=>out.push({type:"General",id:d.id,challanNo:d.challanNo,date:d.date,marka:d.marka||"",cartons:gpCartonCount(d.items),transport:d.transport||"",vehicleNo:d.vehicleNo||"",party:d.partyName||""}));
-  state.mtDispatches.filter(d=>d.date===date).forEach(d=>out.push({type:"MT",id:d.id,challanNo:d.challanNo,date:d.date,marka:"",cartons:Math.round((d.items||[]).reduce((s,i)=>s+Number(i.qtyBox||0),0)*100)/100,transport:d.transport||"",vehicleNo:d.vehicleNo||"",party:d.dc||""}));
+  // Sirf wahi challan jinka Gate Pass baki hai. Edit mode me us Gate Pass ke apne challan bhi aate hain.
+  const eg=temp.gpEditId?(state.gatePasses||[]).find(g=>g.id==temp.gpEditId):null;
+  const used={};
+  (state.gatePasses||[]).forEach(g=>{if(eg&&g.id===eg.id)return;(g.rows||[]).forEach(r=>{used[r.type+"|"+r.id]=g.gpNo;});});
+  const own=new Set(eg?(eg.rows||[]).map(r=>r.type+"|"+r.id):[]);
+  const inScope=d=>temp.gpAllDates||d.date===date;
+  const out=[],seen=new Set();
+  const push=row=>{const k=row.type+"|"+row.id;if(seen.has(k)||used[k])return;seen.add(k);out.push(row);};
+  state.dispatches.forEach(d=>{if(inScope(d)||own.has("General|"+d.id))push({type:"General",id:d.id,challanNo:d.challanNo,date:d.date,marka:d.marka||"",cartons:gpCartonCount(d.items),transport:d.transport||"",vehicleNo:d.vehicleNo||"",party:d.partyName||""});});
+  state.mtDispatches.forEach(d=>{if(inScope(d)||own.has("MT|"+d.id))push({type:"MT",id:d.id,challanNo:d.challanNo,date:d.date,marka:"",cartons:Math.round((d.items||[]).reduce((s,i)=>s+Number(i.qtyBox||0),0)*100)/100,transport:d.transport||"",vehicleNo:d.vehicleNo||"",party:d.dc||""});});
+  if(eg)(eg.rows||[]).forEach(r=>{push({type:r.type,id:r.id,challanNo:r.challanNo,date:r.date,marka:r.marka||"",cartons:r.cartons,transport:r.transport||"",vehicleNo:r.vehicleNo||"",party:r.party||""});});
+  if(temp.gpAllDates)out.sort((a,b)=>String(a.date).localeCompare(String(b.date)));
   return out;
+}
+function gpSeedEditSel(){
+  temp.gpSel={};
+  const g=temp.gpEditId?(state.gatePasses||[]).find(x=>x.id==temp.gpEditId):null;
+  if(g)(g.rows||[]).forEach(r=>{temp.gpSel[r.type+"|"+r.id]=true;});
 }
 function renderGatePassTab(){
   const date=temp.gpDate||todayStr();
@@ -4904,26 +4922,38 @@ function gpRefreshSummary(){
 }
 function renderGatePassTab(){
   const date=temp.gpDate||todayStr();
+  const eg=temp.gpEditId?(state.gatePasses||[]).find(g=>g.id==temp.gpEditId):null;
+  if(temp.gpEditId&&!eg)temp.gpEditId=null;
   const rows=gpDispatchRows(date);
-  const used={};(state.gatePasses||[]).forEach(g=>(g.rows||[]).forEach(r=>{used[r.type+"|"+r.id]=g.gpNo;}));
+  const own=new Set(eg?(eg.rows||[]).map(r=>r.type+"|"+r.id):[]);
   if(!temp.gpSel)temp.gpSel={};
   temp.gpRowKeys=rows.map(r=>r.type+"|"+r.id);
-  temp.gpUsed=used;
+  temp.gpUsed={};
   const selRows=gpSelectedRows();
   const totCtn=Math.round(selRows.reduce((s,r)=>s+Number(r.cartons||0),0)*100)/100;
-  const body=rows.map((r,i)=>{const k=r.type+"|"+r.id;const on=!!temp.gpSel[k];return`<tr class="gp-row" id="gpRow${i}" tabindex="0" onkeydown="App.gpRowKey(event,${i})" style="${on?"background:#e3f2fd":used[k]?"background:#f5f5f5":""}"><td><input type="checkbox" id="gpCb${i}" tabindex="-1" ${on?"checked":""} onchange="App.gpToggle(${i},this.checked)"></td><td><span class="badge" style="background:${r.type==="MT"?"#00838f":"#37474f"}">${r.type}</span></td><td>${esc(fmtDate(r.date))}</td><td><b>${esc(r.challanNo)}</b></td><td>${esc(r.party)}</td><td>${esc(r.marka)||"—"}</td><td style="text-align:center;font-weight:800">${esc(r.cartons)}</td><td>${esc(r.transport)||"—"}</td><td>${esc(r.vehicleNo)||"—"}</td><td>${used[k]?`<span style="color:#e65100;font-size:11px;font-weight:700">${esc(used[k])} me ban chuka</span>`:`<span style="color:#2e7d32;font-size:11px">Naya</span>`}</td></tr>`;}).join("")||`<tr><td colspan="10" style="text-align:center;color:#999;padding:24px">Is date par koi dispatch nahi hua</td></tr>`;
-  const hist=[...(state.gatePasses||[])].reverse().map(g=>`<tr><td><b>${esc(g.gpNo)}</b></td><td>${esc(g.time||fmtDate(g.date))}</td><td style="font-size:12px">${(g.rows||[]).map(r=>esc(r.challanNo)+" ("+esc(r.vehicleNo||"—")+")").join(", ")}</td><td>${esc(g.createdBy||"—")}</td><td><button class="btn btn-sm btn-success" onclick="App.printGatePass(${g.id})">🖨️ Print</button>${state.currentUser&&state.currentUser.role==="admin"?` <button class="btn btn-sm btn-danger" onclick="App.deleteGatePass(${g.id})">Del</button>`:""}</td></tr>`).join("")||`<tr><td colspan="5" style="text-align:center;color:#999;padding:20px">Abhi koi Gate Pass nahi bana</td></tr>`;
+  const body=rows.map((r,i)=>{const k=r.type+"|"+r.id;const on=!!temp.gpSel[k];return`<tr class="gp-row" id="gpRow${i}" tabindex="0" onkeydown="App.gpRowKey(event,${i})" style="${on?"background:#e3f2fd":""}"><td><input type="checkbox" id="gpCb${i}" tabindex="-1" ${on?"checked":""} onchange="App.gpToggle(${i},this.checked)"></td><td><span class="badge" style="background:${r.type==="MT"?"#00838f":"#37474f"}">${r.type}</span></td><td>${esc(fmtDate(r.date))}</td><td><b>${esc(r.challanNo)}</b></td><td>${esc(r.party)}</td><td>${esc(r.marka)||"—"}</td><td style="text-align:center;font-weight:800">${esc(r.cartons)}</td><td>${esc(r.transport)||"—"}</td><td>${esc(r.vehicleNo)||"—"}</td><td>${own.has(k)?`<span style="color:#1565c0;font-size:11px;font-weight:700">${esc(eg.gpNo)} me hai</span>`:`<span style="color:#2e7d32;font-size:11px">Gate Pass baki</span>`}</td></tr>`;}).join("")||`<tr><td colspan="10" style="text-align:center;color:#999;padding:24px">${temp.gpAllDates?"Koi challan pending nahi hai — sabka Gate Pass ban chuka hai":"Is date par koi pending challan nahi hai (dispatch nahi hua ya sabka Gate Pass ban chuka hai)"}</td></tr>`;
+  const hist=[...(state.gatePasses||[])].reverse().map(g=>`<tr style="${eg&&g.id===eg.id?"background:#e3f2fd":""}"><td><b>${esc(g.gpNo)}</b></td><td>${esc(g.time||fmtDate(g.date))}</td><td style="font-size:12px">${(g.rows||[]).map(r=>esc(r.challanNo)+" ("+esc(r.vehicleNo||"—")+")").join(", ")}</td><td>${esc(g.createdBy||"—")}</td><td><button class="btn btn-sm btn-success" onclick="App.printGatePass(${g.id})">🖨️ Print</button>${!isRO()?` <button class="btn btn-sm" style="background:#1565c0;color:#fff" onclick="App.editGatePass(${g.id})">✏️ Edit</button>`:""}${state.currentUser&&state.currentUser.role==="admin"?` <button class="btn btn-sm btn-danger" onclick="App.deleteGatePass(${g.id})">Del</button>`:""}</td></tr>`).join("")||`<tr><td colspan="5" style="text-align:center;color:#999;padding:20px">Abhi koi Gate Pass nahi bana</td></tr>`;
+  const banner=eg?`<div style="background:#e3f2fd;border:2px solid #1565c0;border-radius:8px;padding:10px 14px;margin-bottom:12px;display:flex;gap:10px;align-items:center;flex-wrap:wrap"><b style="color:#0d47a1">✏️ ${esc(eg.gpNo)} edit ho raha hai</b><span style="font-size:12px;color:#37474f">List me is Gate Pass ke challan aur jinka Gate Pass baki hai wahi dikh rahe hain. Challan chuno / hatao, phir Update dabao.</span><button class="btn btn-secondary" onclick="App.cancelGpEdit()">✖ Edit Cancel</button></div>`:"";
   setTimeout(()=>{const f=document.getElementById("gpRow0");if(f&&document.activeElement===document.body)f.focus();},60);
-  return`<style>.gp-row:focus{outline:3px solid #1a237e;outline-offset:-3px}</style><div class="card"><div class="card-title">🚪 Gate Pass — Security Outward Entry</div><div class="card-body">
-    <div style="display:flex;gap:10px;flex-wrap:wrap;align-items:flex-end;margin-bottom:14px"><div><label class="lbl">Dispatch Date</label><input class="inp" type="date" value="${esc(date)}" style="margin-bottom:0" onchange="App.gpSetDate(this.value)"></div><button class="btn btn-secondary" onclick="App.gpSelectAll(true)">✔ Sab Select</button><button class="btn btn-secondary" onclick="App.gpSelectAll(false)">Sab Clear</button><div style="font-size:13px;padding-bottom:8px">Select: <b id="gpSelCount">${selRows.length}</b> challan | Total Carton: <b id="gpSelTotal" style="color:#1a237e;font-size:16px">${totCtn}</b></div>${!isRO()?`<button class="btn btn-primary" style="padding:10px 22px" onclick="App.createGatePass()">🚪 Gate Pass Banao &amp; Print</button>`:""}</div>
+  return`<style>.gp-row:focus{outline:3px solid #1a237e;outline-offset:-3px}</style><div class="card"><div class="card-title">🚪 Gate Pass — Security Outward Entry</div><div class="card-body">${banner}
+    <div style="display:flex;gap:10px;flex-wrap:wrap;align-items:flex-end;margin-bottom:14px"><div><label class="lbl">Dispatch Date</label><input class="inp" type="date" value="${esc(date)}" style="margin-bottom:0" onchange="App.gpSetDate(this.value)"></div><label style="font-size:12px;cursor:pointer;padding-bottom:10px"><input type="checkbox" ${temp.gpAllDates?"checked":""} onchange="App.gpToggleAllDates(this.checked)"> Saari dates ke pending challan</label><button class="btn btn-secondary" onclick="App.gpSelectAll(true)">✔ Sab Select</button><button class="btn btn-secondary" onclick="App.gpSelectAll(false)">Sab Clear</button><div style="font-size:13px;padding-bottom:8px">Select: <b id="gpSelCount">${selRows.length}</b> challan | Total Carton: <b id="gpSelTotal" style="color:#1a237e;font-size:16px">${totCtn}</b></div>${!isRO()?`<button class="btn btn-primary" style="padding:10px 22px" onclick="App.createGatePass()">${eg?"💾 Gate Pass Update &amp; Print":"🚪 Gate Pass Banao &amp; Print"}</button>`:""}</div>
     <div style="font-size:12px;color:#1a237e;font-weight:600;margin-bottom:4px">⌨️ ↑ ↓ arrow se row badlo, <b>Space</b> se select / unselect.</div>
-    <div style="font-size:11px;color:#888;margin-bottom:8px">💡 Ek se zyada challan chunkar ek hi Gate Pass bana sakte ho. Select aap khud karoge, kuch bhi apne aap select nahi hota. Print me Marka ke saath carton ginti ek hi jagah aati hai.</div>
+    <div style="font-size:11px;color:#888;margin-bottom:8px">💡 Jin challan ka Gate Pass ban gaya wo is list se hat jaate hain. Ek se zyada challan chunkar ek hi Gate Pass bana sakte ho. Kisi Gate Pass me badlav ke liye neeche History me ✏️ Edit dabao. Select aap khud karoge, kuch bhi apne aap select nahi hota.</div>
     <div style="overflow-x:auto"><table class="tbl"><thead><tr style="background:#1a237e;color:#fff"><th></th><th>Type</th><th>Challan Date</th><th>Challan No</th><th>Party / DC</th><th>Marka</th><th style="text-align:center">Total Carton</th><th>Transport</th><th>Vehicle No</th><th>Status</th></tr></thead><tbody>${body}</tbody></table></div>
   </div></div>
   <div class="card"><div class="card-title">📋 Gate Pass History</div><div class="card-body" style="overflow-x:auto"><div style="max-height:480px;overflow-y:auto;border:1px solid #e0e0e0;border-radius:6px"><table class="tbl" style="margin:0"><thead><tr style="background:#37474f;color:#fff;position:sticky;top:0"><th>GP No</th><th>Banaya</th><th>Challans (Vehicle)</th><th>By</th><th>Actions</th></tr></thead><tbody>${hist}</tbody></table></div></div></div>`;
 }
 const GatePassV2={
-  gpSetDate(v){temp.gpDate=v||todayStr();temp.gpSel={};renderTabContent();},
+  gpSetDate(v){temp.gpDate=v||todayStr();gpSeedEditSel();renderTabContent();},
+  gpToggleAllDates(v){temp.gpAllDates=!!v;gpSeedEditSel();renderTabContent();},
+  editGatePass(id){
+    const g=(state.gatePasses||[]).find(x=>x.id==id);
+    if(!g){alert("Gate Pass nahi mila");return;}
+    temp.gpEditId=g.id;temp.gpDate=g.forDate||g.date||todayStr();temp.gpAllDates=false;
+    gpSeedEditSel();renderTabContent();
+    window.scrollTo({top:0,behavior:"smooth"});
+  },
+  cancelGpEdit(){temp.gpEditId=null;temp.gpSel={};renderTabContent();},
   gpToggle(i,v){const k=(temp.gpRowKeys||[])[i];if(k===undefined)return;if(!temp.gpSel)temp.gpSel={};temp.gpSel[k]=!!v;gpRefreshSummary();},
   gpSelectAll(v){if(!temp.gpSel)temp.gpSel={};(temp.gpRowKeys||[]).forEach(k=>{temp.gpSel[k]=!!v;});gpRefreshSummary();},
   gpRowKey(e,i){
@@ -4942,9 +4972,19 @@ const GatePassV2={
   createGatePass(){
     const date=temp.gpDate||todayStr();
     const sel=gpSelectedRows();
-    if(!sel.length){alert("Pehle kam se kam ek challan select karo (Space ya checkbox se)");return;}
+    const eg=temp.gpEditId?(state.gatePasses||[]).find(g=>g.id==temp.gpEditId):null;
+    if(!sel.length){alert(eg?"Gate Pass me kam se kam ek challan rakhna zaroori hai. Poora hatana ho to History se Del karo":"Pehle kam se kam ek challan select karo (Space ya checkbox se)");return;}
     const total=Math.round(sel.reduce((s,r)=>s+Number(r.cartons||0),0)*100)/100;
-    const gp={id:uid(),gpNo:gpNextNo(),date:todayStr(),forDate:date,time:nowStr(),rows:sel.map(r=>({type:r.type,id:r.id,challanNo:r.challanNo,date:r.date,marka:r.marka,cartons:r.cartons,transport:r.transport,vehicleNo:r.vehicleNo,party:r.party})),total,createdBy:state.currentUser?state.currentUser.name:""};
+    const rowsData=sel.map(r=>({type:r.type,id:r.id,challanNo:r.challanNo,date:r.date,marka:r.marka,cartons:r.cartons,transport:r.transport,vehicleNo:r.vehicleNo,party:r.party}));
+    if(eg){
+      eg.rows=rowsData;eg.total=total;eg.forDate=date;eg.updatedAt=nowStr();eg.updatedBy=state.currentUser?state.currentUser.name:"";
+      persist("gate_passes",state.gatePasses);
+      temp.gpEditId=null;temp.gpSel={};
+      renderTabContent();
+      App.printGatePass(eg.id);
+      return;
+    }
+    const gp={id:uid(),gpNo:gpNextNo(),date:todayStr(),forDate:date,time:nowStr(),rows:rowsData,total,createdBy:state.currentUser?state.currentUser.name:""};
     state.gatePasses=state.gatePasses||[];
     state.gatePasses.push(gp);
     persist("gate_passes",state.gatePasses);
