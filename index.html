@@ -139,10 +139,66 @@ async function migrateLocalStorageToIDB(){
     localStorage.setItem("jpl_idb_migrated_v1","1");
   }catch(e){ console.error("Migration error",e); }
 }
+// ── FINANCIAL YEAR (year-wise data) ──────────────────────────
+// Base year purane (bina prefix wale) keys use karta hai, isliye purana data jyon ka tyon rehta hai.
+const YEAR_DBKEYS=new Set(["packings","dispatches","pos","mt_pos","mt_dispatches","mt_packings","production_plans","mt_production_plans","store_ledger","grns","gate_passes","recycle_bin"]);
+const FY={label:"",prefix:"",base:"",years:[]};
+const yk=k=>(FY.prefix&&YEAR_DBKEYS.has(k))?FY.prefix+k:k;
+function fyCurrentLabel(d){const dt=d||new Date();const y=dt.getFullYear(),m=dt.getMonth();const st=m>=3?y:y-1;return st+"-"+String((st+1)%100).padStart(2,"0");}
+function fyNextLabel(l){const y=parseInt(l,10);return (y+1)+"-"+String((y+2)%100).padStart(2,"0");}
+function fyStartDate(l){const y=parseInt(l,10);return isNaN(y)?new Date().toISOString().slice(0,10):y+"-04-01";}
+function fyValid(l){const m=/^(\d{4})-(\d{2})$/.exec(String(l||""));return !!m&&((parseInt(m[1],10)+1)%100)===parseInt(m[2],10);}
+function fyLatest(){return FY.years.map(y=>y.label).sort().slice(-1)[0]||FY.label;}
+function fyScreen(inner){document.getElementById("root").innerHTML=`<div style="min-height:100vh;display:flex;align-items:center;justify-content:center;background:linear-gradient(135deg,#1a237e,#283593);padding:16px"><div style="background:#fff;border-radius:16px;padding:32px 36px;width:420px;max-width:94vw;box-shadow:0 20px 60px rgba(0,0,0,.3);font-family:Arial,sans-serif">${inner}</div></div>`;}
+function fyPickerScreen(){
+  const ys=FY.years.filter(y=>fyValid(y.label)).sort((a,b)=>String(b.label).localeCompare(String(a.label)));
+  fyScreen(`<div style="text-align:center;font-size:20px;font-weight:800;color:#1a237e;margin-bottom:4px">📅 Financial Year chuno</div><div style="text-align:center;font-size:12px;color:#777;margin-bottom:18px">Jimit Pet LLP — kis year ka kaam karna hai?</div>${ys.map((y,i)=>`<button onclick="fyChoose('${y.label}')" style="display:block;width:100%;text-align:left;padding:14px 16px;margin-bottom:10px;border-radius:10px;cursor:pointer;font-size:16px;font-weight:700;border:2px solid ${i===0?"#1a237e":"#c5cae9"};background:${i===0?"#e8eaf6":"#fff"};color:#1a237e">📅 FY ${y.label}<span style="float:right;font-size:11px;background:${i===0?"#2e7d32":"#757575"};color:#fff;padding:2px 8px;border-radius:10px">${i===0?"Chalu Year":"Purana"}</span></button>`).join("")}`);
+}
+function fySetupScreen(){
+  const cur=fyCurrentLabel(),y0=parseInt(cur,10);
+  const opts=[y0-3,y0-2,y0-1,y0,y0+1].map(y=>y+"-"+String((y+1)%100).padStart(2,"0"));
+  fyScreen(`<div style="text-align:center;font-size:20px;font-weight:800;color:#1a237e;margin-bottom:6px">📅 Financial Year setup</div><div style="font-size:13px;color:#444;margin-bottom:14px;line-height:1.5">Abhi tak ka saara data (jo is app me hai) <b>kis Financial Year (April–March)</b> ka hai?<br><span style="font-size:11px;color:#888">Ye sirf ek baar poochha jata hai. Ghar, factory aur mobile, sab devices par <b>ek hi year</b> chuno.</span></div><select id="fySetupSel" style="width:100%;padding:12px;font-size:16px;border:2px solid #c5cae9;border-radius:8px;margin-bottom:14px">${opts.map(o=>`<option value="${o}" ${o===cur?"selected":""}>FY ${o}</option>`).join("")}</select><button onclick="fySetupSave()" style="width:100%;padding:13px;border:none;border-radius:8px;background:#1a237e;color:#fff;font-size:15px;font-weight:700;cursor:pointer">Aage badho ▶</button>`);
+}
+async function fySetupSave(){
+  const l=(document.getElementById("fySetupSel")||{}).value;
+  if(!fyValid(l))return;
+  await DB.save("fy_registry",{base:l,years:[{label:l,prefix:"",createdAt:new Date().toISOString()}]});
+  try{sessionStorage.setItem("jpl_fy",l);}catch(e){}
+  location.reload();
+}
+function fyChoose(l){try{sessionStorage.setItem("jpl_fy",l);}catch(e){} location.reload();}
+function fyChangeYear(){try{sessionStorage.removeItem("jpl_fy");}catch(e){} location.reload();}
+function fyBadgeHtml(){
+  const multi=FY.years.length>1,latest=FY.label===fyLatest();
+  return`<span ${multi?'onclick="App.fySwitch()"':""} title="${multi?"Year badalne ke liye click karo":"Financial Year"}" style="font-size:12px;font-weight:700;padding:3px 10px;border-radius:12px;background:${latest?"rgba(46,125,50,.9)":"rgba(230,81,0,.95)"};cursor:${multi?"pointer":"default"}">📅 FY ${FY.label}${latest?"":" (purana)"}</span>`;
+}
+function fyLoginBadge(){
+  return`<div style="position:fixed;top:12px;right:12px;background:rgba(255,255,255,.96);padding:8px 14px;border-radius:20px;font-size:12px;font-weight:700;color:#1a237e;box-shadow:0 2px 10px rgba(0,0,0,.25);z-index:50">📅 FY ${FY.label}${FY.years.length>1?` · <a href="#" onclick="fyChangeYear();return false" style="color:#c62828">Year badlo</a>`:""}</div>`;
+}
+// Poora backup: chalu year + baaki saare years (multi-device restore ke liye)
+async function buildFullBackup(){
+  const backup=buildBackupData();
+  backup._meta.fy=FY.label;
+  backup.data.fy_registry={base:FY.base,years:FY.years};
+  const others={};
+  for(const y of FY.years){
+    if(y.label===FY.label)continue;
+    const o={};
+    for(const k of YEAR_DBKEYS){ try{ const v=await IDB.get("jpl_"+(y.prefix||"")+k); if(v!==null&&v!==undefined)o[k]=v; }catch(e){} }
+    others[y.label]={prefix:y.prefix||"",data:o};
+  }
+  if(Object.keys(others).length)backup.fyData=others;
+  return backup;
+}
+
 const DB = {
-  async get(key){ try{ return await IDB.get("jpl_"+key); }catch(e){ console.error(e); return null; } },
-  async save(key,data){
+  async get(key){ try{ return await IDB.get("jpl_"+yk(key)); }catch(e){ console.error(e); return null; } },
+  async saveRaw(key,data){
     try{ await IDB.set("jpl_"+key,data); }
+    catch(e){ console.error(e); alert("⚠️ SAVE FAILED!\n\nError: "+(e&&e.message?e.message:e)); }
+  },
+  async save(key,data){
+    try{ await IDB.set("jpl_"+yk(key),data); }
     catch(e){ console.error(e); alert("⚠️ SAVE FAILED! Ye entry save NAHI hui hai.\n\nError: "+(e&&e.message?e.message:e)); }
   }
 };
@@ -153,6 +209,7 @@ const Tombstone = {
   get()  { try { return JSON.parse(localStorage.getItem(this._key)||"{}"); } catch { return {}; } },
   set(t) { try { localStorage.setItem(this._key, JSON.stringify(t)); } catch(e){} },
   add(dbKey, id) {
+    dbKey = yk(dbKey);
     const t = this.get();
     if(!Array.isArray(t[dbKey])) t[dbKey] = [];
     if(!t[dbKey].includes(id)) t[dbKey].push(id);
@@ -967,7 +1024,7 @@ function buildBackupData(){
   backup.data.tombstones=Tombstone.get();
   return backup;
 }
-function checkAutoBackup(){
+async function checkAutoBackup(){
   try{
     const now=new Date();
     const todayKey=now.toISOString().slice(0,10);
@@ -978,7 +1035,7 @@ function checkAutoBackup(){
     state.lastAutoBackupDate=todayKey;
     localStorage.setItem("jpl_last_autobackup",todayKey);
     persist("last_auto_backup_date",todayKey);
-    const backup=buildBackupData();
+    const backup=await buildFullBackup();
     const blob=new Blob([JSON.stringify(backup,null,2)],{type:"application/json"});
     const url=URL.createObjectURL(blob);
     const a=document.createElement("a");
@@ -998,7 +1055,7 @@ function checkAutoBackup(){
 function render(){
   const root=document.getElementById("root");
   const _tgm=document.getElementById("tabGroupMenu");if(_tgm)_tgm.remove();
-  if(!state.currentUser){root.innerHTML=loginHtml();return;}
+  if(!state.currentUser){root.innerHTML=loginHtml()+fyLoginBadge();return;}
   root.innerHTML=shellHtml();
   renderTabContent();
 }
@@ -1018,7 +1075,7 @@ function shellHtml(){
     {key:"mtSalesDashboard",label:"📊 MT Sales Dashboard",perm:"mtSalesDashboard"},
     {key:"store",label:"🏬 Store",perm:"store"},
     {key:"inventoryStock",label:"📦 Inventory Stock",perm:"inventoryStock"},{key:"canMake",label:"✅ Can Make Report",perm:"canMake"},{key:"productionReport",label:"📊 Production Report",perm:"productionReport"},{key:"minStock",label:"🛒 Min Stock & Purchase",perm:"minStock"},{key:"mtReport",label:"📈 MT Delivery Report",perm:"mtReport"},{key:"programStock",label:"✅ Program Stock Check",perm:"programStock"},
-    ...(state.currentUser.role==="admin"?[{key:"userManagement",label:"👥 Users",perm:"userManagement"},{key:"recycleBin",label:"🗑️ Recycle Bin",perm:"userManagement"}]:[])
+    ...(state.currentUser.role==="admin"?[{key:"userManagement",label:"👥 Users",perm:"userManagement"},{key:"recycleBin",label:"🗑️ Recycle Bin",perm:"userManagement"},{key:"yearEnd",label:"📅 Year End Process",perm:"userManagement"}]:[])
   ].filter(t=>can(t.perm));
   // ── TAB GROUPS (sirf navigation grouping; tabs ka kaam same hai) ──
   const TAB_GROUPS=[
@@ -1027,7 +1084,7 @@ function shellHtml(){
     {k:"ordersGrp",label:"📝 ORDERS",keys:["po","pendingOrder","orderVsAvailable"]},
     {k:"mtGrp",label:"🏪 MT",keys:["mtPo","mtDispatch","mtPending","mtPacking","mtVehReq","mtPlanner","mtSalesDashboard","mtReport"]},
     {k:"storeGrp",label:"🏬 STORE/REPORTS",keys:["store","inventoryStock","canMake","productionReport","minStock","programStock"]},
-    {k:"adminGrp",label:"👥 ADMIN",keys:["userManagement","recycleBin"]}
+    {k:"adminGrp",label:"🛠️ UTILITY",keys:["userManagement","recycleBin","yearEnd"]}
   ];
   window.__tabGroups={};
   const _grouped=new Set();
@@ -1054,6 +1111,7 @@ function shellHtml(){
         ${state.currentUser.role==="admin"?`<button class="btn" style="background:rgba(230,81,0,.9);border:1px solid rgba(255,255,255,.4);padding:4px 10px;font-size:11px" onclick="App.openImportModal()" title="Excel se bulk data import karo">📥 Import Excel</button>`:""}
         ${state.currentUser.role==="admin"?`<button class="btn" style="background:rgba(21,101,192,.85);border:1px solid rgba(255,255,255,.4);padding:4px 10px;font-size:11px" onclick="document.getElementById('restoreFileInput').click()" title="Backup file se poora data wapas laao">⬆️ Restore</button><input type="file" id="restoreFileInput" style="display:none" onchange="App.restoreBackup(event)">`:""}
         ${state.currentUser.role==="admin"?`<button class="btn" style="background:rgba(198,40,40,.85);border:1px solid rgba(255,255,255,.4);padding:4px 10px;font-size:11px" onclick="App.clearAllEntries()" title="Packing, PO, MT PO, MT Packing ki saari entries fresh kar do">🗑️ Clear All Entries</button>`:""}
+        ${fyBadgeHtml()}
         <span style="font-size:13px">👤 ${esc(state.currentUser.name)}</span>
         <button class="btn" style="background:rgba(255,255,255,.2);border:1px solid rgba(255,255,255,.4);padding:5px 14px" onclick="App.logout()">Logout</button>
       </div>
@@ -1069,7 +1127,7 @@ function renderTabContent(){
   const fns={packing:renderPackingTab,pendingStock:renderPendingStockTab,stockSummary:renderStockSummaryTab,
     dispatch:renderDispatchTab,dispatchRegister:renderDispatchRegisterTab,gatePass:renderGatePassTab,po:renderPOTab,
     pendingOrder:renderPendingOrderTab,orderVsAvailable:renderOrderVsAvailableTab,mtPo:renderMTPoTab,mtDispatch:renderMTDispatchTab,
-    mtPending:renderMTPendingTab,mtPacking:renderMTPackingTab,mtVehReq:renderMtVehReqTab,planner:renderPlannerTab,store:renderStoreTab,inventoryStock:renderInventoryStockTab,canMake:renderCanMakeTab,productionReport:renderProductionReportTab,home:renderHomeTab,minStock:renderMinStockTab,mtReport:renderMtReportTab,programStock:renderProgramStockTabV2,mtPlanner:renderMtPlannerTab,mtSalesDashboard:renderMtSalesDashboardTab,userManagement:renderUserManagementTab,recycleBin:renderRecycleBinTab};
+    mtPending:renderMTPendingTab,mtPacking:renderMTPackingTab,mtVehReq:renderMtVehReqTab,planner:renderPlannerTab,store:renderStoreTab,inventoryStock:renderInventoryStockTab,canMake:renderCanMakeTab,yearEnd:renderYearEndTab,productionReport:renderProductionReportTab,home:renderHomeTab,minStock:renderMinStockTab,mtReport:renderMtReportTab,programStock:renderProgramStockTabV2,mtPlanner:renderMtPlannerTab,mtSalesDashboard:renderMtSalesDashboardTab,userManagement:renderUserManagementTab,recycleBin:renderRecycleBinTab};
   el.innerHTML=(fns[state.activeTab]||(() =>""))();
   const mr=document.getElementById("modalRoot");if(mr)mr.innerHTML=renderItemMasterModal()+renderMtItemModal();
   setTimeout(registerAC,0);
@@ -4185,6 +4243,7 @@ const AuthApp={
   },
   async login(){const u=document.getElementById("loginUser").value,p=document.getElementById("loginPass").value;const found=state.users.find(x=>x.username===u);const el=document.getElementById("loginErr");if(found&&found.passwordHash){const hash=await hashPassword(p,found.salt);if(hash===found.passwordHash){state.currentUser=found;render();return;}}else if(found&&found.password&&found.password===p){state.currentUser=found;render();return;}el.style.display="block";el.textContent="⚠️ Invalid username or password";},
   logout(){state.currentUser=null;render();},
+  fySwitch(){if(confirm("Year badalne ke liye logout hoga aur year select screen aayegi. Continue?"))fyChangeYear();},
   closeTabMenu(){const m=document.getElementById("tabGroupMenu");if(m)m.remove();},
   toggleTabGroup(gk,el){
     const old=document.getElementById("tabGroupMenu");
@@ -4227,10 +4286,10 @@ const AuthApp={
     setTimeout(()=>alert("✅ Packing, PO, MT PO aur MT Packing ki saari entries fresh kar di gayi hain."),300);
   },
   async downloadBackup(){
-    const backup=buildBackupData();
+    const backup=await buildFullBackup();
     const json=JSON.stringify(backup,null,2);
     const ts=new Date().toISOString().slice(0,19).replace(/[:T]/g,"-");
-    const fname=`JimitPetLLP-Backup-${ts}.json`;
+    const fname=`JimitPetLLP-FY${FY.label}-Backup-${ts}.json`;
     // Mobile: pehle Share (WhatsApp / Drive / Files me save) try karo
     const isMobile=/Android|iPhone|iPad|iPod/i.test(navigator.userAgent)||(navigator.maxTouchPoints>1&&window.innerWidth<900);
     if(isMobile&&navigator.share&&navigator.canShare){
@@ -4264,9 +4323,26 @@ const AuthApp={
         const parsed=JSON.parse(e.target.result);
         const data=parsed.data||parsed;
         if(!data||typeof data!=="object")throw new Error("Invalid backup file");
-        if(!confirm("⚠️ Ye backup file ka data load karega aur CURRENT data ko OVERWRITE kar dega. Kya aap sure hain?")){evt.target.value="";return;}
+        const bfy=(parsed._meta&&parsed._meta.fy)||FY.base;
+        const bReg=data.fy_registry||null;
+        const msg1=bfy!==FY.label?`⚠️ Ye backup FY ${bfy} ka hai, aur aap abhi FY ${FY.label} me ho.\n\nRestore karoge to FY ${bfy} ka data (aur sab masters/users) is backup se OVERWRITE ho jayega. Sure ho?`:`⚠️ Ye backup file FY ${bfy} ka data load karega aur uska CURRENT data OVERWRITE kar dega. Kya aap sure hain?`;
+        if(!confirm(msg1)){evt.target.value="";return;}
         if(!confirm("Final confirmation: Ye action UNDO nahi ho sakta. Continue karein?")){evt.target.value="";return;}
-        for(const [dbk,val] of Object.entries(data)){ if(val!==undefined) await DB.save(dbk,val); }
+        let years=(bReg&&bReg.years&&bReg.years.length)?bReg.years.map(y=>({...y})):[];
+        FY.years.forEach(y=>{ if(years.find(z=>z.label===y.label))return; if(!y.prefix&&years.some(z=>!z.prefix))return; years.push({...y}); });
+        let main=years.find(y=>y.label===bfy);
+        if(!main){main={label:bfy,prefix:"fy"+bfy+"__"};years.push(main);}
+        for(const [dbk,val] of Object.entries(data)){
+          if(val===undefined||dbk==="fy_registry"||dbk==="tombstones")continue;
+          await DB.saveRaw(YEAR_DBKEYS.has(dbk)?(main.prefix||"")+dbk:dbk,val);
+        }
+        for(const [lab,obj] of Object.entries(parsed.fyData||{})){
+          let y=years.find(z=>z.label===lab);
+          if(!y){y={label:lab,prefix:(obj&&obj.prefix)||("fy"+lab+"__")};years.push(y);}
+          for(const [k,v] of Object.entries((obj&&obj.data)||{})){ if(YEAR_DBKEYS.has(k))await DB.saveRaw((y.prefix||"")+k,v); }
+        }
+        await DB.saveRaw("fy_registry",{base:(bReg&&bReg.base)||FY.base,years});
+        try{sessionStorage.setItem("jpl_fy",bfy);}catch(e){}
         if(data.tombstones) Tombstone.set(data.tombstones);
         alert("✅ Backup restore ho gaya! Page reload ho raha hai...");
         setTimeout(()=>location.reload(),500);
@@ -5003,6 +5079,134 @@ const GatePassV2={
   }
 };
 Object.assign(App,GatePassV2);
+// ══ YEAR END PROCESS (Utility) ══
+function yeCompute(){
+  const src=FY.label;
+  const tgt=String(temp.yeTarget||fyNextLabel(src)).trim();
+  const start=fyStartDate(tgt);
+  const zeroNeg=temp.yeZeroNeg!==false;
+  const by=state.currentUser?state.currentUser.name:"";
+  const meta=()=>({savedAt:nowStr(),savedBy:by,_ts:Date.now()});
+  let seq=0;const mk=()=>Date.now()*1000+(seq++);
+  const lines=[];
+  // 1. General Finish Goods (carton-wise bacha hua stock)
+  const dm=buildDispMap(),packings=[],prodSet=new Set();
+  let fgCartons=0;
+  state.packings.forEach(p=>{
+    const pq=Number(p.totalQty||0)-(dm[`${p.cartonNo}-${p.productName}`]||0);
+    if(pq<=0)return;
+    const qpc=Number(p.qtyPerCarton)||0,ct=qpc?Math.ceil(pq/qpc):Number(p.cartons||0);
+    packings.push({...p,totalQty:pq,cartons:ct,remark:(p.remark?p.remark+" | ":"")+"Carry forward FY "+src,carryFwd:true,cfFrom:src,...meta()});
+    prodSet.add(p.productName);fgCartons+=ct;
+    lines.push(["Finish Goods",p.productName,"Carton "+p.cartonNo,pq]);
+  });
+  // 2. MT Finish Goods
+  const mst=getMtItemStats(),mtPackings=[];
+  let mtPcs=0;
+  state.mtItems.forEach(it=>{
+    const st=mst[it.id];if(!st||!(st.stockP>0))return;
+    mtPackings.push({id:it.id,date:start,mtItemId:it.id,productionQty:st.stockP,productionUnit:"Pcs",batchNo:"OPENING",remark:"Carry forward FY "+src+" (opening stock)",itemDesc:it.itemDesc,eanNo:it.eanNo,pcsPerBox:it.pcsPerBox,carryFwd:true,cfFrom:src,...meta()});
+    mtPcs+=st.stockP;
+    lines.push(["MT Stock",it.itemDesc,"pcs",st.stockP]);
+  });
+  // 3. Accessories (store stock)
+  const bal={};
+  (state.storeLedger||[]).forEach(l=>{const q=Number(l.qty||0);bal[l.itemName]=(bal[l.itemName]||0)+((l.type==="plan_out"||l.type==="internal_issue")?-q:q);});
+  const ledger=[];let negCount=0;
+  Object.keys(bal).sort().forEach(n=>{
+    const v=Math.round(bal[n]*100)/100;
+    if(!v)return;
+    if(v<0){negCount++;if(zeroNeg){lines.push(["Accessory (minus, zero se shuru)",n,"stock",v]);return;}}
+    ledger.push({id:mk(),date:start,type:"manual_adjust",itemName:n,qty:v,party:"Year End Carry Forward",location:"",refNo:"OPENING FY "+tgt,remark:"Opening balance from FY "+src,carryFwd:true,savedBy:by,savedAt:nowStr()});
+    lines.push(["Accessory",n,"stock",v]);
+  });
+  // 4. Pending General POs
+  const byPo={};getPendingOrderRows().forEach(r=>{(byPo[r.poId]=byPo[r.poId]||[]).push(r);});
+  const pos=[];
+  Object.keys(byPo).forEach(pid=>{
+    const po=state.purchaseOrders.find(x=>String(x.id)===String(pid));if(!po)return;
+    pos.push({...po,items:byPo[pid].map(r=>{const o=(po.items||[]).find(i=>i.id===r.itemId)||{};return{...o,id:r.itemId,productName:r.productName,unit:r.unit,qty:r.pendingQty,pendingQty:r.pendingQty};}),remark:(po.remark?po.remark+" | ":"")+"Carry forward FY "+src,status:"active",carryFwd:true,cfFrom:src,...meta()});
+    byPo[pid].forEach(r=>lines.push(["Pending PO (General)",po.poNo+" — "+po.partyName+" — "+r.productName,r.unit,r.pendingQty]));
+  });
+  // 5. Pending MT POs
+  const byMt={};getMtPendingRows().forEach(r=>{(byMt[r.poId]=byMt[r.poId]||[]).push(r);});
+  const mtPos=[];
+  Object.keys(byMt).forEach(pid=>{
+    const po=state.mtPos.find(x=>String(x.id)===String(pid));if(!po)return;
+    mtPos.push({...po,items:byMt[pid].map(r=>{const o=(po.items||[]).find(i=>i.id===r.itemId)||{};return{...o,id:r.itemId,qtyBox:r.pendBox,qtyPcs:r.pendPcs,cancelledBox:0,cancelledPcs:0};}),status:"active",manualFullDispatch:false,carryFwd:true,cfFrom:src,...meta()});
+    byMt[pid].forEach(r=>lines.push(["Pending PO (MT)",po.poNo+" — "+po.dc+" — "+r.itemDesc,"Box / Pcs",r.pendBox+" / "+r.pendPcs]));
+  });
+  return{src,tgt,start,zeroNeg,packings,mtPackings,ledger,pos,mtPos,lines,negCount,
+    sum:{fgCartons,fgProducts:prodSet.size,fgRecords:packings.length,mtPcs,mtItems:mtPackings.length,accItems:ledger.length,poCount:pos.length,mtPoCount:mtPos.length}};
+}
+function renderYearEndTab(){
+  if(!state.currentUser||state.currentUser.role!=="admin")return`<div class="card"><div class="card-body">Ye tab sirf admin ke liye hai.</div></div>`;
+  const c=yeCompute(),s=c.sum;
+  const ex=FY.years.find(y=>y.label===c.tgt);
+  const bad=!fyValid(c.tgt)||c.tgt<=c.src;
+  const done=temp.yeDone;
+  const box=(t,n,sub,col)=>`<div style="flex:1;min-width:160px;background:#fff;border:1px solid #e0e0e0;border-left:4px solid ${col};border-radius:8px;padding:10px 14px"><div style="font-size:11px;color:#777">${t}</div><div style="font-size:22px;font-weight:800;color:${col}">${n}</div><div style="font-size:11px;color:#888">${sub}</div></div>`;
+  return`<div class="card"><div class="card-title">📅 Year End Process</div><div class="card-body">
+    ${done?`<div style="background:#e8f5e9;border:2px solid #2e7d32;border-radius:10px;padding:14px 18px;margin-bottom:16px"><div style="font-weight:800;color:#1b5e20;font-size:15px">✅ FY ${esc(done.tgt)} ${done.rerun?"refresh ho gaya":"ban gaya"}</div><div style="font-size:12px;color:#37474f;margin:6px 0 10px">Opening stock aur pending orders naye year me aa gaye hain. FY ${esc(done.src)} ka data jyon ka tyon hai.</div><button class="btn btn-success" onclick="fyChoose('${esc(done.tgt)}')">▶️ FY ${esc(done.tgt)} me jao</button></div>`:""}
+    <div style="background:#e3f2fd;border:1px solid #90caf9;border-radius:8px;padding:10px 14px;font-size:12px;color:#0d47a1;margin-bottom:14px;line-height:1.6">ℹ️ Ek click me <b>FY ${esc(c.src)}</b> ka closing stock aur pending orders <b>naye year</b> me opening ban kar chale jate hain. Purane year ka data waisa hi rehta hai (login par year chun kar dekh sakte ho). Ye dobara chalane par sirf carry-forward wali entries naye hisaab se badalti hain, naye year ki apni entries nahi chhuti.</div>
+    <div style="display:flex;gap:14px;flex-wrap:wrap;align-items:flex-end;margin-bottom:12px"><div><label class="lbl">Chalu Year</label><div style="padding:9px 14px;background:#eceff1;border-radius:6px;font-weight:800;color:#1a237e">FY ${esc(c.src)}</div></div><div><label class="lbl">Naya Year (aise likho: 2027-28)</label><input class="inp" style="width:150px;margin-bottom:0" value="${esc(c.tgt)}" onchange="App.yeSet('yeTarget',this.value)"></div><label style="font-size:12px;cursor:pointer;padding-bottom:10px"><input type="checkbox" ${c.zeroNeg?"checked":""} onchange="App.yeSet('yeZeroNeg',this.checked)"> Minus (negative) accessory stock zero se shuru karo${c.negCount?` <b style="color:#c62828">(${c.negCount} items minus)</b>`:""}</label></div>
+    ${bad?`<div style="color:#c62828;font-size:12px;margin-bottom:10px">⚠️ Naya year ka format sahi nahi ya ${esc(c.src)} se aage ka nahi hai.</div>`:(ex?`<div style="color:#e65100;font-size:12px;margin-bottom:10px">ℹ️ FY ${esc(c.tgt)} pehle se bana hua hai — dobara chalane par sirf opening stock aur pending orders refresh honge.</div>`:"")}
+    <div style="display:flex;gap:10px;flex-wrap:wrap;margin-bottom:14px">${box("Finish Goods (General)",s.fgCartons+" Cts",s.fgProducts+" products, "+s.fgRecords+" carton records","#1a237e")}${box("MT Finish Goods",s.mtPcs+" pcs",s.mtItems+" items","#00838f")}${box("Accessories Stock",s.accItems+" items","opening balance","#6a1b9a")}${box("Pending PO (General)",s.poCount+" PO","pending qty ke saath","#e65100")}${box("Pending PO (MT)",s.mtPoCount+" PO","pending box/pcs ke saath","#2e7d32")}</div>
+    <div style="font-size:12px;color:#666;margin-bottom:14px;line-height:1.6">❌ Naye year me <b>nahi</b> jayega: purani Packing/Dispatch/GRN history, Production Plans, Gate Pass. Wo FY ${esc(c.src)} me hi rahegi. Masters (Users, Item Master, BOM, Store Items) dono years me common hain.</div>
+    <div style="display:flex;gap:10px;flex-wrap:wrap"><button class="btn" style="background:#37474f" onclick="App.yeExport()">📥 Preview Export (CSV)</button><button class="btn btn-primary" style="padding:11px 24px;font-size:14px" ${bad?"disabled":""} onclick="App.yeRun()">🔒 Year End Karo &amp; Stock Transfer</button></div>
+  </div></div>`;
+}
+async function yeRun(){
+  if(!state.currentUser||state.currentUser.role!=="admin"){alert("Sirf admin Year End kar sakta hai");return;}
+  const c=yeCompute(),s=c.sum;
+  if(!fyValid(c.tgt)){alert("Naya year ka format galat hai. Aise likho: 2027-28");return;}
+  if(c.tgt<=c.src){alert("Naya year "+c.src+" ke baad ka hona chahiye");return;}
+  const ex=FY.years.find(y=>y.label===c.tgt);
+  const msg=ex?`⚠️ FY ${c.tgt} pehle se bana hua hai.\n\nDobara chalane par us year ki sirf carry-forward wali entries (opening stock aur pending orders) naye hisaab se badlengi. FY ${c.tgt} me jo kaam hua hai wo nahi chhuega.\n\nContinue?`:`📅 FY ${c.src} ka stock aur pending orders FY ${c.tgt} me jayenge:\n\n• Finish Goods: ${s.fgCartons} Cts (${s.fgProducts} products)\n• MT Stock: ${s.mtPcs} pcs (${s.mtItems} items)\n• Accessories: ${s.accItems} items\n• Pending PO (General): ${s.poCount}\n• Pending PO (MT): ${s.mtPoCount}\n\nFY ${c.src} ka data jyon ka tyon rahega. Pehle ek backup bhi download hoga. Continue?`;
+  if(!confirm(msg))return;
+  try{ await App.downloadBackup(); }catch(e){}
+  try{
+    const pre=ex?(ex.prefix||""):("fy"+c.tgt+"__");
+    const rd=async k=>{try{const v=await IDB.get("jpl_"+pre+k);return Array.isArray(v)?v:[];}catch(e){return [];}};
+    const wr=(k,v)=>IDB.set("jpl_"+pre+k,v);
+    const oPk=await rd("packings"),oMt=await rd("mt_packings"),oLg=await rd("store_ledger"),oPo=await rd("pos"),oMpo=await rd("mt_pos"),nDisp=await rd("dispatches"),nMtDisp=await rd("mt_dispatches");
+    // carry-forward wali purani entries hatao, naye hisaab se dobara banao
+    await wr("packings",[...oPk.filter(x=>!x.carryFwd),...c.packings]);
+    await wr("mt_packings",[...oMt.filter(x=>!x.carryFwd),...c.mtPackings]);
+    await wr("store_ledger",[...oLg.filter(x=>!x.carryFwd),...c.ledger]);
+    // Pending POs: same id rakhte hain taaki naye year ke dispatch jude rahein
+    const fPo=new Set(c.pos.map(p=>String(p.id))),fMp=new Set(c.mtPos.map(p=>String(p.id)));
+    const usedGen=po=>nDisp.some(d=>(d.items||[]).some(di=>String(di.poNo!=null?di.poNo:d.poNo)===String(po.poNo)));
+    const usedMt=po=>nMtDisp.some(d=>String(d.poId)===String(po.id));
+    const poOut=[];
+    oPo.forEach(p=>{ if(!p.carryFwd){poOut.push(p);return;} if(fPo.has(String(p.id)))return; if(usedGen(p))poOut.push({...p,items:(p.items||[]).map(i=>({...i,qty:0,pendingQty:0}))}); });
+    c.pos.forEach(p=>poOut.push(p));
+    const mpOut=[];
+    oMpo.forEach(p=>{ if(!p.carryFwd){mpOut.push(p);return;} if(fMp.has(String(p.id)))return; if(usedMt(p))mpOut.push({...p,items:(p.items||[]).map(i=>({...i,qtyBox:0,qtyPcs:0,cancelledBox:0,cancelledPcs:0}))}); });
+    c.mtPos.forEach(p=>mpOut.push(p));
+    await wr("pos",poOut);
+    await wr("mt_pos",mpOut);
+    if(!ex)FY.years.push({label:c.tgt,prefix:pre,createdAt:new Date().toISOString(),carriedFrom:c.src});
+    else ex.refreshedAt=new Date().toISOString();
+    await DB.saveRaw("fy_registry",{base:FY.base,years:FY.years});
+    temp.yeDone={tgt:c.tgt,src:c.src,rerun:!!ex,sum:s};
+    renderTabContent();
+  }catch(e){
+    console.error(e);
+    alert("❌ Year End me error aaya: "+(e&&e.message?e.message:e)+"\n\nPurana data safe hai. Dobara try karo.");
+  }
+}
+const YearEndApp={
+  yeSet(k,v){temp[k]=v;temp.yeDone=null;renderTabContent();},
+  yeRun(){return yeRun();},
+  yeExport(){
+    const c=yeCompute();
+    if(!c.lines.length){alert("Transfer karne ke liye kuch nahi mila");return;}
+    exportCSV(["Section","Item","Detail","Qty"],c.lines,"year_end_preview_"+c.src+"_to_"+c.tgt+".csv");
+  }
+};
+Object.assign(App,YearEndApp);
+
 
 
 window.App=App; window.AC=AC;
@@ -5011,6 +5215,16 @@ window.App=App; window.AC=AC;
 (async function init(){
   document.getElementById("root").innerHTML=`<div style="min-height:100vh;display:flex;align-items:center;justify-content:center;background:#f0f4f8;color:#1a237e;font-family:Arial;font-size:15px">⏳ Data load ho raha hai...</div>`;
   await migrateLocalStorageToIDB();
+  // ── Financial Year select ──
+  const _reg=await DB.get("fy_registry");
+  if(!_reg||!_reg.years||!_reg.years.length){ fySetupScreen(); return; }
+  FY.years=_reg.years; FY.base=_reg.base||_reg.years[0].label;
+  let _ch=null; try{_ch=sessionStorage.getItem("jpl_fy");}catch(e){}
+  let _cur=FY.years.find(y=>y.label===_ch);
+  if(!_cur&&FY.years.length===1)_cur=FY.years[0];
+  if(!_cur){ fyPickerScreen(); return; }
+  FY.label=_cur.label; FY.prefix=_cur.prefix||"";
+  try{sessionStorage.setItem("jpl_fy",FY.label);}catch(e){}
   const map={users:"users",packings:"packings",categories:"categories",dispatches:"dispatches",
     purchaseOrders:"pos",mtPos:"mt_pos",mtDispatches:"mt_dispatches",batchOptions:"batch_options",
     mtItems:"mt_items",mtPackings:"mt_packings",itemMaster:"item_master",bomMaster:"bom_master",productionPlans:"production_plans",storeLedger:"store_ledger",grns:"grns",mtBomMaster:"mt_bom_master",mtProductionPlans:"mt_production_plans",mtDivisions:"mt_divisions",storeItems:"store_items",storeQtyTypes:"store_qty_types",storeBatches:"store_batches",recycleBin:"recycle_bin",nextChallanOverride:"next_challan_override",partyEmails:"party_emails",autoTriggeredProducts:"auto_triggered_products",lastAutoBackupDate:"last_auto_backup_date",lastAutoEmailDate:"last_auto_email_date",lastMtAlertEmailDate:"last_mt_alert_email_date",lastPendingCategoryEmailDate:"last_pending_category_email_date",lastProductionReminderDate:"last_production_reminder_date",gatePasses:"gate_passes"};
