@@ -1,6 +1,6 @@
 // Jimit Pet LLP — service worker
 // Har baar index.html me koi change deploy karo to neeche VERSION badha do.
-const VERSION = "v7";
+const VERSION = "v9";
 const CACHE = "jpl-cache-" + VERSION;
 
 const CORE = ["./", "./index.html", "./manifest.json", "./icon-192.png", "./icon-512.png", "./icon-180.png"];
