@@ -141,7 +141,7 @@ async function migrateLocalStorageToIDB(){
 }
 // ── FINANCIAL YEAR (year-wise data) ──────────────────────────
 // Base year purane (bina prefix wale) keys use karta hai, isliye purana data jyon ka tyon rehta hai.
-const YEAR_DBKEYS=new Set(["packings","dispatches","pos","mt_pos","mt_dispatches","mt_packings","production_plans","mt_production_plans","store_ledger","grns","gate_passes","recycle_bin","invoices","credit_notes"]);
+const YEAR_DBKEYS=new Set(["packings","dispatches","pos","mt_pos","mt_dispatches","mt_packings","production_plans","mt_production_plans","store_ledger","grns","gate_passes","recycle_bin","invoices","credit_notes","debit_notes"]);
 const FY={label:"",prefix:"",base:"",years:[]};
 const yk=k=>(FY.prefix&&YEAR_DBKEYS.has(k))?FY.prefix+k:k;
 function fyCurrentLabel(d){const dt=d||new Date();const y=dt.getFullYear(),m=dt.getMonth();const st=m>=3?y:y-1;return st+"-"+String((st+1)%100).padStart(2,"0");}
@@ -244,7 +244,7 @@ let state = {
   currentUser:null,
   users:INIT_USERS, packings:[], categories:DEFAULT_CATS, batchOptions:DEFAULT_BATCH,
   recycleBin:[],
-  parties:[], accBills:[], accReceipts:[], invoices:[], creditNotes:[], itemRates:[], company:null,
+  parties:[], accBills:[], accReceipts:[], invoices:[], creditNotes:[], debitNotes:[], itemRates:[], company:null,
   nextChallanOverride:922,
   partyEmails:[],
   autoTriggeredProducts:[],
@@ -1024,7 +1024,7 @@ function backfillDispatchItemBatches(){
 function buildBackupData(){
   const map={users:"users",packings:"packings",categories:"categories",dispatches:"dispatches",
     purchaseOrders:"pos",mtPos:"mt_pos",mtDispatches:"mt_dispatches",batchOptions:"batch_options",
-    mtItems:"mt_items",mtPackings:"mt_packings",itemMaster:"item_master",bomMaster:"bom_master",productionPlans:"production_plans",storeLedger:"store_ledger",grns:"grns",mtBomMaster:"mt_bom_master",mtProductionPlans:"mt_production_plans",mtDivisions:"mt_divisions",storeItems:"store_items",storeQtyTypes:"store_qty_types",storeBatches:"store_batches",recycleBin:"recycle_bin",nextChallanOverride:"next_challan_override",partyEmails:"party_emails",autoTriggeredProducts:"auto_triggered_products",lastAutoBackupDate:"last_auto_backup_date",lastAutoEmailDate:"last_auto_email_date",lastMtAlertEmailDate:"last_mt_alert_email_date",lastPendingCategoryEmailDate:"last_pending_category_email_date",lastProductionReminderDate:"last_production_reminder_date",gatePasses:"gate_passes",parties:"parties",accBills:"acc_bills",accReceipts:"acc_receipts",invoices:"invoices",creditNotes:"credit_notes",itemRates:"item_rates",company:"company"};
+    mtItems:"mt_items",mtPackings:"mt_packings",itemMaster:"item_master",bomMaster:"bom_master",productionPlans:"production_plans",storeLedger:"store_ledger",grns:"grns",mtBomMaster:"mt_bom_master",mtProductionPlans:"mt_production_plans",mtDivisions:"mt_divisions",storeItems:"store_items",storeQtyTypes:"store_qty_types",storeBatches:"store_batches",recycleBin:"recycle_bin",nextChallanOverride:"next_challan_override",partyEmails:"party_emails",autoTriggeredProducts:"auto_triggered_products",lastAutoBackupDate:"last_auto_backup_date",lastAutoEmailDate:"last_auto_email_date",lastMtAlertEmailDate:"last_mt_alert_email_date",lastPendingCategoryEmailDate:"last_pending_category_email_date",lastProductionReminderDate:"last_production_reminder_date",gatePasses:"gate_passes",parties:"parties",accBills:"acc_bills",accReceipts:"acc_receipts",invoices:"invoices",creditNotes:"credit_notes",debitNotes:"debit_notes",itemRates:"item_rates",company:"company"};
   const backup={ _meta:{app:"JimitPetLLP",exportedAt:new Date().toISOString(),version:1}, data:{} };
   Object.entries(map).forEach(([sk,dbk])=>{ backup.data[dbk]=state[sk]; });
   backup.data.tombstones=Tombstone.get();
@@ -1080,13 +1080,13 @@ function shellHtml(){
     {key:"mtPlanner",label:"🧮 MT Planner",perm:"mtPlanner"},
     {key:"mtSalesDashboard",label:"📊 MT Sales Dashboard",perm:"mtSalesDashboard"},
     {key:"store",label:"🏬 Store",perm:"store"},
-    {key:"inventoryStock",label:"📦 Inventory Stock",perm:"inventoryStock"},{key:"canMake",label:"✅ Can Make Report",perm:"canMake"},{key:"accParty",label:"👥 Party Master",perm:"accounts"},{key:"accBills",label:"🧾 Bills (Sale / Purchase)",perm:"accounts"},{key:"accPay",label:"💵 Receipt / Payment",perm:"accounts"},{key:"accRates",label:"🏷️ Item Rates",perm:"accounts"},{key:"accOut",label:"📊 Accounts (Ledger / Ageing)",perm:"accounts"},{key:"invoice",label:"🧾 Invoice",perm:"invoice"},{key:"creditNote",label:"↩️ Credit Note",perm:"invoice"},{key:"productionReport",label:"📊 Production Report",perm:"productionReport"},{key:"minStock",label:"🛒 Min Stock & Purchase",perm:"minStock"},{key:"mtReport",label:"📈 MT Delivery Report",perm:"mtReport"},{key:"programStock",label:"✅ Program Stock Check",perm:"programStock"},
+    {key:"inventoryStock",label:"📦 Inventory Stock",perm:"inventoryStock"},{key:"canMake",label:"✅ Can Make Report",perm:"canMake"},{key:"accParty",label:"👥 Party Master",perm:"accounts"},{key:"accBills",label:"🧾 Bills (Sale / Purchase)",perm:"accounts"},{key:"accPay",label:"💵 Receipt / Payment",perm:"accounts"},{key:"accRates",label:"🏷️ Item Rates",perm:"accounts"},{key:"accOut",label:"📊 Accounts (Ledger / Ageing)",perm:"accounts"},{key:"invoice",label:"🧾 Invoice",perm:"invoice"},{key:"creditNote",label:"↩️ Credit Note",perm:"invoice"},{key:"debitNote",label:"📑 Debit Note",perm:"invoice"},{key:"productionReport",label:"📊 Production Report",perm:"productionReport"},{key:"minStock",label:"🛒 Min Stock & Purchase",perm:"minStock"},{key:"mtReport",label:"📈 MT Delivery Report",perm:"mtReport"},{key:"programStock",label:"✅ Program Stock Check",perm:"programStock"},
     ...(state.currentUser.role==="admin"?[{key:"userManagement",label:"👥 Users",perm:"userManagement"},{key:"recycleBin",label:"🗑️ Recycle Bin",perm:"userManagement"},{key:"yearEnd",label:"📅 Year End Process",perm:"userManagement"}]:[])
   ].filter(t=>t.perm==="accounts"?canAcc():can(t.perm));
   // ── TAB GROUPS (sirf navigation grouping; tabs ka kaam same hai) ──
   const TAB_GROUPS=[
     {k:"packingDept",label:"📦 PACKING DEPT",keys:["packing","pendingStock","stockSummary","planner"]},
-    {k:"dispatchGrp",label:"🚚 DISPATCH",keys:["dispatch","dispatchRegister","gatePass","invoice","creditNote"]},
+    {k:"dispatchGrp",label:"🚚 DISPATCH",keys:["dispatch","dispatchRegister","gatePass","invoice","creditNote","debitNote"]},
     {k:"ordersGrp",label:"📝 ORDERS",keys:["po","pendingOrder","orderVsAvailable"]},
     {k:"mtGrp",label:"🏪 MT",keys:["mtPo","mtDispatch","mtPending","mtPacking","mtVehReq","mtPlanner","mtSalesDashboard","mtReport"]},
     {k:"storeGrp",label:"🏬 STORE/REPORTS",keys:["store","inventoryStock","canMake","productionReport","minStock","programStock"]},
@@ -1134,7 +1134,7 @@ function renderTabContent(){
   const fns={packing:renderPackingTab,pendingStock:renderPendingStockTab,stockSummary:renderStockSummaryTab,
     dispatch:renderDispatchTab,dispatchRegister:renderDispatchRegisterTab,gatePass:renderGatePassTab,po:renderPOTab,
     pendingOrder:renderPendingOrderTab,orderVsAvailable:renderOrderVsAvailableTab,mtPo:renderMTPoTab,mtDispatch:renderMTDispatchTab,
-    mtPending:renderMTPendingTab,mtPacking:renderMTPackingTab,mtVehReq:renderMtVehReqTab,planner:renderPlannerTab,store:renderStoreTab,inventoryStock:renderInventoryStockTab,canMake:renderCanMakeTab,yearEnd:renderYearEndTab,accParty:renderAccPartyTab,accBills:renderAccBillsTab,accPay:renderAccPayTab,accOut:renderAccOutTab,accRates:renderAccRatesTab,invoice:renderInvoiceTab,creditNote:renderCreditNoteTab,productionReport:renderProductionReportTab,home:renderHomeTab,minStock:renderMinStockTab,mtReport:renderMtReportTab,programStock:renderProgramStockTabV2,mtPlanner:renderMtPlannerTab,mtSalesDashboard:renderMtSalesDashboardTab,userManagement:renderUserManagementTab,recycleBin:renderRecycleBinTab};
+    mtPending:renderMTPendingTab,mtPacking:renderMTPackingTab,mtVehReq:renderMtVehReqTab,planner:renderPlannerTab,store:renderStoreTab,inventoryStock:renderInventoryStockTab,canMake:renderCanMakeTab,yearEnd:renderYearEndTab,accParty:renderAccPartyTab,accBills:renderAccBillsTab,accPay:renderAccPayTab,accOut:renderAccOutTab,accRates:renderAccRatesTab,invoice:renderInvoiceTab,creditNote:renderCreditNoteTab,debitNote:renderDebitNoteTab,productionReport:renderProductionReportTab,home:renderHomeTab,minStock:renderMinStockTab,mtReport:renderMtReportTab,programStock:renderProgramStockTabV2,mtPlanner:renderMtPlannerTab,mtSalesDashboard:renderMtSalesDashboardTab,userManagement:renderUserManagementTab,recycleBin:renderRecycleBinTab};
   el.innerHTML=(fns[state.activeTab]||(() =>""))();
   const mr=document.getElementById("modalRoot");if(mr)mr.innerHTML=renderItemMasterModal()+renderMtItemModal();
   setTimeout(registerAC,0);
@@ -5207,7 +5207,7 @@ function accBillsListHtml(){
   return`<div style="font-size:12px;color:#444;margin-bottom:6px">${rows.length} bills${rows.length>300?" (pehle 300 dikh rahe hain)":""} | <b>Sale:</b> ${inr(sum("sale"))} (baki ${inr(sumB("sale"))}) | <b>Purchase:</b> ${inr(sum("purchase"))} (baki ${inr(sumB("purchase"))})</div><div style="max-height:520px;overflow:auto;border:1px solid #e0e0e0;border-radius:6px"><table class="tbl" style="margin:0"><thead><tr style="background:#1a237e;color:#fff;position:sticky;top:0;z-index:5"><th>Date</th><th>Bill No</th><th>Type</th><th>Party</th><th style="text-align:right">Taxable</th><th style="text-align:right">GST</th><th style="text-align:right">Total</th><th>Due</th><th style="text-align:right">Baki</th><th>Status</th><th></th></tr></thead><tbody>${shown.map(b=>{
     const r=bm[b.id],bal=b.void?0:balOf(b),od=r?r.overdueDays:0;
     const st=b.void?`<span style="color:#999">VOID</span>`:(bal<=0?`<span style="color:#2e7d32;font-weight:700">✅ Settled</span>`:(od>0?`<span style="color:#c62828;font-weight:700">Overdue ${od} din</span>`:`<span style="color:#1565c0">Open</span>`));
-    return`<tr style="${b.void?"opacity:.55;text-decoration:line-through":""}"><td>${esc(fmtDate(b.date))}</td><td><b>${esc(b.billNo)}</b></td><td><span class="badge" style="background:${b.kind==="sale"?"#2e7d32":"#e65100"}">${b.kind==="sale"?"SALE":"PURCHASE"}</span></td><td>${esc(b.partyName)}</td><td style="text-align:right">${inr(b.taxable)}</td><td style="text-align:right">${inr(b.gstAmt)}</td><td style="text-align:right;font-weight:700">${inr(b.total)}</td><td>${esc(fmtDate(b.dueDate))}</td><td style="text-align:right;font-weight:700">${inr(bal)}</td><td>${st}</td><td style="white-space:nowrap">${ro?"":(b.invId?`<span style="font-size:10px;color:#6a1b9a">🔗 Invoice se</span>`:b.void?`<button class="btn btn-sm btn-success" onclick="App.abRestore(${b.id})">↩</button>`:`<button class="btn btn-sm" style="background:#1565c0;color:#fff" onclick="App.abEdit(${b.id})">✏️</button> <button class="btn btn-sm btn-danger" onclick="App.abVoid(${b.id})">🗑️</button>`)}</td></tr>`;}).join("")||`<tr><td colspan="11" style="text-align:center;color:#999;padding:20px">Koi bill nahi mila</td></tr>`}</tbody></table></div>`;
+    return`<tr style="${b.void?"opacity:.55;text-decoration:line-through":""}"><td>${esc(fmtDate(b.date))}</td><td><b>${esc(b.billNo)}</b></td><td><span class="badge" style="background:${b.kind==="sale"?"#2e7d32":"#e65100"}">${b.kind==="sale"?"SALE":"PURCHASE"}</span></td><td>${esc(b.partyName)}</td><td style="text-align:right">${inr(b.taxable)}</td><td style="text-align:right">${inr(b.gstAmt)}</td><td style="text-align:right;font-weight:700">${inr(b.total)}</td><td>${esc(fmtDate(b.dueDate))}</td><td style="text-align:right;font-weight:700">${inr(bal)}</td><td>${st}</td><td style="white-space:nowrap">${ro?"":((b.invId||b.dnId)?`<span style="font-size:10px;color:#6a1b9a">🔗 ${b.dnId?"Debit Note":"Invoice"} se</span>`:b.void?`<button class="btn btn-sm btn-success" onclick="App.abRestore(${b.id})">↩</button>`:`<button class="btn btn-sm" style="background:#1565c0;color:#fff" onclick="App.abEdit(${b.id})">✏️</button> <button class="btn btn-sm btn-danger" onclick="App.abVoid(${b.id})">🗑️</button>`)}</td></tr>`;}).join("")||`<tr><td colspan="11" style="text-align:center;color:#999;padding:20px">Koi bill nahi mila</td></tr>`}</tbody></table></div>`;
 }
 function renderAccBillsTab(){
   if(!canAcc())return accDenied();
@@ -5267,7 +5267,7 @@ function accPayListHtml(){
   rows=rows.slice().sort((a,b)=>String(b.date).localeCompare(String(a.date)));
   const live=rows.filter(r=>!r.void),sum=k=>r2(live.filter(r=>r.kind===k).reduce((s,r)=>s+Number(r.amount||0),0));
   const ro=isRO(),shown=rows.slice(0,300);
-  return`<div style="font-size:12px;color:#444;margin-bottom:6px">${rows.length} entries${rows.length>300?" (pehle 300)":""} | <b>Receipt (mila):</b> ${inr(sum("receipt"))} | <b>Payment (diya):</b> ${inr(sum("payment"))}</div><div style="max-height:520px;overflow:auto;border:1px solid #e0e0e0;border-radius:6px"><table class="tbl" style="margin:0"><thead><tr style="background:#1a237e;color:#fff;position:sticky;top:0;z-index:5"><th>Date</th><th>Type</th><th>Party</th><th style="text-align:right">Amount</th><th>Mode</th><th>Ref No</th><th>Remark</th><th></th></tr></thead><tbody>${shown.map(r=>`<tr style="${r.void?"opacity:.55;text-decoration:line-through":""}"><td>${esc(fmtDate(r.date))}</td><td><span class="badge" style="background:${r.kind==="receipt"?"#2e7d32":"#e65100"}">${r.kind==="receipt"?"RECEIPT":"PAYMENT"}</span></td><td>${esc(r.partyName)}</td><td style="text-align:right;font-weight:700">${inr(r.amount)}</td><td>${esc(r.mode)}</td><td>${esc(r.refNo)||"—"}</td><td style="font-size:12px">${esc(r.remark)||"—"}${(r.alloc&&r.alloc.length)?`<div style="font-size:11px;color:#1a237e">🔗 Bill: ${r.alloc.map(a=>esc(a.billNo)+" ("+inr(a.amount)+")").join(", ")}</div>`:""}</td><td style="white-space:nowrap">${ro?"":(r.cnId?`<span style="font-size:10px;color:#6a1b9a">↩️ Credit Note se</span>`:r.void?`<button class="btn btn-sm btn-success" onclick="App.payRestore(${r.id})">↩</button>`:`<button class="btn btn-sm" style="background:#1565c0;color:#fff" onclick="App.payEdit(${r.id})">✏️</button> <button class="btn btn-sm btn-danger" onclick="App.payVoid(${r.id})">🗑️</button>`)}</td></tr>`).join("")||`<tr><td colspan="8" style="text-align:center;color:#999;padding:20px">Koi entry nahi mili</td></tr>`}</tbody></table></div>`;
+  return`<div style="font-size:12px;color:#444;margin-bottom:6px">${rows.length} entries${rows.length>300?" (pehle 300)":""} | <b>Receipt (mila):</b> ${inr(sum("receipt"))} | <b>Payment (diya):</b> ${inr(sum("payment"))}</div><div style="max-height:520px;overflow:auto;border:1px solid #e0e0e0;border-radius:6px"><table class="tbl" style="margin:0"><thead><tr style="background:#1a237e;color:#fff;position:sticky;top:0;z-index:5"><th>Date</th><th>Type</th><th>Party</th><th style="text-align:right">Amount</th><th>Mode</th><th>Ref No</th><th>Remark</th><th></th></tr></thead><tbody>${shown.map(r=>`<tr style="${r.void?"opacity:.55;text-decoration:line-through":""}"><td>${esc(fmtDate(r.date))}</td><td><span class="badge" style="background:${r.kind==="receipt"?"#2e7d32":"#e65100"}">${r.kind==="receipt"?"RECEIPT":"PAYMENT"}</span></td><td>${esc(r.partyName)}</td><td style="text-align:right;font-weight:700">${inr(r.amount)}</td><td>${esc(r.mode)}</td><td>${esc(r.refNo)||"—"}</td><td style="font-size:12px">${esc(r.remark)||"—"}${(r.alloc&&r.alloc.length)?`<div style="font-size:11px;color:#1a237e">🔗 Bill: ${r.alloc.map(a=>esc(a.billNo)+" ("+inr(a.amount)+")").join(", ")}</div>`:""}</td><td style="white-space:nowrap">${ro?"":((r.cnId||r.dnId)?`<span style="font-size:10px;color:#6a1b9a">${r.dnId?"📑 Debit Note":"↩️ Credit Note"} se</span>`:r.void?`<button class="btn btn-sm btn-success" onclick="App.payRestore(${r.id})">↩</button>`:`<button class="btn btn-sm" style="background:#1565c0;color:#fff" onclick="App.payEdit(${r.id})">✏️</button> <button class="btn btn-sm btn-danger" onclick="App.payVoid(${r.id})">🗑️</button>`)}</td></tr>`).join("")||`<tr><td colspan="8" style="text-align:center;color:#999;padding:20px">Koi entry nahi mili</td></tr>`}</tbody></table></div>`;
 }
 function renderAccPayTab(){
   if(!canAcc())return accDenied();
@@ -5434,7 +5434,7 @@ const AccApp={
   // bills
   abCalc(){const t=Number((document.getElementById("abTaxable")||{}).value)||0,gp=Number((document.getElementById("abGst")||{}).value)||0,el=document.getElementById("abTotal");if(el&&t)el.value=r2(t*(1+gp/100));},
   abFilter(k,v){temp[k]=v;const el=document.getElementById("abList");if(el)el.innerHTML=accBillsListHtml();},
-  abEdit(id){const _b=state.accBills.find(x=>String(x.id)===String(id));if(_b&&_b.invId){alert("Ye bill Invoice se bana hai — badalne ke liye Invoice tab use karo");return;}temp.abEdit=id;renderTabContent();window.scrollTo({top:0,behavior:"smooth"});},
+  abEdit(id){const _b=state.accBills.find(x=>String(x.id)===String(id));if(_b&&(_b.invId||_b.dnId)){alert("Ye bill Invoice / Debit Note se bana hai — badalne ke liye wahi tab use karo");return;}temp.abEdit=id;renderTabContent();window.scrollTo({top:0,behavior:"smooth"});},
   abCancel(){temp.abEdit=null;temp.abPre=null;renderTabContent();},
   grnToggle(o){temp.grnOpen=o;},
   abFromGrn(idxs){
@@ -5469,7 +5469,7 @@ const AccApp={
   abVoid(id){
     if(isRO()||!canAcc())return;
     const b=state.accBills.find(x=>String(x.id)===String(id));if(!b)return;
-    if(b.invId){alert("Ye bill Invoice se bana hai — Invoice tab se void karo");return;}
+    if(b.invId||b.dnId){alert("Ye bill Invoice / Debit Note se bana hai — wahi tab se void karo");return;}
     if(!confirm("Bill "+b.billNo+" ("+b.partyName+") void karna hai? Ye hisaab se hat jayega, 'Void bhi dikhao' se wapas la sakte ho."))return;
     b.void=true;b.voidAt=nowStr();b.voidBy=state.currentUser?state.currentUser.name:"";
     persist("acc_bills",state.accBills);renderTabContent();
@@ -5477,7 +5477,7 @@ const AccApp={
   abRestore(id){const b=state.accBills.find(x=>String(x.id)===String(id));if(!b||isRO())return;delete b.void;persist("acc_bills",state.accBills);renderTabContent();},
   // receipts / payments
   payFilter(k,v){temp[k]=v;const el=document.getElementById("payList");if(el)el.innerHTML=accPayListHtml();},
-  payEdit(id){const _r=state.accReceipts.find(x=>String(x.id)===String(id));if(_r&&_r.cnId){alert("Ye entry Credit Note se bani hai — badalne ke liye Credit Note tab use karo");return;}temp.payEdit=id;renderTabContent();window.scrollTo({top:0,behavior:"smooth"});},
+  payEdit(id){const _r=state.accReceipts.find(x=>String(x.id)===String(id));if(_r&&(_r.cnId||_r.dnId)){alert("Ye entry Credit / Debit Note se bani hai — badalne ke liye wahi tab use karo");return;}temp.payEdit=id;renderTabContent();window.scrollTo({top:0,behavior:"smooth"});},
   payCancel(){temp.payEdit=null;renderTabContent();},
   payPickParty(){
     const g=id=>(document.getElementById(id)||{}).value||"",el=document.getElementById("payAlloc");if(!el)return;
@@ -5516,7 +5516,7 @@ const AccApp={
   payVoid(id){
     if(isRO()||!canAcc())return;
     const r=state.accReceipts.find(x=>String(x.id)===String(id));if(!r)return;
-    if(r.cnId){alert("Ye entry Credit Note se bani hai — Credit Note tab se void karo");return;}
+    if(r.cnId||r.dnId){alert("Ye entry Credit / Debit Note se bani hai — wahi tab se void karo");return;}
     if(!confirm(inr(r.amount)+" ("+r.partyName+") void karna hai? 'Void bhi dikhao' se wapas la sakte ho."))return;
     r.void=true;r.voidAt=nowStr();r.voidBy=state.currentUser?state.currentUser.name:"";
     persist("acc_receipts",state.accReceipts);renderTabContent();
@@ -5615,7 +5615,7 @@ function invCalc(inv){
   return{lines,taxable,taxLines,tax,roundOff,total,intra};
 }
 function invoiceHtml(inv,opt){
-  const cr=!!(opt&&opt.credit),co=getCompany(),c=invCalc(inv);
+  const cr=!!(opt&&opt.credit),dbt=!!(opt&&opt.debit),note=cr||dbt,sup=!!(opt&&opt.supplier),co=getCompany(),c=invCalc(inv);
   const f2=n=>Number(n||0).toLocaleString("en-IN",{minimumFractionDigits:2,maximumFractionDigits:2});
   const MON=["Jan","Feb","Mar","Apr","May","Jun","Jul","Aug","Sep","Oct","Nov","Dec"];
   const dt=x=>{if(!x)return"";const p=String(x).split("-");if(p.length!==3)return esc(x);return parseInt(p[2],10)+"-"+MON[parseInt(p[1],10)-1]+"-"+p[0].slice(2);};
@@ -5638,9 +5638,9 @@ function invoiceHtml(inv,opt){
   const hsnRows=hr.map(x=>c.intra?`<tr><td>${esc(x.hsn)}</td><td class="rt">${f2(x.taxable)}</td><td class="rt">${x.gst/2}%</td><td class="rt">${f2(x.cg)}</td><td class="rt">${x.gst/2}%</td><td class="rt">${f2(x.sg)}</td><td class="rt">${f2(x.tax)}</td></tr>`:`<tr><td>${esc(x.hsn)}</td><td class="rt">${f2(x.taxable)}</td><td class="rt">${x.gst}%</td><td class="rt">${f2(x.ig)}</td><td class="rt">${f2(x.tax)}</td></tr>`).join("");
   const hsnTot=c.intra?`<tr class="b"><td class="rt">Total</td><td class="rt">${f2(sT)}</td><td></td><td class="rt">${f2(r2(hr.reduce((s,x)=>s+x.cg,0)))}</td><td></td><td class="rt">${f2(r2(hr.reduce((s,x)=>s+x.sg,0)))}</td><td class="rt">${f2(sX)}</td></tr>`:`<tr class="b"><td class="rt">Total</td><td class="rt">${f2(sT)}</td><td></td><td class="rt">${f2(r2(hr.reduce((s,x)=>s+x.ig,0)))}</td><td class="rt">${f2(sX)}</td></tr>`;
   const cons=inv.consignee&&inv.consignee.name?inv.consignee:inv.buyer;
-  const gridRows=cr?`<tr>${g("Credit Note No.",inv.cnNo)}${g("Dated",dt(inv.date))}</tr>
-<tr>${g("Original Invoice No.",inv.invNo)}${g("Original Invoice Date",dt(inv.invDate))}</tr>
-<tr>${g2("Reason for Credit Note / Return",inv.reason,40)}</tr>`:`<tr>${g("Invoice No.",inv.invNo)}${g("Dated",dt(inv.date))}</tr>
+  const gridRows=note?`<tr>${g(cr?"Credit Note No.":"Debit Note No.",cr?inv.cnNo:inv.dnNo)}${g("Dated",dt(inv.date))}</tr>
+<tr>${g(sup?"Original Bill No.":"Original Invoice No.",inv.invNo)}${g(sup?"Original Bill Date":"Original Invoice Date",dt(inv.invDate))}</tr>
+<tr>${g2(cr?"Reason for Credit Note / Return":"Reason for Debit Note",inv.reason,40)}</tr>`:`<tr>${g("Invoice No.",inv.invNo)}${g("Dated",dt(inv.date))}</tr>
 <tr>${g("e-Way Bill No.",inv.ewayNo)}${g("e-Way Bill Date",dt(inv.ewayDate))}</tr>
 <tr>${g("Delivery Note No.",inv.deliveryNote)}${g("Delivery Note Date",dt(inv.deliveryNoteDate))}</tr>
 <tr>${g("Reference No. &amp; Date.",inv.refNo)}${g("Other References",inv.otherRef)}</tr>
@@ -5649,7 +5649,7 @@ function invoiceHtml(inv,opt){
 <tr>${g("Dispatched through",inv.dispatchedThrough)}${g("Destination",inv.destination)}</tr>
 <tr>${g2("Mode/Terms of Payment",inv.payTerms)}</tr>
 <tr>${g2("Terms of Delivery",inv.deliveryTerms,52)}</tr>`;
-  return`<!DOCTYPE html><html><head><meta charset="utf-8"><title>${cr?"Credit Note "+esc(inv.cnNo):"Invoice "+esc(inv.invNo)}</title><style>
+  return`<!DOCTYPE html><html><head><meta charset="utf-8"><title>${cr?"Credit Note "+esc(inv.cnNo):dbt?"Debit Note "+esc(inv.dnNo):"Invoice "+esc(inv.invNo)}</title><style>
 @page{size:A4;margin:7mm}*{box-sizing:border-box}body{font-family:Arial,Helvetica,sans-serif;font-size:11px;color:#000;margin:0}
 table{border-collapse:collapse;width:100%}td,th{vertical-align:top}.hd{border:1px solid #000;padding:4px 6px}.hd h1{margin:0 0 2px;font-size:22px}
 .ti{text-align:center;font-weight:bold;font-size:10px;border-left:1px solid #000;border-right:1px solid #000;padding:1px}
@@ -5661,18 +5661,18 @@ table{border-collapse:collapse;width:100%}td,th{vertical-align:top}.hd{border:1p
 .words{border:1px solid #000;border-top:0;padding:3px 6px}.bot{border:1px solid #000;border-top:0}.bot td{padding:4px 6px}
 .ft{text-align:center;font-size:10px;margin-top:6px}</style></head><body>
 <div class="hd"><h1>${esc(co.name)}</h1>${esc(co.addr)}<br>GSTIN/UIN: <b>${esc(co.gstin)}</b>, State Name : <b>${esc(co.state)}, Code : ${esc(co.stateCode)}</b><br>Contact : ${esc(co.contact)}, E-Mail : ${esc(co.email)}</div>
-<div class="ti">${cr?"CREDIT NOTE":"TAX INVOICE"}</div>
-<table class="top"><tr><td style="width:50%">${party("Consignee (Ship To)",cons,false)}${party("Buyer (Bill To)",inv.buyer,true)}</td><td style="width:50%"><table>
+<div class="ti">${cr?"CREDIT NOTE":dbt?"DEBIT NOTE":"TAX INVOICE"}</div>
+<table class="top"><tr><td style="width:50%">${sup?"":party("Consignee (Ship To)",cons,false)}${party(sup?"Party (Supplier)":"Buyer (Bill To)",inv.buyer,!sup)}</td><td style="width:50%"><table>
 ${gridRows}</table></td></tr></table>
 <table class="it"><thead><tr><th style="width:24px">Sl No.</th><th>Description of Goods</th><th style="width:58px">HSN/SAC</th><th style="width:58px">Quantity</th><th style="width:52px">Rate</th><th style="width:28px">per</th><th style="width:42px">${esc(co.discLabel1)}</th><th style="width:42px">${esc(co.discLabel2)}</th><th style="width:42px">${esc(co.discLabel3)}</th><th style="width:48px">${esc(co.discLabel4)}</th><th style="width:76px">Amount</th></tr></thead><tbody>${rows}${subRow}<tr class="fill">${E(11)}</tr>${taxRows}${roRow}</tbody>
 <tfoot><tr class="tot"><td></td><td class="rt">Total</td><td></td><td class="rt">${esc(qtyTxt)}</td>${E(6)}<td class="rt">₹ ${f2(c.total)}</td></tr></tfoot></table>
 <div class="words"><div style="display:flex;justify-content:space-between"><span class="lb">Amount Chargeable (in words)</span><i>E. &amp; O.E</i></div><b>${esc(inrWords(c.total))}</b></div>
 <table class="hsn"><thead>${hsnHead}</thead><tbody>${hsnRows}${hsnTot}</tbody></table>
 <div class="words"><span class="lb">Tax Amount (in words) :</span> <b>${esc(inrWords(c.tax))}</b></div>
-<table class="bot"><tr><td style="width:50%;border-right:1px solid #000"><u>Declaration</u><br>${esc(cr?String(co.declaration).replace(/invoice/gi,"credit note"):co.declaration)}</td><td><b>Company's Bank Details</b><br>A/c Holder's Name : <b>${esc(co.bankHolder)}</b><br>Bank Name : <b>${esc(co.bankName)}</b><br>A/c No. : <b>${esc(co.bankAcNo)}</b><br>Branch &amp; IFS Code : <b>${esc(co.bankBranch)}</b></td></tr>
+<table class="bot"><tr><td style="width:50%;border-right:1px solid #000"><u>Declaration</u><br>${esc(note?String(co.declaration).replace(/invoice/gi,cr?"credit note":"debit note"):co.declaration)}</td><td><b>Company's Bank Details</b><br>A/c Holder's Name : <b>${esc(co.bankHolder)}</b><br>Bank Name : <b>${esc(co.bankName)}</b><br>A/c No. : <b>${esc(co.bankAcNo)}</b><br>Branch &amp; IFS Code : <b>${esc(co.bankBranch)}</b></td></tr>
 <tr><td style="border-right:1px solid #000;border-top:1px solid #000;height:62px">Customer's Seal and Signature</td><td style="border-top:1px solid #000;text-align:right">for <b>${esc(co.name)}</b><br><br><br>Authorised Signatory</td></tr>
 <tr><td colspan="2" style="border-top:1px solid #000;text-align:center;font-size:10px">Prepared by &nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp; Verified by</td></tr></table>
-<div class="ft">${esc(co.jurisdiction)}<br>This is a Computer Generated ${cr?"Credit Note":"Invoice"}</div></body></html>`;
+<div class="ft">${esc(co.jurisdiction)}<br>This is a Computer Generated ${cr?"Credit Note":dbt?"Debit Note":"Invoice"}</div></body></html>`;
 }
 function invTotalsHtml(c){
   return`<table style="width:100%;font-size:13px"><tr><td>Taxable Amount</td><td style="text-align:right"><b>${inr(c.taxable)}</b></td></tr>${c.taxLines.map(t=>`<tr><td>${t.label} ${t.rate}%</td><td style="text-align:right">${inr(t.amt)}</td></tr>`).join("")}${c.roundOff?`<tr><td>Round Off</td><td style="text-align:right">${c.roundOff<0?"(-)":"(+)"}${inr(Math.abs(c.roundOff))}</td></tr>`:""}<tr style="border-top:2px solid #1a237e"><td><b>Grand Total</b></td><td style="text-align:right;font-size:17px;color:#1a237e"><b>${inr(c.total)}</b></td></tr></table><div style="font-size:11px;color:#555;margin-top:4px">${esc(inrWords(c.total))}</div>`;
@@ -5700,7 +5700,7 @@ function invCompanyHtml(){
   ${adm?`<div style="margin-top:10px;display:flex;gap:8px"><button class="btn btn-primary" onclick="App.coSave()">💾 Save Settings</button><button class="btn btn-secondary" onclick="App.coReset()">↺ Default par wapas</button></div>`:`<div style="font-size:12px;color:#777;margin-top:8px">Sirf admin badal sakta hai.</div>`}</div>`;
 }
 function invEditorHtml(){
-  const dr=temp.invDraft,c=invCalc(dr),co=getCompany(),credit=dr.kind==="credit";
+  const dr=temp.invDraft,c=invCalc(dr),co=getCompany(),credit=dr.kind==="credit",debit=dr.kind==="debit",sup=debit&&dr.dnSide==="supplier";
   const blk=(p,t,b)=>`<div style="border:1px solid #c5cae9;border-radius:8px;padding:10px 12px"><div style="font-weight:700;color:#1a237e;margin-bottom:6px">${t}${p==="ivC"?` <button class="btn btn-sm btn-secondary" onclick="App.invCopyBuyer()">Buyer jaisa</button>`:""}</div>
   <label class="lbl">Naam</label><input class="inp" id="${p}Name" list="ivPartyList" value="${esc(b.name)}" onchange="App.invPickParty('${p}',this.value)">
   <label class="lbl">Address</label><textarea class="inp" id="${p}Addr" rows="3">${esc(b.address)}</textarea>
@@ -5709,11 +5709,16 @@ function invEditorHtml(){
   const fld=(id,l,v,type)=>`<div><label class="lbl">${l}</label><input class="inp" ${type?`type="${type}"`:""} id="${id}" value="${esc(v)}"></div>`;
   const num=(id,v,w)=>`<input class="inp" type="number" step="any" id="${id}" value="${esc(v==null?"":v)}" style="width:${w}px;margin:0" oninput="App.invRecalc()">`;
   const lineRows=dr.lines.map((l,i)=>`<tr><td>${i+1}</td><td><input class="inp" id="ivl_desc_${i}" list="ivItemList" value="${esc(l.desc)}" style="min-width:200px;margin:0" onchange="App.invDescPick(${i})"></td><td><input class="inp" id="ivl_hsn_${i}" value="${esc(l.hsn)}" style="width:90px;margin:0"></td><td style="white-space:nowrap">${num("ivl_qty_"+i,l.qty,80)} ${esc(l.per)}</td><td><input class="inp" type="number" step="any" id="ivl_rate_${i}" value="${esc(l.rate)}" style="width:90px;margin:0;${(l.rate===""||l.rate==null)?"border:2px solid #c62828":""}" oninput="App.invRecalc()">${l.noMaster?`<div style="font-size:10px;color:#e65100">naya rate — save par set ho jayega</div>`:""}</td><td>${num("ivl_disc_"+i,l.disc||0,64)}</td><td>${num("ivl_d2_"+i,l.d2||0,64)}</td><td>${num("ivl_d3_"+i,l.d3||0,64)}</td><td>${num("ivl_d4_"+i,l.d4||0,64)}</td><td>${num("ivl_gst_"+i,l.gst,56)}</td><td id="ivl_amt_${i}" style="text-align:right;font-weight:700">${inr(c.lines[i]?c.lines[i].amount:0)}</td><td><button class="btn btn-sm btn-danger" onclick="App.invDelLine(${i})">✖</button></td></tr>`).join("");
-  const head=credit?`↩️ Credit Note ${esc(dr.cnNo)} — Invoice ${esc(dr.invNo)} ke against ${dr.id?"(edit)":"(naya)"}`:`🧾 Invoice No. ${esc(dr.invNo)} — ${dr.challanType==="MT"?"MT":"General"} challan ${dr.id?"(edit)":"(nayi)"}`;
+  const head=credit?`↩️ Credit Note ${esc(dr.cnNo)} — Invoice ${esc(dr.invNo)} ke against ${dr.id?"(edit)":"(naya)"}`:(debit?`📑 Debit Note ${esc(dr.dnNo)} — ${sup?"Supplier ko (purchase return)":"Customer ko (rate difference / extra charge)"} ${dr.id?"(edit)":"(naya)"}`:`🧾 Invoice No. ${esc(dr.invNo)} — ${dr.challanType==="MT"?"MT":"General"} challan ${dr.id?"(edit)":"(nayi)"}`);
   const fields=credit?`<div style="display:grid;grid-template-columns:repeat(auto-fit,minmax(200px,1fr));gap:10px;margin-bottom:12px">
     <div><label class="lbl">Credit Note No.</label><input class="inp" value="${esc(dr.cnNo)}" disabled></div>${fld("ivDate","Credit Note Date",dr.date,"date")}
     <div><label class="lbl">Original Invoice No.</label><input class="inp" value="${esc(dr.invNo)}" disabled></div><div><label class="lbl">Original Invoice Date</label><input class="inp" value="${esc(dr.invDate)}" disabled></div>
-    ${fld("ivReason","Reason (Return / Rate difference / Damage...)",dr.reason)}</div>`:`<div style="display:grid;grid-template-columns:repeat(auto-fit,minmax(170px,1fr));gap:10px;margin-bottom:12px">
+    ${fld("ivReason","Reason (Return / Rate difference / Damage...)",dr.reason)}</div>`
+  :(debit?`<div style="display:grid;grid-template-columns:repeat(auto-fit,minmax(200px,1fr));gap:10px;margin-bottom:12px">
+    <div><label class="lbl">Debit Note No.</label><input class="inp" value="${esc(dr.dnNo)}" disabled></div>${fld("ivDate","Debit Note Date",dr.date,"date")}
+    ${fld("ivOrigNo",sup?"Original Bill No. (supplier ka)":"Original Invoice No.",dr.invNo)}${fld("ivOrigDate",sup?"Original Bill Date":"Original Invoice Date",dr.invDate,"date")}
+    ${fld("ivReason",sup?"Reason (Rejection / Return / Short supply...)":"Reason (Rate difference / Extra charge / Freight...)",dr.reason)}</div>`
+  :`<div style="display:grid;grid-template-columns:repeat(auto-fit,minmax(170px,1fr));gap:10px;margin-bottom:12px">
     <div><label class="lbl">Invoice No. (= Challan No.)</label><input class="inp" value="${esc(dr.invNo)}" disabled></div>${fld("ivDate","Invoice Date",dr.date,"date")}
     ${fld("ivEway","e-Way Bill No. (Tally se)",dr.ewayNo)}${fld("ivEwayDate","e-Way Bill Date",dr.ewayDate,"date")}
     ${fld("ivDN","Delivery Note No. (challan ka marka)",dr.deliveryNote)}${fld("ivDNDate","Delivery Note Date",dr.deliveryNoteDate,"date")}
@@ -5722,13 +5727,18 @@ function invEditorHtml(){
     ${fld("ivLR","Bill of Lading / LR-RR No.",dr.lrNo)}${fld("ivVehicle","Motor Vehicle No.",dr.vehicleNo)}
     ${fld("ivThrough","Dispatched through",dr.dispatchedThrough)}${fld("ivDest","Destination",dr.destination)}
     ${fld("ivPay","Mode / Terms of Payment",dr.payTerms)}${fld("ivTerms","Terms of Delivery",dr.deliveryTerms)}
-  </div>`;
+  </div>`);
   const note=credit?"Jo maal wapas aaya (ya jis par rate/discount ka fark hai) uski Quantity daalo — invoice ki quantity default me bhari hai, kam kar sakte ho. Jo item wapas nahi aaya use ✖ se hata do. Rate aur discount invoice wale hi hain."
-    :`Chaar discount ek ke baad ek lagte hain (pehle ${esc(co.discLabel1)}, phir baaki). Party ka discount pehli baar daalne par us party ke liye save ho jata hai. Jis item ka rate set nahi, wo bhi aise hi save hota hai. Kuch alag chahiye to yahin badal do — us invoice ke liye hi lagega.`;
-  const btns=credit?`<button class="btn btn-primary" style="padding:10px 22px" onclick="App.cnSave(true)">💾 Save &amp; 🖨️ Print</button><button class="btn btn-success" onclick="App.cnSave(false)">💾 Save</button>`:`<button class="btn btn-primary" style="padding:10px 22px" onclick="App.invSave(true)">💾 Save &amp; 🖨️ Print</button><button class="btn btn-success" onclick="App.invSave(false)">💾 Save</button>`;
+    :(debit?(sup?"Jo maal supplier ko wapas gaya / reject hua uska item, quantity aur rate likho (supplier ke bill wala rate). Is Debit Note ki rakam supplier ke dene wale se ghat jayegi."
+      :"Rate difference ya extra charge ke liye: quantity ke saamne sirf <b>fark wala rate</b> likho (jaise 221 ki jagah 230 hona tha to rate 9). Freight jaisa koi charge ho to ➕ Item jodo. Is Debit Note ki rakam party ke lene wale me jud jayegi.")
+    :`Chaar discount ek ke baad ek lagte hain (pehle ${esc(co.discLabel1)}, phir baaki). Party ka discount pehli baar daalne par us party ke liye save ho jata hai. Jis item ka rate set nahi, wo bhi aise hi save hota hai. Kuch alag chahiye to yahin badal do — us invoice ke liye hi lagega.`);
+  const btns=credit?`<button class="btn btn-primary" style="padding:10px 22px" onclick="App.cnSave(true)">💾 Save &amp; 🖨️ Print</button><button class="btn btn-success" onclick="App.cnSave(false)">💾 Save</button>`
+    :(debit?`<button class="btn btn-primary" style="padding:10px 22px" onclick="App.dnSave(true)">💾 Save &amp; 🖨️ Print</button><button class="btn btn-success" onclick="App.dnSave(false)">💾 Save</button>`
+    :`<button class="btn btn-primary" style="padding:10px 22px" onclick="App.invSave(true)">💾 Save &amp; 🖨️ Print</button><button class="btn btn-success" onclick="App.invSave(false)">💾 Save</button>`);
+  const blocks=sup?`<div style="display:grid;grid-template-columns:repeat(auto-fit,minmax(300px,1fr));gap:12px;margin-bottom:12px">${blk("ivB","Party (Supplier)",dr.buyer)}</div>`:`<div style="display:grid;grid-template-columns:repeat(auto-fit,minmax(300px,1fr));gap:12px;margin-bottom:12px">${blk("ivC","Consignee (Ship To)",dr.consignee)}${blk("ivB","Buyer (Bill To)",dr.buyer)}</div>`;
   return`<div class="card"><div class="card-title">${head}</div><div class="card-body">
   <datalist id="ivPartyList">${(state.parties||[]).map(x=>`<option value="${esc(x.name)}">`).join("")}</datalist><datalist id="ivItemList">${accRatesNames().map(x=>`<option value="${esc(x)}">`).join("")}</datalist>
-  <div style="display:grid;grid-template-columns:repeat(auto-fit,minmax(300px,1fr));gap:12px;margin-bottom:12px">${blk("ivC","Consignee (Ship To)",dr.consignee)}${blk("ivB","Buyer (Bill To)",dr.buyer)}</div>
+  ${blocks}
   ${fields}
   <div style="overflow-x:auto;margin-bottom:8px"><table class="tbl"><thead><tr style="background:#37474f;color:#fff"><th>#</th><th>Description of Goods</th><th>HSN/SAC</th><th>Quantity</th><th>Rate (₹)</th><th>${esc(co.discLabel1)}</th><th>${esc(co.discLabel2)}</th><th>${esc(co.discLabel3)}</th><th>${esc(co.discLabel4)}</th><th>GST %</th><th style="text-align:right">Amount</th><th></th></tr></thead><tbody>${lineRows}</tbody></table></div>
   <div style="display:flex;justify-content:space-between;align-items:flex-start;gap:16px;flex-wrap:wrap"><div><button class="btn btn-secondary" onclick="App.invAddLine()">➕ Item jodo</button><div style="font-size:11px;color:#777;margin-top:6px;max-width:460px;line-height:1.5">${note}</div></div><div id="ivTotals" style="min-width:290px;background:#f5f7ff;border:1px solid #c5cae9;border-radius:8px;padding:10px 14px">${invTotalsHtml(c)}</div></div>
@@ -5736,7 +5746,7 @@ function invEditorHtml(){
 }
 function renderInvoiceTab(){
   if(!can("invoice"))return`<div class="card"><div class="card-body">🔒 Is tab ke liye permission nahi hai. Admin se <b>Invoice (Dispatch)</b> permission lo.</div></div>`;
-  if(temp.invDraft&&temp.invDraft.kind!=="credit")return invEditorHtml();
+  if(temp.invDraft&&!temp.invDraft.kind)return invEditorHtml();
   const msg=temp.invMsg;temp.invMsg=null;
   const st=temp.ivStatus===undefined?"pending":temp.ivStatus;
   return`<div class="card"><div class="card-title" style="display:flex;justify-content:space-between;align-items:center;flex-wrap:wrap;gap:8px"><span>🧾 Tax Invoice — Challan se (Invoice No. = Challan No.)</span><button class="btn btn-sm btn-secondary" onclick="App.coToggle()">⚙️ Company / Bank Settings</button></div><div class="card-body">
@@ -5801,6 +5811,7 @@ const InvoiceApp={
     const g=id=>{const e=document.getElementById(id);return e?e.value:"";};
     dr.date=g("ivDate")||dr.date;
     if(document.getElementById("ivReason"))dr.reason=g("ivReason").trim();
+    if(dr.kind==="debit"&&document.getElementById("ivOrigNo")){dr.invNo=g("ivOrigNo").trim();dr.invDate=g("ivOrigDate");}
     const blk=p=>{const b={name:g(p+"Name").trim(),address:g(p+"Addr").trim(),gstin:g(p+"Gstin").trim().toUpperCase(),state:g(p+"State"),contact:g(p+"Contact").trim()};b.stateCode=stateCodeOf(b.state);return b;};
     dr.buyer=blk("ivB");dr.consignee=blk("ivC");
     [["ewayNo","ivEway"],["ewayDate","ivEwayDate"],["deliveryNote","ivDN"],["deliveryNoteDate","ivDNDate"],["refNo","ivRef"],["otherRef","ivOther"],["buyerOrderNo","ivBO"],["buyerOrderDate","ivBODate"],["lrNo","ivLR"],["dispatchedThrough","ivThrough"],["destination","ivDest"],["vehicleNo","ivVehicle"],["payTerms","ivPay"],["deliveryTerms","ivTerms"]].forEach(([k,id])=>{dr[k]=g(id).trim();});
@@ -5816,7 +5827,7 @@ const InvoiceApp={
     const pt=accFindParty(name);if(!pt)return;
     const set=(id,v)=>{const e=document.getElementById(id);if(e)e.value=v||"";};
     set(p+"Name",pt.name);set(p+"Addr",pt.address);set(p+"Gstin",pt.gstin);set(p+"State",pt.state);set(p+"Contact",pt.phone);
-    if(p==="ivB"&&temp.invDraft){const pd=partyDisc(pt);if(pt.discSaved||pd.some(x=>x))temp.invDraft.lines.forEach((l,i)=>{set("ivl_disc_"+i,pd[0]);set("ivl_d2_"+i,pd[1]);set("ivl_d3_"+i,pd[2]);set("ivl_d4_"+i,pd[3]);});}
+    if(p==="ivB"&&temp.invDraft&&!temp.invDraft.kind){const pd=partyDisc(pt);if(pt.discSaved||pd.some(x=>x))temp.invDraft.lines.forEach((l,i)=>{set("ivl_disc_"+i,pd[0]);set("ivl_d2_"+i,pd[1]);set("ivl_d3_"+i,pd[2]);set("ivl_d4_"+i,pd[3]);});}
     App.invRecalc();
   },
   invCopyBuyer(){
@@ -5983,6 +5994,114 @@ const CreditApp={
 };
 Object.assign(App,CreditApp);
 
+// ── DEBIT NOTE (customer: rate difference / extra charge | supplier: purchase return) ──
+function dnNextNo(){const pre="DN/"+FY.label+"/";let mx=0;(state.debitNotes||[]).forEach(c=>{const n=String(c.dnNo||"");if(n.indexOf(pre)===0)mx=Math.max(mx,parseInt(n.slice(pre.length),10)||0);});return pre+String(mx+1).padStart(3,"0");}
+const DN_BLANK=()=>({name:"",address:"",gstin:"",state:"",stateCode:"",contact:""});
+function dnDraftFromInvoice(invId){
+  const inv=(state.invoices||[]).find(i=>String(i.id)===String(invId)&&!i.void);if(!inv)return null;
+  const cp=o=>JSON.parse(JSON.stringify(o));
+  return{id:null,kind:"debit",dnSide:"customer",dnNo:dnNextNo(),invId:inv.id,invNo:inv.invNo,invDate:inv.date,date:todayStr(),buyer:cp(inv.buyer),consignee:cp(inv.consignee&&inv.consignee.name?inv.consignee:inv.buyer),reason:"Rate difference",lines:(inv.lines||[]).map(l=>({desc:l.desc,hsn:l.hsn||"",qty:l.qty,per:l.per||"PC",rate:"",disc:0,d2:0,d3:0,d4:0,gst:l.gst,noMaster:false}))};
+}
+function dnDraftSupplier(){
+  return{id:null,kind:"debit",dnSide:"supplier",dnNo:dnNextNo(),invId:null,invNo:"",invDate:"",date:todayStr(),buyer:DN_BLANK(),consignee:DN_BLANK(),reason:"Purchase Return / Rejection",lines:[{desc:"",hsn:"",qty:0,per:"PC",rate:"",disc:0,d2:0,d3:0,d4:0,gst:18,noMaster:false}]};
+}
+function dnDraftFromNote(id){
+  const dn=(state.debitNotes||[]).find(c=>String(c.id)===String(id)&&!c.void);if(!dn)return null;
+  const c=JSON.parse(JSON.stringify(dn));c.kind="debit";c.lines=(c.lines||[]).map(l=>Object.assign({},l,{noMaster:false,d2:Number(l.d2)||0,d3:Number(l.d3)||0,d4:Number(l.d4)||0}));return c;
+}
+function dnInvListHtml(){
+  const q=(temp.dnQ||"").toLowerCase().trim(),dn={};
+  (state.debitNotes||[]).filter(c=>!c.void&&c.invId).forEach(c=>{dn[c.invId]=r2((dn[c.invId]||0)+Number(c.total||0));});
+  const rows=(state.invoices||[]).filter(i=>!i.void&&(!q||(String(i.invNo)+" "+i.buyer.name).toLowerCase().includes(q))).sort((a,b)=>String(b.date).localeCompare(String(a.date))||Number(b.invNo)-Number(a.invNo)).slice(0,100),ro=isRO();
+  return`<div style="font-size:12px;color:#666;margin-bottom:6px">${rows.length} invoice (latest 100)</div><div style="max-height:320px;overflow:auto;border:1px solid #e0e0e0;border-radius:6px"><table class="tbl" style="margin:0"><thead><tr style="background:#1a237e;color:#fff;position:sticky;top:0"><th>Invoice No</th><th>Date</th><th>Party</th><th style="text-align:right">Invoice Total</th><th style="text-align:right">Pehle se Debit Note</th><th></th></tr></thead><tbody>${rows.map(i=>`<tr><td><b>${esc(i.invNo)}</b></td><td>${esc(fmtDate(i.date))}</td><td>${esc(i.buyer.name)}</td><td style="text-align:right">${inr(i.total)}</td><td style="text-align:right;color:#e65100">${dn[i.id]?inr(dn[i.id]):"—"}</td><td>${ro?"":`<button class="btn btn-sm btn-primary" onclick="App.dnOpen(${i.id})">📑 Debit Note Banao</button>`}</td></tr>`).join("")||`<tr><td colspan="6" style="text-align:center;color:#999;padding:20px">Koi invoice nahi mili</td></tr>`}</tbody></table></div>`;
+}
+function renderDebitNoteTab(){
+  if(!can("invoice"))return`<div class="card"><div class="card-body">🔒 Is tab ke liye permission nahi hai. Admin se <b>Invoice (Dispatch)</b> permission lo.</div></div>`;
+  if(temp.invDraft&&temp.invDraft.kind==="debit")return invEditorHtml();
+  const msg=temp.invMsg;temp.invMsg=null;
+  const ro=isRO(),adm=state.currentUser&&state.currentUser.role==="admin";
+  const notes=[...(state.debitNotes||[])].sort((a,b)=>String(b.date).localeCompare(String(a.date))||String(b.dnNo).localeCompare(String(a.dnNo)));
+  return`<div class="card"><div class="card-title">📑 Debit Note</div><div class="card-body">
+  ${msg?`<div style="background:#e8f5e9;border:1px solid #2e7d32;border-radius:8px;padding:8px 12px;font-size:13px;color:#1b5e20;margin-bottom:12px">${msg}</div>`:""}
+  <div style="background:#e3f2fd;border:1px solid #90caf9;border-radius:8px;padding:10px 14px;font-size:12px;color:#0d47a1;margin-bottom:12px;line-height:1.6">ℹ️ <b>Customer ko Debit Note</b> (rate difference / extra charge): invoice chuno — rakam party ke <b>lene wale me jud</b> jati hai.<br><b>Supplier ko Debit Note</b> (purchase return / reject maal): rakam supplier ke <b>dene wale se ghat</b> jati hai. Dono me GST apne aap lagta hai.</div>
+  <div style="font-weight:700;color:#1a237e;margin:4px 0">🏭 Supplier ko Debit Note (purchase return)</div>
+  <div style="margin-bottom:16px">${ro?"":`<button class="btn btn-primary" onclick="App.dnOpenSupplier()">➕ Supplier Debit Note Banao</button>`}</div>
+  <div style="font-weight:700;color:#1a237e;margin:4px 0">👤 Customer ko Debit Note (invoice se)</div>
+  <div style="display:flex;gap:10px;align-items:flex-end;margin-bottom:8px"><div><label class="lbl">Invoice search</label><input class="inp" style="width:260px;margin-bottom:0" value="${esc(temp.dnQ||"")}" placeholder="Invoice no. / party" oninput="App.dnFilter(this.value)"></div></div>
+  <div id="dnInvList" style="margin-bottom:18px">${dnInvListHtml()}</div>
+  <div style="font-weight:700;color:#1a237e;margin:6px 0">📋 Bane hue Debit Notes</div>
+  <div style="max-height:420px;overflow:auto;border:1px solid #e0e0e0;border-radius:6px"><table class="tbl" style="margin:0"><thead><tr style="background:#37474f;color:#fff;position:sticky;top:0"><th>Debit Note</th><th>Date</th><th>Type</th><th>Party</th><th>Original</th><th style="text-align:right">Total</th><th>Reason</th><th></th></tr></thead><tbody>${notes.map(c=>`<tr style="${c.void?"opacity:.55;text-decoration:line-through":""}"><td><b>${esc(c.dnNo)}</b></td><td>${esc(fmtDate(c.date))}</td><td><span class="badge" style="background:${c.dnSide==="supplier"?"#e65100":"#2e7d32"}">${c.dnSide==="supplier"?"SUPPLIER":"CUSTOMER"}</span></td><td>${esc(c.buyer.name)}</td><td>${esc(c.invNo)||"—"}</td><td style="text-align:right;font-weight:700">${inr(c.total)}</td><td style="font-size:12px">${esc(c.reason)||"—"}</td><td style="white-space:nowrap">${c.void?"VOID":`<button class="btn btn-sm btn-success" onclick="App.dnPrint(${c.id})">🖨️ Print</button>${ro?"":` <button class="btn btn-sm" style="background:#1565c0;color:#fff" onclick="App.dnEdit(${c.id})">✏️ Edit</button>`}${adm?` <button class="btn btn-sm btn-danger" onclick="App.dnVoid(${c.id})">🗑️</button>`:""}`}</td></tr>`).join("")||`<tr><td colspan="8" style="text-align:center;color:#999;padding:20px">Abhi koi Debit Note nahi bana</td></tr>`}</tbody></table></div>
+  </div></div>`;
+}
+const DebitApp={
+  dnFilter(v){temp.dnQ=v;const el=document.getElementById("dnInvList");if(el)el.innerHTML=dnInvListHtml();},
+  dnOpen(invId){if(isRO())return;const dr=dnDraftFromInvoice(invId);if(!dr){alert("Invoice nahi mili");return;}temp.invDraft=dr;renderTabContent();window.scrollTo({top:0,behavior:"smooth"});},
+  dnOpenSupplier(){if(isRO())return;temp.invDraft=dnDraftSupplier();renderTabContent();window.scrollTo({top:0,behavior:"smooth"});},
+  dnEdit(id){if(isRO())return;const dr=dnDraftFromNote(id);if(!dr){alert("Debit Note nahi mila");return;}temp.invDraft=dr;renderTabContent();window.scrollTo({top:0,behavior:"smooth"});},
+  dnSave(andPrint){
+    if(isRO())return;
+    App.invSync();const dr=temp.invDraft;if(!dr||dr.kind!=="debit")return;
+    const sup=dr.dnSide==="supplier";
+    if(!dr.buyer.name){alert("Party ka naam zaroori hai");return;}
+    if(!dr.buyer.state){alert("Party ka State chuno — GST (IGST ya CGST+SGST) state se tay hota hai");return;}
+    if(sup||!dr.consignee.name)dr.consignee=Object.assign({},dr.buyer);
+    const ls=dr.lines.filter(l=>l.desc);
+    if(!ls.length){alert("Kam se kam ek item chahiye");return;}
+    const bad=ls.find(l=>!(Number(l.qty)>0)||!(Number(l.rate)>0));
+    if(bad){alert('"'+bad.desc+'" ka Quantity aur Rate zaroori hai');return;}
+    dr.lines=ls;
+    const c=invCalc(dr),by=state.currentUser?state.currentUser.name:"";
+    const clean=c.lines.map(l=>({desc:l.desc,hsn:l.hsn,qty:l.qty,per:l.per,rate:l.rate,disc:l.disc,d2:l.d2,d3:l.d3,d4:l.d4,gst:l.gst,amount:l.amount}));
+    const rec={dnNo:dr.dnNo,dnSide:dr.dnSide,date:dr.date,invId:dr.invId||null,invNo:dr.invNo||"",invDate:dr.invDate||"",buyer:dr.buyer,consignee:dr.consignee,reason:dr.reason||"",lines:clean,taxable:c.taxable,tax:c.tax,taxLines:c.taxLines,roundOff:c.roundOff,total:c.total,intra:c.intra};
+    let dn=dr.id?state.debitNotes.find(x=>x.id===dr.id):null;
+    if(dn)Object.assign(dn,rec,{updatedAt:nowStr(),updatedBy:by});
+    else{dn=Object.assign({id:uid()},rec,{createdAt:nowStr(),createdBy:by});state.debitNotes.push(dn);}
+    // party master
+    let party=accFindParty(dr.buyer.name);
+    if(!party){party={id:uid()+Math.floor(Math.random()*1000),name:dr.buyer.name,type:sup?"Supplier":"Customer",state:dr.buyer.state,gstin:dr.buyer.gstin,address:dr.buyer.address,pincode:"",phone:dr.buyer.contact,city:"",creditDays:30,openAmt:0,openSide:sup?"pay":"recv",createdAt:nowStr(),createdBy:by};state.parties.push(party);}
+    else{if(!party.address&&dr.buyer.address)party.address=dr.buyer.address;if(!party.gstin&&dr.buyer.gstin)party.gstin=dr.buyer.gstin;if(!party.state&&dr.buyer.state)party.state=dr.buyer.state;}
+    const rates=[...new Set(dr.lines.map(l=>Number(l.gst)))];
+    if(!sup){
+      // customer: lene wale me bill ki tarah judta hai
+      const rb={kind:"sale",date:dn.date,billNo:dn.dnNo,partyName:party.name,taxable:c.taxable,gstPct:rates.length===1?rates[0]:0,gstAmt:c.tax,total:c.total,dueDate:accAddDays(dn.date,party.creditDays),challanNo:dn.invNo||"",remark:"Debit Note"+(dn.invNo?" against Invoice "+dn.invNo:"")+(dn.reason?" ("+dn.reason+")":""),dnId:dn.id,dnFy:FY.label,fromDebitNote:true};
+      const bill=state.accBills.find(b=>b.dnId===dn.id&&b.dnFy===FY.label);
+      if(bill){Object.assign(bill,rb,{updatedAt:nowStr()});delete bill.void;}
+      else state.accBills.push(Object.assign({id:uid()+Math.floor(Math.random()*1000)},rb,{createdAt:nowStr(),createdBy:by}));
+      persist("acc_bills",state.accBills);
+    }else{
+      // supplier: dene wale se ghatta hai (payment ki tarah), original bill mile to usi me adjust
+      const ob=dn.invNo?state.accBills.find(b=>!b.void&&b.kind==="purchase"&&b.partyName===party.name&&String(b.billNo).toLowerCase()===String(dn.invNo).toLowerCase()):null;
+      const rr={kind:"payment",date:dn.date,partyName:party.name,amount:c.total,mode:"Debit Note",refNo:dn.dnNo,remark:"Debit Note"+(dn.invNo?" against Bill "+dn.invNo:"")+(dn.reason?" ("+dn.reason+")":""),alloc:ob?[{billId:ob.id,billNo:ob.billNo,amount:Math.min(c.total,Number(ob.total||0))}]:[],dnId:dn.id,dnFy:FY.label,fromDebitNote:true};
+      const ex=state.accReceipts.find(r=>r.dnId===dn.id&&r.dnFy===FY.label);
+      if(ex){Object.assign(ex,rr,{updatedAt:nowStr()});delete ex.void;}
+      else state.accReceipts.push(Object.assign({id:uid()+Math.floor(Math.random()*1000)},rr,{createdAt:nowStr(),createdBy:by}));
+      persist("acc_receipts",state.accReceipts);
+    }
+    persist("debit_notes",state.debitNotes);persist("parties",state.parties);
+    temp.invDraft=null;
+    temp.invMsg="✅ Debit Note "+esc(dn.dnNo)+" save ho gaya ("+inr(c.total)+") — "+esc(party.name)+(sup?" ka dene wala itna kam ho gaya.":" ka lene wala itna badh gaya.");
+    renderTabContent();
+    if(andPrint)App.dnPrint(dn.id);
+  },
+  dnVoid(id){
+    if(!state.currentUser||state.currentUser.role!=="admin")return;
+    const dn=state.debitNotes.find(x=>String(x.id)===String(id));if(!dn)return;
+    if(!confirm("Debit Note "+dn.dnNo+" ("+dn.buyer.name+") void karna hai? Party ka hisaab wapas pehle jaisa ho jayega."))return;
+    dn.void=true;dn.voidAt=nowStr();dn.voidBy=state.currentUser.name;
+    const bill=state.accBills.find(b=>b.dnId===dn.id&&b.dnFy===FY.label);if(bill){bill.void=true;bill.voidAt=nowStr();}
+    const rc=state.accReceipts.find(r=>r.dnId===dn.id&&r.dnFy===FY.label);if(rc){rc.void=true;rc.voidAt=nowStr();}
+    persist("debit_notes",state.debitNotes);persist("acc_bills",state.accBills);persist("acc_receipts",state.accReceipts);renderTabContent();
+  },
+  dnPrint(id){
+    const dn=(state.debitNotes||[]).find(x=>String(x.id)===String(id));if(!dn)return;
+    const w=window.open("","_blank");
+    if(!w){alert("Popup block ho gaya — browser me popup allow karo");return;}
+    w.document.write(invoiceHtml(dn,{debit:true,supplier:dn.dnSide==="supplier"}));w.document.close();
+    setTimeout(()=>{try{w.focus();w.print();}catch(e){}},500);
+  }
+};
+Object.assign(App,DebitApp);
+
 // ══ YEAR END PROCESS (Utility) ══
 function yeCompute(){
   const src=FY.label;
@@ -6132,7 +6251,7 @@ window.App=App; window.AC=AC;
   try{sessionStorage.setItem("jpl_fy",FY.label);}catch(e){}
   const map={users:"users",packings:"packings",categories:"categories",dispatches:"dispatches",
     purchaseOrders:"pos",mtPos:"mt_pos",mtDispatches:"mt_dispatches",batchOptions:"batch_options",
-    mtItems:"mt_items",mtPackings:"mt_packings",itemMaster:"item_master",bomMaster:"bom_master",productionPlans:"production_plans",storeLedger:"store_ledger",grns:"grns",mtBomMaster:"mt_bom_master",mtProductionPlans:"mt_production_plans",mtDivisions:"mt_divisions",storeItems:"store_items",storeQtyTypes:"store_qty_types",storeBatches:"store_batches",recycleBin:"recycle_bin",nextChallanOverride:"next_challan_override",partyEmails:"party_emails",autoTriggeredProducts:"auto_triggered_products",lastAutoBackupDate:"last_auto_backup_date",lastAutoEmailDate:"last_auto_email_date",lastMtAlertEmailDate:"last_mt_alert_email_date",lastPendingCategoryEmailDate:"last_pending_category_email_date",lastProductionReminderDate:"last_production_reminder_date",gatePasses:"gate_passes",parties:"parties",accBills:"acc_bills",accReceipts:"acc_receipts",invoices:"invoices",creditNotes:"credit_notes",itemRates:"item_rates",company:"company"};
+    mtItems:"mt_items",mtPackings:"mt_packings",itemMaster:"item_master",bomMaster:"bom_master",productionPlans:"production_plans",storeLedger:"store_ledger",grns:"grns",mtBomMaster:"mt_bom_master",mtProductionPlans:"mt_production_plans",mtDivisions:"mt_divisions",storeItems:"store_items",storeQtyTypes:"store_qty_types",storeBatches:"store_batches",recycleBin:"recycle_bin",nextChallanOverride:"next_challan_override",partyEmails:"party_emails",autoTriggeredProducts:"auto_triggered_products",lastAutoBackupDate:"last_auto_backup_date",lastAutoEmailDate:"last_auto_email_date",lastMtAlertEmailDate:"last_mt_alert_email_date",lastPendingCategoryEmailDate:"last_pending_category_email_date",lastProductionReminderDate:"last_production_reminder_date",gatePasses:"gate_passes",parties:"parties",accBills:"acc_bills",accReceipts:"acc_receipts",invoices:"invoices",creditNotes:"credit_notes",debitNotes:"debit_notes",itemRates:"item_rates",company:"company"};
   for(const [sk,dbk] of Object.entries(map)){ const d=await DB.get(dbk); if(d)state[sk]=d; }
   await migratePlaintextPasswords();
   backfillDispatchBatches();
