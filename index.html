@@ -141,13 +141,14 @@ async function migrateLocalStorageToIDB(){
 }
 // ── FINANCIAL YEAR (year-wise data) ──────────────────────────
 // Base year purane (bina prefix wale) keys use karta hai, isliye purana data jyon ka tyon rehta hai.
-const YEAR_DBKEYS=new Set(["packings","dispatches","pos","mt_pos","mt_dispatches","mt_packings","production_plans","mt_production_plans","store_ledger","grns","gate_passes","recycle_bin","invoices"]);
+const YEAR_DBKEYS=new Set(["packings","dispatches","pos","mt_pos","mt_dispatches","mt_packings","production_plans","mt_production_plans","store_ledger","grns","gate_passes","recycle_bin","invoices","credit_notes"]);
 const FY={label:"",prefix:"",base:"",years:[]};
 const yk=k=>(FY.prefix&&YEAR_DBKEYS.has(k))?FY.prefix+k:k;
 function fyCurrentLabel(d){const dt=d||new Date();const y=dt.getFullYear(),m=dt.getMonth();const st=m>=3?y:y-1;return st+"-"+String((st+1)%100).padStart(2,"0");}
 function fyNextLabel(l){const y=parseInt(l,10);return (y+1)+"-"+String((y+2)%100).padStart(2,"0");}
 function fyStartDate(l){const y=parseInt(l,10);return isNaN(y)?new Date().toISOString().slice(0,10):y+"-04-01";}
 function fyValid(l){const m=/^(\d{4})-(\d{2})$/.exec(String(l||""));return !!m&&((parseInt(m[1],10)+1)%100)===parseInt(m[2],10);}
+function fyShort(l){return String(l||"").replace(/^\d{2}(\d{2}-\d{2})$/,"$1");}
 function fyLatest(){return FY.years.map(y=>y.label).sort().slice(-1)[0]||FY.label;}
 function fyScreen(inner){document.getElementById("root").innerHTML=`<div style="min-height:100vh;display:flex;align-items:center;justify-content:center;background:linear-gradient(135deg,#1a237e,#283593);padding:16px"><div style="background:#fff;border-radius:16px;padding:32px 36px;width:420px;max-width:94vw;box-shadow:0 20px 60px rgba(0,0,0,.3);font-family:Arial,sans-serif">${inner}</div></div>`;}
 function fyPickerScreen(){
@@ -243,7 +244,7 @@ let state = {
   currentUser:null,
   users:INIT_USERS, packings:[], categories:DEFAULT_CATS, batchOptions:DEFAULT_BATCH,
   recycleBin:[],
-  parties:[], accBills:[], accReceipts:[], invoices:[], itemRates:[], company:null,
+  parties:[], accBills:[], accReceipts:[], invoices:[], creditNotes:[], itemRates:[], company:null,
   nextChallanOverride:922,
   partyEmails:[],
   autoTriggeredProducts:[],
@@ -268,6 +269,9 @@ const fmtDate  = d=>d?new Date(d).toLocaleDateString("en-IN"):"";
 const esc      = s=>(s==null?"":String(s)).replace(/&/g,"&amp;").replace(/</g,"&lt;").replace(/>/g,"&gt;").replace(/"/g,"&quot;");
 const uid      = ()=>Date.now()+Math.floor(Math.random()*9999);
 const genCarton  = ()=>state.packings.length?Math.max(...state.packings.map(x=>Number(x.cartonNo)||0))+1:1;
+// Carton number ke baad /year (jaise 947/26-27). Pichhle saal se aaye cartons ka number me year pehle se hota hai.
+function cartonLabel(no){const t=String(no==null?"":no).trim();if(!t)return"";return t.indexOf("/")>=0?t:t+"/"+fyShort(FY.label);}
+function cartonMatch(no,q){const raw=String(no==null?"":no).trim(),qq=String(q==null?"":q).trim();if(!qq)return true;if(raw===qq||cartonLabel(raw)===qq)return true;return qq.indexOf("/")<0&&raw.indexOf(qq+"/")===0;}
 // Shared Challan sequence — General Dispatch aur MT Dispatch dono ek hi counter use karte hain.
 // Ye purane data (max) se nahi, seedha admin-set counter (nextChallanOverride) se chalta hai — har save hote hi khud +1 ho jaata hai.
 const genSharedChallan = ()=>Number(state.nextChallanOverride)||1001;
@@ -457,12 +461,12 @@ function moveToRecycleBin(module,item){
 const RECYCLE_MODULE_LABELS={packings:"Packing",dispatches:"Dispatch",pos:"PO",mt_pos:"MT PO",mt_dispatches:"MT Dispatch",mt_packings:"MT Packing",item_master:"Item Master",mt_items:"MT Item",bom_master:"BOM",mt_bom_master:"MT BOM",production_plans:"Production Program",mt_production_plans:"MT Production Program",store_items:"Store Item",grns:"GRN/Return/Internal"};
 function recycleBinItemLabel(module,item){
   switch(module){
-    case"packings":return`${item.productName||""} — Carton ${item.cartonNo||""}`;
+    case"packings":return`${item.productName||""} — Carton ${cartonLabel(item.cartonNo)}`;
     case"dispatches":return`Challan #${item.challanNo} — ${item.partyName||""}`;
     case"pos":return`${item.poNo} — ${item.partyName||""}`;
     case"mt_pos":return`${item.poNo} — ${item.dc||""}`;
     case"mt_dispatches":return`Challan #${item.challanNo} — ${item.poNo||""}`;
-    case"mt_packings":return`${item.productName||""} — Carton ${item.cartonNo||""}`;
+    case"mt_packings":return`${item.productName||""} — Carton ${cartonLabel(item.cartonNo)}`;
     case"item_master":case"mt_items":return item.name||"";
     case"bom_master":case"mt_bom_master":return item.productName||"";
     case"production_plans":case"mt_production_plans":return item.programName||item.name||("Program "+(item.date||""));
@@ -661,19 +665,19 @@ function registerAC(){
 // ── PRINT FUNCTIONS ───────────────────────────
 function printPackingLabel(p){
   const w=window.open("","_blank","width=620,height=540");if(!w){alert("Popup blocked!");return;}
-  w.document.write(`<!DOCTYPE html><html><head><title>Packing Label</title><style>@media print{.np{display:none!important}body{margin:0}}body{font-family:Arial,sans-serif;padding:20px;background:#fff}.label{border:3px solid #1a237e;padding:20px;max-width:420px;border-radius:8px}h2{margin:0 0 4px;text-align:center;color:#1a237e;font-size:20px}.sub{text-align:center;color:#555;font-size:12px;margin-bottom:14px;border-bottom:1px dashed #ccc;padding-bottom:10px}table{width:100%;border-collapse:collapse}td{padding:6px 8px;font-size:14px;border-bottom:1px solid #eee}td:first-child{font-weight:bold;width:48%;color:#333}td:last-child{color:#1a237e;font-weight:600}.cn{font-size:28px;font-weight:900;text-align:center;color:#1a237e;padding:10px 0;border:2px dashed #1a237e;border-radius:6px;margin:12px 0}.ft{margin-top:14px;text-align:center;font-size:11px;color:#888;border-top:1px dashed #ccc;padding-top:8px}.btn{margin:5px;padding:8px 20px;background:#1a237e;color:#fff;border:none;border-radius:4px;cursor:pointer;font-size:14px}</style></head><body><div class="np" style="text-align:center;margin-bottom:10px"><button class="btn" onclick="window.print()">🖨️ Print</button><button class="btn" style="background:#555" onclick="window.close()">✕ Close</button></div><div class="label"><h2>🏭 Jimit Pet LLP</h2><div class="sub">Packing Label</div><div class="cn">Carton # ${esc(p.cartonNo)}</div><table><tr><td>Date:</td><td>${esc(fmtDate(p.date))}</td></tr><tr><td>Batch No:</td><td>${esc(p.batchNo)}</td></tr><tr><td>Product:</td><td>${esc(p.productName)}</td></tr><tr><td>Category:</td><td>${esc(p.category)}</td></tr><tr><td>Qty/Carton:</td><td>${esc(p.qtyPerCarton)} ${esc(p.qtyType)}</td></tr><tr><td>No. of Cartons:</td><td>${esc(p.cartons)}</td></tr><tr><td>Total Qty:</td><td><b style="font-size:16px">${esc(p.totalQty)} ${esc(p.qtyType)}</b></td></tr>${p.remark?`<tr><td>Remark:</td><td>${esc(p.remark)}</td></tr>`:""}</table><div class="ft">Printed: ${nowStr()}</div></div><script>window.onload=function(){setTimeout(function(){window.print()},400)}<\/script></body></html>`);w.document.close();
+  w.document.write(`<!DOCTYPE html><html><head><title>Packing Label</title><style>@media print{.np{display:none!important}body{margin:0}}body{font-family:Arial,sans-serif;padding:20px;background:#fff}.label{border:3px solid #1a237e;padding:20px;max-width:420px;border-radius:8px}h2{margin:0 0 4px;text-align:center;color:#1a237e;font-size:20px}.sub{text-align:center;color:#555;font-size:12px;margin-bottom:14px;border-bottom:1px dashed #ccc;padding-bottom:10px}table{width:100%;border-collapse:collapse}td{padding:6px 8px;font-size:14px;border-bottom:1px solid #eee}td:first-child{font-weight:bold;width:48%;color:#333}td:last-child{color:#1a237e;font-weight:600}.cn{font-size:28px;font-weight:900;text-align:center;color:#1a237e;padding:10px 0;border:2px dashed #1a237e;border-radius:6px;margin:12px 0}.ft{margin-top:14px;text-align:center;font-size:11px;color:#888;border-top:1px dashed #ccc;padding-top:8px}.btn{margin:5px;padding:8px 20px;background:#1a237e;color:#fff;border:none;border-radius:4px;cursor:pointer;font-size:14px}</style></head><body><div class="np" style="text-align:center;margin-bottom:10px"><button class="btn" onclick="window.print()">🖨️ Print</button><button class="btn" style="background:#555" onclick="window.close()">✕ Close</button></div><div class="label"><h2>🏭 Jimit Pet LLP</h2><div class="sub">Packing Label</div><div class="cn">Carton # ${esc(cartonLabel(p.cartonNo))}</div><table><tr><td>Date:</td><td>${esc(fmtDate(p.date))}</td></tr><tr><td>Batch No:</td><td>${esc(p.batchNo)}</td></tr><tr><td>Product:</td><td>${esc(p.productName)}</td></tr><tr><td>Category:</td><td>${esc(p.category)}</td></tr><tr><td>Qty/Carton:</td><td>${esc(p.qtyPerCarton)} ${esc(p.qtyType)}</td></tr><tr><td>No. of Cartons:</td><td>${esc(p.cartons)}</td></tr><tr><td>Total Qty:</td><td><b style="font-size:16px">${esc(p.totalQty)} ${esc(p.qtyType)}</b></td></tr>${p.remark?`<tr><td>Remark:</td><td>${esc(p.remark)}</td></tr>`:""}</table><div class="ft">Printed: ${nowStr()}</div></div><script>window.onload=function(){setTimeout(function(){window.print()},400)}<\/script></body></html>`);w.document.close();
 }
 function emailPackingLabel(p){
-  const lines=["🏭 Jimit Pet LLP — Packing Label","",`Carton No: ${p.cartonNo}`,`Date: ${fmtDate(p.date)}`,`Batch No: ${p.batchNo}`,`Product: ${p.productName}`,`Category: ${p.category}`,`Qty/Carton: ${p.qtyPerCarton} ${p.qtyType}`,`No. of Cartons: ${p.cartons}`,`Total Qty: ${p.totalQty} ${p.qtyType}`,p.remark?`Remark: ${p.remark}`:null].filter(Boolean);
-  openMail(`Packing Label — Carton #${p.cartonNo}`,lines.join("\n"));
+  const lines=["🏭 Jimit Pet LLP — Packing Label","",`Carton No: ${cartonLabel(p.cartonNo)}`,`Date: ${fmtDate(p.date)}`,`Batch No: ${p.batchNo}`,`Product: ${p.productName}`,`Category: ${p.category}`,`Qty/Carton: ${p.qtyPerCarton} ${p.qtyType}`,`No. of Cartons: ${p.cartons}`,`Total Qty: ${p.totalQty} ${p.qtyType}`,p.remark?`Remark: ${p.remark}`:null].filter(Boolean);
+  openMail(`Packing Label — Carton #${cartonLabel(p.cartonNo)}`,lines.join("\n"));
 }
 function printChallan(challan,items){
-  const rows=(items||[]).map(i=>{const pk=state.packings.find(p=>String(p.cartonNo)===String(i.cartonNo));return`<tr><td>${esc(i.cartonNo)}</td><td>${esc(i.productName)}</td><td>${esc(i.qty)} ${esc(i.qtyType)}</td><td>${pk&&pk.remark?esc(pk.remark):"—"}</td></tr>`;}).join("");
+  const rows=(items||[]).map(i=>{const pk=state.packings.find(p=>String(p.cartonNo)===String(i.cartonNo));return`<tr><td>${esc(cartonLabel(i.cartonNo))}</td><td>${esc(i.productName)}</td><td>${esc(i.qty)} ${esc(i.qtyType)}</td><td>${pk&&pk.remark?esc(pk.remark):"—"}</td></tr>`;}).join("");
   const w=window.open("","_blank","width=720,height=640");if(!w){alert("Popup blocked!");return;}
   w.document.write(`<!DOCTYPE html><html><head><title>Challan #${esc(challan.challanNo)}</title><style>@media print{.np{display:none!important}body{margin:0}}body{font-family:Arial;padding:20px;background:#fff}h2{text-align:center;color:#1a237e}.info{display:grid;grid-template-columns:1fr 1fr;gap:4px 20px;margin-bottom:14px;border:1px solid #ddd;padding:12px;border-radius:6px}.info span{font-size:13px;padding:2px 0}.info b{display:inline-block;width:120px;color:#555}table{width:100%;border-collapse:collapse;margin-top:10px}th,td{border:1px solid #333;padding:7px 10px;font-size:13px}th{background:#1a237e;color:#fff}.ft{margin-top:20px;font-size:12px;color:#666;text-align:center}.btn{margin:5px;padding:8px 20px;background:#1a237e;color:#fff;border:none;border-radius:4px;cursor:pointer;font-size:14px}</style></head><body><div class="np" style="text-align:center;margin-bottom:10px"><button class="btn" onclick="window.print()">🖨️ Print</button><button class="btn" style="background:#555" onclick="window.close()">✕ Close</button></div><h2>Jimit Pet LLP — Delivery Challan</h2><div class="info"><span><b>Challan No:</b> ${esc(challan.challanNo)}</span><span><b>Date:</b> ${esc(fmtDate(challan.date))}</span><span><b>Party:</b> ${esc(challan.partyName)}</span><span><b>Destination:</b> ${esc(challan.destination)}</span><span><b>Transport:</b> ${esc(challan.transport)}</span><span><b>Vehicle No:</b> ${esc(challan.vehicleNo)}</span><span><b>Marka:</b> ${esc(challan.marka)}</span><span><b>Batch No:</b> ${esc(challan.batchNo)}</span>${challan.remark?`<span><b>Remark:</b> ${esc(challan.remark)}</span>`:""}</div><table><thead><tr><th>Carton No</th><th>Product Name</th><th>Qty</th><th>Remark</th></tr></thead><tbody>${rows}</tbody></table><div class="ft">Printed: ${nowStr()}</div><script>window.onload=function(){setTimeout(function(){window.print()},400)}<\/script></body></html>`);w.document.close();
 }
 function emailChallan(challan,items,toEmailOverride){
-  const lines=["Jimit Pet LLP — Delivery Challan","",`Challan No: ${challan.challanNo}`,`Date: ${fmtDate(challan.date)}`,`Party: ${challan.partyName}`,`Destination: ${challan.destination||"-"}`,`Transport: ${challan.transport||"-"}`,`Vehicle No: ${challan.vehicleNo||"-"}`,`Marka: ${challan.marka||"-"}`,`Batch No: ${challan.batchNo||"-"}`,challan.remark?`Remark: ${challan.remark}`:null,"","Items:",...(items||[]).map((it,i)=>`${i+1}. ${it.productName} — Carton #${it.cartonNo||"-"} — Qty: ${it.qty} ${it.qtyType||""}`)].filter(Boolean);
+  const lines=["Jimit Pet LLP — Delivery Challan","",`Challan No: ${challan.challanNo}`,`Date: ${fmtDate(challan.date)}`,`Party: ${challan.partyName}`,`Destination: ${challan.destination||"-"}`,`Transport: ${challan.transport||"-"}`,`Vehicle No: ${challan.vehicleNo||"-"}`,`Marka: ${challan.marka||"-"}`,`Batch No: ${challan.batchNo||"-"}`,challan.remark?`Remark: ${challan.remark}`:null,"","Items:",...(items||[]).map((it,i)=>`${i+1}. ${it.productName} — Carton #${cartonLabel(it.cartonNo)||"-"} — Qty: ${it.qty} ${it.qtyType||""}`)].filter(Boolean);
   openMail(`Delivery Challan #${challan.challanNo} — ${challan.partyName}`,lines.join("\n"),toEmailOverride);
 }
 function getPartyEmail(partyName){
@@ -697,7 +701,7 @@ function buildTodayDispatchEmailBody(){
   const list=state.dispatches.filter(d=>d.date===today);
   if(!list.length)return`Aaj (${fmtDate(today)}) koi Dispatch entry nahi hui hai.`;
   const sep="=".repeat(40);
-  const blocks=list.map(d=>[`Challan No: ${d.challanNo}`,`Date: ${fmtDate(d.date)}`,`Party: ${d.partyName}`,`Destination: ${d.destination||"-"}`,`Transport: ${d.transport||"-"}`,`Vehicle No: ${d.vehicleNo||"-"}`,`Marka: ${d.marka||"-"}`,`Batch No: ${d.batchNo||"-"}`,d.remark?`Remark: ${d.remark}`:null,"","Items:",...(d.items||[]).map((it,i)=>`  ${i+1}. ${it.productName} — Carton #${it.cartonNo||"-"} — Qty: ${it.qty} ${it.qtyType||""}`)].filter(Boolean).join("\n"));
+  const blocks=list.map(d=>[`Challan No: ${d.challanNo}`,`Date: ${fmtDate(d.date)}`,`Party: ${d.partyName}`,`Destination: ${d.destination||"-"}`,`Transport: ${d.transport||"-"}`,`Vehicle No: ${d.vehicleNo||"-"}`,`Marka: ${d.marka||"-"}`,`Batch No: ${d.batchNo||"-"}`,d.remark?`Remark: ${d.remark}`:null,"","Items:",...(d.items||[]).map((it,i)=>`  ${i+1}. ${it.productName} — Carton #${cartonLabel(it.cartonNo)||"-"} — Qty: ${it.qty} ${it.qtyType||""}`)].filter(Boolean).join("\n"));
   return`Jimit Pet LLP — Today's Dispatch Summary (${fmtDate(today)})\nTotal Challans: ${list.length}\n\n${sep}\n\n`+blocks.join(`\n\n${sep}\n\n`);
 }
 function buildTodayPackingEmailBody(){
@@ -1020,7 +1024,7 @@ function backfillDispatchItemBatches(){
 function buildBackupData(){
   const map={users:"users",packings:"packings",categories:"categories",dispatches:"dispatches",
     purchaseOrders:"pos",mtPos:"mt_pos",mtDispatches:"mt_dispatches",batchOptions:"batch_options",
-    mtItems:"mt_items",mtPackings:"mt_packings",itemMaster:"item_master",bomMaster:"bom_master",productionPlans:"production_plans",storeLedger:"store_ledger",grns:"grns",mtBomMaster:"mt_bom_master",mtProductionPlans:"mt_production_plans",mtDivisions:"mt_divisions",storeItems:"store_items",storeQtyTypes:"store_qty_types",storeBatches:"store_batches",recycleBin:"recycle_bin",nextChallanOverride:"next_challan_override",partyEmails:"party_emails",autoTriggeredProducts:"auto_triggered_products",lastAutoBackupDate:"last_auto_backup_date",lastAutoEmailDate:"last_auto_email_date",lastMtAlertEmailDate:"last_mt_alert_email_date",lastPendingCategoryEmailDate:"last_pending_category_email_date",lastProductionReminderDate:"last_production_reminder_date",gatePasses:"gate_passes",parties:"parties",accBills:"acc_bills",accReceipts:"acc_receipts",invoices:"invoices",itemRates:"item_rates",company:"company"};
+    mtItems:"mt_items",mtPackings:"mt_packings",itemMaster:"item_master",bomMaster:"bom_master",productionPlans:"production_plans",storeLedger:"store_ledger",grns:"grns",mtBomMaster:"mt_bom_master",mtProductionPlans:"mt_production_plans",mtDivisions:"mt_divisions",storeItems:"store_items",storeQtyTypes:"store_qty_types",storeBatches:"store_batches",recycleBin:"recycle_bin",nextChallanOverride:"next_challan_override",partyEmails:"party_emails",autoTriggeredProducts:"auto_triggered_products",lastAutoBackupDate:"last_auto_backup_date",lastAutoEmailDate:"last_auto_email_date",lastMtAlertEmailDate:"last_mt_alert_email_date",lastPendingCategoryEmailDate:"last_pending_category_email_date",lastProductionReminderDate:"last_production_reminder_date",gatePasses:"gate_passes",parties:"parties",accBills:"acc_bills",accReceipts:"acc_receipts",invoices:"invoices",creditNotes:"credit_notes",itemRates:"item_rates",company:"company"};
   const backup={ _meta:{app:"JimitPetLLP",exportedAt:new Date().toISOString(),version:1}, data:{} };
   Object.entries(map).forEach(([sk,dbk])=>{ backup.data[dbk]=state[sk]; });
   backup.data.tombstones=Tombstone.get();
@@ -1076,13 +1080,13 @@ function shellHtml(){
     {key:"mtPlanner",label:"🧮 MT Planner",perm:"mtPlanner"},
     {key:"mtSalesDashboard",label:"📊 MT Sales Dashboard",perm:"mtSalesDashboard"},
     {key:"store",label:"🏬 Store",perm:"store"},
-    {key:"inventoryStock",label:"📦 Inventory Stock",perm:"inventoryStock"},{key:"canMake",label:"✅ Can Make Report",perm:"canMake"},{key:"accParty",label:"👥 Party Master",perm:"accounts"},{key:"accBills",label:"🧾 Bills (Sale / Purchase)",perm:"accounts"},{key:"accPay",label:"💵 Receipt / Payment",perm:"accounts"},{key:"accRates",label:"🏷️ Item Rates",perm:"accounts"},{key:"accOut",label:"📊 Accounts (Ledger / Ageing)",perm:"accounts"},{key:"invoice",label:"🧾 Invoice",perm:"invoice"},{key:"productionReport",label:"📊 Production Report",perm:"productionReport"},{key:"minStock",label:"🛒 Min Stock & Purchase",perm:"minStock"},{key:"mtReport",label:"📈 MT Delivery Report",perm:"mtReport"},{key:"programStock",label:"✅ Program Stock Check",perm:"programStock"},
+    {key:"inventoryStock",label:"📦 Inventory Stock",perm:"inventoryStock"},{key:"canMake",label:"✅ Can Make Report",perm:"canMake"},{key:"accParty",label:"👥 Party Master",perm:"accounts"},{key:"accBills",label:"🧾 Bills (Sale / Purchase)",perm:"accounts"},{key:"accPay",label:"💵 Receipt / Payment",perm:"accounts"},{key:"accRates",label:"🏷️ Item Rates",perm:"accounts"},{key:"accOut",label:"📊 Accounts (Ledger / Ageing)",perm:"accounts"},{key:"invoice",label:"🧾 Invoice",perm:"invoice"},{key:"creditNote",label:"↩️ Credit Note",perm:"invoice"},{key:"productionReport",label:"📊 Production Report",perm:"productionReport"},{key:"minStock",label:"🛒 Min Stock & Purchase",perm:"minStock"},{key:"mtReport",label:"📈 MT Delivery Report",perm:"mtReport"},{key:"programStock",label:"✅ Program Stock Check",perm:"programStock"},
     ...(state.currentUser.role==="admin"?[{key:"userManagement",label:"👥 Users",perm:"userManagement"},{key:"recycleBin",label:"🗑️ Recycle Bin",perm:"userManagement"},{key:"yearEnd",label:"📅 Year End Process",perm:"userManagement"}]:[])
   ].filter(t=>t.perm==="accounts"?canAcc():can(t.perm));
   // ── TAB GROUPS (sirf navigation grouping; tabs ka kaam same hai) ──
   const TAB_GROUPS=[
     {k:"packingDept",label:"📦 PACKING DEPT",keys:["packing","pendingStock","stockSummary","planner"]},
-    {k:"dispatchGrp",label:"🚚 DISPATCH",keys:["dispatch","dispatchRegister","gatePass","invoice"]},
+    {k:"dispatchGrp",label:"🚚 DISPATCH",keys:["dispatch","dispatchRegister","gatePass","invoice","creditNote"]},
     {k:"ordersGrp",label:"📝 ORDERS",keys:["po","pendingOrder","orderVsAvailable"]},
     {k:"mtGrp",label:"🏪 MT",keys:["mtPo","mtDispatch","mtPending","mtPacking","mtVehReq","mtPlanner","mtSalesDashboard","mtReport"]},
     {k:"storeGrp",label:"🏬 STORE/REPORTS",keys:["store","inventoryStock","canMake","productionReport","minStock","programStock"]},
@@ -1130,7 +1134,7 @@ function renderTabContent(){
   const fns={packing:renderPackingTab,pendingStock:renderPendingStockTab,stockSummary:renderStockSummaryTab,
     dispatch:renderDispatchTab,dispatchRegister:renderDispatchRegisterTab,gatePass:renderGatePassTab,po:renderPOTab,
     pendingOrder:renderPendingOrderTab,orderVsAvailable:renderOrderVsAvailableTab,mtPo:renderMTPoTab,mtDispatch:renderMTDispatchTab,
-    mtPending:renderMTPendingTab,mtPacking:renderMTPackingTab,mtVehReq:renderMtVehReqTab,planner:renderPlannerTab,store:renderStoreTab,inventoryStock:renderInventoryStockTab,canMake:renderCanMakeTab,yearEnd:renderYearEndTab,accParty:renderAccPartyTab,accBills:renderAccBillsTab,accPay:renderAccPayTab,accOut:renderAccOutTab,accRates:renderAccRatesTab,invoice:renderInvoiceTab,productionReport:renderProductionReportTab,home:renderHomeTab,minStock:renderMinStockTab,mtReport:renderMtReportTab,programStock:renderProgramStockTabV2,mtPlanner:renderMtPlannerTab,mtSalesDashboard:renderMtSalesDashboardTab,userManagement:renderUserManagementTab,recycleBin:renderRecycleBinTab};
+    mtPending:renderMTPendingTab,mtPacking:renderMTPackingTab,mtVehReq:renderMtVehReqTab,planner:renderPlannerTab,store:renderStoreTab,inventoryStock:renderInventoryStockTab,canMake:renderCanMakeTab,yearEnd:renderYearEndTab,accParty:renderAccPartyTab,accBills:renderAccBillsTab,accPay:renderAccPayTab,accOut:renderAccOutTab,accRates:renderAccRatesTab,invoice:renderInvoiceTab,creditNote:renderCreditNoteTab,productionReport:renderProductionReportTab,home:renderHomeTab,minStock:renderMinStockTab,mtReport:renderMtReportTab,programStock:renderProgramStockTabV2,mtPlanner:renderMtPlannerTab,mtSalesDashboard:renderMtSalesDashboardTab,userManagement:renderUserManagementTab,recycleBin:renderRecycleBinTab};
   el.innerHTML=(fns[state.activeTab]||(() =>""))();
   const mr=document.getElementById("modalRoot");if(mr)mr.innerHTML=renderItemMasterModal()+renderMtItemModal();
   setTimeout(registerAC,0);
@@ -1175,7 +1179,7 @@ function _refreshModal(){const mr=document.getElementById("modalRoot");if(mr)mr.
 // ── PACKING TAB ───────────────────────────────────────────
 function packingHistoryRows(rows){
   const list=rows||[...state.packings].reverse();
-  return list.map(p=>`<tr><td><b>${esc(p.cartonNo)}</b></td><td>${esc(fmtDate(p.date))}</td><td><span class="chip">${esc(p.batchNo)}</span></td><td>${esc(p.productName)}</td><td>${esc(p.category)}</td><td>${esc(p.qtyPerCarton)} ${esc(p.qtyType)}</td><td>${esc(p.cartons)}</td><td><b>${esc(p.totalQty)}</b></td><td>${p.location?`<span class="chip" style="background:#e0f2f1;color:#00695c">${esc(p.location)}</span>`:"—"}</td><td>${esc(p.remark)}</td><td><span style="font-size:11px;color:#1565c0;font-weight:600">${esc(p.savedBy||"—")}</span></td><td>${!isRO()?`<button class="btn btn-sm btn-primary" onclick="App.editPacking(${p.id})">Edit</button>`:""} <button class="btn btn-sm btn-success" onclick="App.printPackingById(${p.id})">🖨️</button> <button class="btn btn-sm" style="background:#0277bd;color:#fff" onclick="App.emailPackingById(${p.id})">📧</button> ${!isRO()?`<button class="btn btn-sm btn-danger" onclick="App.deletePacking(${p.id})">Del</button>`:""}</td></tr>`).join("")||`<tr><td colspan="12" style="text-align:center;color:#999;padding:24px">No entries yet</td></tr>`;
+  return list.map(p=>`<tr><td><b>${esc(cartonLabel(p.cartonNo))}</b></td><td>${esc(fmtDate(p.date))}</td><td><span class="chip">${esc(p.batchNo)}</span></td><td>${esc(p.productName)}</td><td>${esc(p.category)}</td><td>${esc(p.qtyPerCarton)} ${esc(p.qtyType)}</td><td>${esc(p.cartons)}</td><td><b>${esc(p.totalQty)}</b></td><td>${p.location?`<span class="chip" style="background:#e0f2f1;color:#00695c">${esc(p.location)}</span>`:"—"}</td><td>${esc(p.remark)}</td><td><span style="font-size:11px;color:#1565c0;font-weight:600">${esc(p.savedBy||"—")}</span></td><td>${!isRO()?`<button class="btn btn-sm btn-primary" onclick="App.editPacking(${p.id})">Edit</button>`:""} <button class="btn btn-sm btn-success" onclick="App.printPackingById(${p.id})">🖨️</button> <button class="btn btn-sm" style="background:#0277bd;color:#fff" onclick="App.emailPackingById(${p.id})">📧</button> ${!isRO()?`<button class="btn btn-sm btn-danger" onclick="App.deletePacking(${p.id})">Del</button>`:""}</td></tr>`).join("")||`<tr><td colspan="12" style="text-align:center;color:#999;padding:24px">No entries yet</td></tr>`;
 }
 function packingHistoryTotalFooter(rows){
   const totCartons=rows.reduce((s,r)=>s+(Number(r.cartons)||0),0);
@@ -1220,11 +1224,11 @@ const PackingApp={
     const val=document.getElementById("cartonSearchInput").value.trim();
     const resEl=document.getElementById("cartonSearchResult");
     if(!val){resEl.innerHTML=`<div style="color:#c62828">Carton No daalo</div>`;temp.cartonSearchResult=resEl.innerHTML;return;}
-    const pkList=state.packings.filter(p=>String(p.cartonNo)===val);
+    const pkList=state.packings.filter(p=>cartonMatch(p.cartonNo,val));
     if(!pkList.length){resEl.innerHTML=`<div style="background:#ffebee;border:1px solid #ef9a9a;border-radius:8px;padding:12px;color:#c62828">⚠️ Carton No <b>${esc(val)}</b> nahi mila Packing records mein.</div>`;temp.cartonSearchResult=resEl.innerHTML;return;}
     const blocks=pkList.map(pk=>{
       const dispEntries=[];
-      state.dispatches.forEach(d=>{(d.items||[]).forEach(i=>{if(String(i.cartonNo)===val&&i.productName===pk.productName){dispEntries.push({challanNo:d.challanNo,date:d.date,party:d.partyName,qty:i.qty,qtyType:i.qtyType,poNo:i.poNo});}});});
+      state.dispatches.forEach(d=>{(d.items||[]).forEach(i=>{if(String(i.cartonNo)===String(pk.cartonNo)&&i.productName===pk.productName){dispEntries.push({challanNo:d.challanNo,date:d.date,party:d.partyName,qty:i.qty,qtyType:i.qtyType,poNo:i.poNo});}});});
       const totalDisp=dispEntries.reduce((s,e)=>s+Number(e.qty||0),0);
       let statusHtml;
       if(dispEntries.length===0){
@@ -1233,7 +1237,7 @@ const PackingApp={
         const rows=dispEntries.map(e=>`<tr><td><b>${esc(e.challanNo)}</b></td><td>${esc(fmtDate(e.date))}</td><td>${esc(e.party)}</td><td>${esc(e.qty)} ${esc(e.qtyType)}</td><td>${esc(e.poNo)||"—"}</td></tr>`).join("");
         statusHtml=`<div style="background:#e3f2fd;border:1px solid #90caf9;border-radius:8px;padding:10px 14px;color:#1565c0;font-weight:700;margin-bottom:10px">🚚 DISPATCHED — Challan No mila</div><table class="tbl"><thead><tr style="background:#1a237e;color:#fff"><th>Challan No</th><th>Date</th><th>Party</th><th>Dispatched Qty</th><th>PO No</th></tr></thead><tbody>${rows}</tbody></table>`;
       }
-      return`<div style="background:#f3f4ff;border:1px solid #c5cae9;border-radius:8px;padding:12px 14px;margin-bottom:10px"><b>Carton #${esc(pk.cartonNo)}</b> — ${esc(pk.productName)} | Batch: ${esc(pk.batchNo)} | Date: ${esc(fmtDate(pk.date))}<br>Total Qty: ${esc(pk.totalQty)} ${esc(pk.qtyType)} ${totalDisp>0?`| Dispatched: ${totalDisp} | Balance: ${Math.max(0,pk.totalQty-totalDisp)}`:""}</div>${statusHtml}`;
+      return`<div style="background:#f3f4ff;border:1px solid #c5cae9;border-radius:8px;padding:12px 14px;margin-bottom:10px"><b>Carton #${esc(cartonLabel(pk.cartonNo))}</b> — ${esc(pk.productName)} | Batch: ${esc(pk.batchNo)} | Date: ${esc(fmtDate(pk.date))}<br>Total Qty: ${esc(pk.totalQty)} ${esc(pk.qtyType)} ${totalDisp>0?`| Dispatched: ${totalDisp} | Balance: ${Math.max(0,pk.totalQty-totalDisp)}`:""}</div>${statusHtml}`;
     });
     const multiWarning=pkList.length>1?`<div style="background:#fff3e0;border:1px solid #ffcc80;border-radius:6px;padding:8px 12px;font-size:12px;color:#e65100;margin-bottom:10px">⚠️ Is Carton No. (${esc(val)}) ke saath <b>${pkList.length} alag-alag products</b> packed hain (carton number repeat hua hai). Har product ki stock/dispatch neeche <b>alag-alag</b> dikhayi gayi hai.</div>`:"";
     const html=multiWarning+blocks.join("");
@@ -1275,7 +1279,7 @@ function renderPendingStockTab(){
   if(temp.psSortAZ)rows=[...rows].sort((a,b)=>String(a.productName||"").localeCompare(String(b.productName||"")));
   return`<div class="card"><div class="card-title">🗂 Pending Stock</div><div class="card-body"><div class="filters"><input class="inp" id="psCarton" placeholder="Search Carton No" oninput="App.filterPendingStock()"><select class="inp" id="psProduct" onchange="App.filterPendingStock()"><option value="">All Products</option>${allProds.map(p=>`<option>${esc(p)}</option>`).join("")}</select><select class="inp" id="psCategory" onchange="App.filterPendingStock()"><option value="">All Categories</option>${state.categories.map(c=>`<option>${esc(c)}</option>`).join("")}</select><select class="inp" id="psBatch" onchange="App.filterPendingStock()"><option value="">All Batches</option>${state.batchOptions.map(b=>`<option>${esc(b)}</option>`).join("")}</select><button class="btn btn-secondary" onclick="App.clearPendingStockFilters()">Clear</button><button class="btn" style="background:${temp.psSortAZ?"#4527a0":"#5e35b1"};color:#fff" onclick="App.togglePendingStockSort()">🔤 Product A-Z ${temp.psSortAZ?"✓":""}</button><button class="btn btn-success" onclick="App.exportPendingStock()">📥 Export</button><button class="btn btn-primary" onclick="App.printPendingStock()" style="background:#283593">🖨️ Print</button><button class="btn" style="background:#0277bd;color:#fff" onclick="App.emailPendingStock()">📧 Email</button><button class="btn" style="background:#25D366;color:#fff" onclick="App.whatsappPendingStock()">📱 WhatsApp</button></div><div style="overflow-x:auto"><table class="tbl" id="psTable"><thead><tr style="background:#1a237e;color:#fff">${["Carton#","Date","Batch","Product","Category","Qty Type","Total Qty","Dispatched","Pending Qty","Pending Cartons","Remark"].map(h=>`<th>${h}</th>`).join("")}</tr></thead><tbody>${pendingStockRows(rows)}</tbody>${pendingStockTotalFooter(rows)}</table></div></div></div>`;
 }
-function pendingStockRows(rows){return rows.map(p=>`<tr><td><b>${esc(p.cartonNo)}</b></td><td>${esc(fmtDate(p.date))}</td><td><span class="chip">${esc(p.batchNo)}</span></td><td>${esc(p.productName)}</td><td>${esc(p.category)}</td><td>${esc(p.qtyType)}</td><td>${esc(p.totalQty)}</td><td>${esc(p.dispatched)}</td><td style="font-weight:700;color:#e65100">${esc(p.pendingQty)}</td><td style="font-weight:700;color:#1565c0">${esc(p.pendingCartons)} Ctn</td><td style="font-size:12px;color:#666">${esc(p.remark)||"—"}</td></tr>`).join("")||`<tr><td colspan="11" style="text-align:center;color:#999;padding:24px">No pending stock</td></tr>`;}
+function pendingStockRows(rows){return rows.map(p=>`<tr><td><b>${esc(cartonLabel(p.cartonNo))}</b></td><td>${esc(fmtDate(p.date))}</td><td><span class="chip">${esc(p.batchNo)}</span></td><td>${esc(p.productName)}</td><td>${esc(p.category)}</td><td>${esc(p.qtyType)}</td><td>${esc(p.totalQty)}</td><td>${esc(p.dispatched)}</td><td style="font-weight:700;color:#e65100">${esc(p.pendingQty)}</td><td style="font-weight:700;color:#1565c0">${esc(p.pendingCartons)} Ctn</td><td style="font-size:12px;color:#666">${esc(p.remark)||"—"}</td></tr>`).join("")||`<tr><td colspan="11" style="text-align:center;color:#999;padding:24px">No pending stock</td></tr>`;}
 function pendingStockTotalFooter(rows){
   const totQty=rows.reduce((s,r)=>s+(Number(r.totalQty)||0),0);
   const totDisp=rows.reduce((s,r)=>s+(Number(r.dispatched)||0),0);
@@ -1289,7 +1293,7 @@ const PendingStockApp={
     const nb=fb?String(fb).trim().toLowerCase():"";
     const dispMap=buildDispMap();
     let rows=state.packings.map(p=>{const k=`${p.cartonNo}-${p.productName}`;const disp=dispMap[k]||0;const pq=p.totalQty-disp;const pc=pq>0&&p.qtyPerCarton?Math.ceil(pq/p.qtyPerCarton):0;return{...p,dispatched:disp,pendingQty:pq,pendingCartons:pc};}).filter(p=>p.pendingQty>0);
-    rows=rows.filter(p=>(!sc||String(p.cartonNo).includes(sc))&&(!sp||p.productName===sp)&&(!fc||p.category===fc)&&(!nb||String(p.batchNo||"").trim().toLowerCase()===nb));
+    rows=rows.filter(p=>(!sc||String(p.cartonNo).includes(sc)||cartonLabel(p.cartonNo).includes(sc))&&(!sp||p.productName===sp)&&(!fc||p.category===fc)&&(!nb||String(p.batchNo||"").trim().toLowerCase()===nb));
     if(temp.psSortAZ)rows=[...rows].sort((a,b)=>String(a.productName||"").localeCompare(String(b.productName||"")));
     return rows;
   },
@@ -1298,7 +1302,7 @@ const PendingStockApp={
   clearPendingStockFilters(){["psCarton","psProduct","psCategory","psBatch"].forEach(id=>document.getElementById(id).value="");this.filterPendingStock();},
   exportPendingStock(){
     const rows=this._getFilteredRows();
-    const data=rows.map(r=>[r.cartonNo,fmtDate(r.date),r.batchNo,r.productName,r.category,r.qtyType,r.totalQty,r.dispatched,r.pendingQty,r.pendingCartons+" Ctn",r.remark||""]);
+    const data=rows.map(r=>[cartonLabel(r.cartonNo),fmtDate(r.date),r.batchNo,r.productName,r.category,r.qtyType,r.totalQty,r.dispatched,r.pendingQty,r.pendingCartons+" Ctn",r.remark||""]);
     const totQty=rows.reduce((s,r)=>s+(Number(r.totalQty)||0),0),totDisp=rows.reduce((s,r)=>s+(Number(r.dispatched)||0),0),totPend=rows.reduce((s,r)=>s+(Number(r.pendingQty)||0),0),totCtn=rows.reduce((s,r)=>s+(Number(r.pendingCartons)||0),0);
     data.push(["TOTAL","","","","","",totQty,totDisp,totPend,totCtn+" Ctn",""]);
     exportCSV(["Carton#","Date","Batch","Product","Category","Qty Type","Total Qty","Dispatched","Pending Qty","Pending Cartons","Remark"],data,"pending_stock.csv");
@@ -1306,16 +1310,16 @@ const PendingStockApp={
   emailPendingStock(){
     const rows=this._getFilteredRows();
     emailList("Pending Stock Report",["Carton#","Date","Batch","Product","Category","Qty Type","Total","Dispatched","Pending Qty","Pending Ctn","Remark"],
-      rows.map(r=>[r.cartonNo,fmtDate(r.date),r.batchNo,r.productName,r.category,r.qtyType,r.totalQty,r.dispatched,r.pendingQty,r.pendingCartons,r.remark||""]));
+      rows.map(r=>[cartonLabel(r.cartonNo),fmtDate(r.date),r.batchNo,r.productName,r.category,r.qtyType,r.totalQty,r.dispatched,r.pendingQty,r.pendingCartons,r.remark||""]));
   },
   whatsappPendingStock(){
     const rows=this._getFilteredRows();
     whatsappList("Pending Stock Report",["Carton#","Date","Batch","Product","Category","Qty Type","Total","Dispatched","Pending Qty","Pending Ctn","Remark"],
-      rows.map(r=>[r.cartonNo,fmtDate(r.date),r.batchNo,r.productName,r.category,r.qtyType,r.totalQty,r.dispatched,r.pendingQty,r.pendingCartons,r.remark||""]));
+      rows.map(r=>[cartonLabel(r.cartonNo),fmtDate(r.date),r.batchNo,r.productName,r.category,r.qtyType,r.totalQty,r.dispatched,r.pendingQty,r.pendingCartons,r.remark||""]));
   },
   printPendingStock(){
     const rows=this._getFilteredRows();
-    const tableRows=rows.map(r=>`<tr><td>${r.cartonNo}</td><td>${fmtDate(r.date)}</td><td>${r.batchNo}</td><td>${r.productName}</td><td>${r.category}</td><td>${r.qtyType}</td><td>${r.totalQty}</td><td>${r.dispatched}</td><td style="font-weight:700;color:#e65100">${r.pendingQty}</td><td style="font-weight:700;color:#1565c0">${r.pendingCartons} Ctn</td><td>${r.remark||""}</td></tr>`).join("")||"<tr><td colspan='11' style='text-align:center'>No data</td></tr>";
+    const tableRows=rows.map(r=>`<tr><td>${cartonLabel(r.cartonNo)}</td><td>${fmtDate(r.date)}</td><td>${r.batchNo}</td><td>${r.productName}</td><td>${r.category}</td><td>${r.qtyType}</td><td>${r.totalQty}</td><td>${r.dispatched}</td><td style="font-weight:700;color:#e65100">${r.pendingQty}</td><td style="font-weight:700;color:#1565c0">${r.pendingCartons} Ctn</td><td>${r.remark||""}</td></tr>`).join("")||"<tr><td colspan='11' style='text-align:center'>No data</td></tr>";
     const totQty=rows.reduce((s,r)=>s+(Number(r.totalQty)||0),0),totDisp=rows.reduce((s,r)=>s+(Number(r.dispatched)||0),0),totPend=rows.reduce((s,r)=>s+(Number(r.pendingQty)||0),0),totCtn=rows.reduce((s,r)=>s+(Number(r.pendingCartons)||0),0);
     const w=window.open("","_blank","width=900,height=700");if(!w){alert("Popup blocked!");return;}
     w.document.write(`<!DOCTYPE html><html><head><title>Pending Stock</title><style>@media print{.np{display:none!important}body{margin:0}}body{font-family:Arial;padding:20px}h2{text-align:center;color:#1a237e}table{width:100%;border-collapse:collapse;font-size:12px}th,td{border:1px solid #333;padding:6px 8px;text-align:left}th{background:#1a237e;color:#fff}tfoot td{font-weight:800;background:#e3e3e3}.ft{margin-top:16px;font-size:11px;color:#888;text-align:center}.btn{margin:5px;padding:8px 20px;background:#1a237e;color:#fff;border:none;border-radius:4px;cursor:pointer;font-size:14px}</style></head><body><div class="np" style="text-align:center;margin-bottom:10px"><button class="btn" onclick="window.print()">🖨️ Print</button><button class="btn" style="background:#555" onclick="window.close()">✕ Close</button></div><h2>🏭 Jimit Pet LLP — Pending Stock</h2><table><thead><tr style="background:#1a237e;color:#fff"><th>Carton#</th><th>Date</th><th>Batch</th><th>Product</th><th>Category</th><th>Qty Type</th><th>Total Qty</th><th>Dispatched</th><th>Pending Qty</th><th>Pending Cartons</th><th>Remark</th></tr></thead><tbody>${tableRows}</tbody><tfoot><tr><td colspan="6" style="text-align:right">TOTAL</td><td>${totQty}</td><td>${totDisp}</td><td>${totPend}</td><td>${totCtn} Ctn</td><td></td></tr></tfoot></table><div class="ft">Printed: ${nowStr()} | Total: ${rows.length} items</div><script>window.onload=function(){setTimeout(function(){window.print()},400)}<\/script></body></html>`);
@@ -1402,7 +1406,7 @@ function getAvailableCartonsForProduct(productName,batchFilter){
     return{cartonNo:p.cartonNo,remaining,qtyType:p.qtyType,batchNo:p.batchNo};
   }).filter(c=>c.remaining>0);
 }
-function dispatchItemsHtml(){if(!temp.dispatchItems.length)return"";const rows=temp.dispatchItems.map((it,idx)=>`<tr><td>${esc(it.cartonNo)}</td><td>${esc(it.productName)}</td><td>${it.batchNo?`<span class="chip">${esc(it.batchNo)}</span>`:"—"}</td><td>${esc(it.qty)} ${esc(it.qtyType)}</td><td><span class="badge" style="background:${it.poNo?"#1565c0":"#999"}">${esc(it.poNo)||"No PO"}</span></td><td><button class="btn btn-sm btn-danger" onclick="App.removeDispatchItem(${idx})">✕</button></td></tr>`).join("");return`<table class="tbl"><thead><tr style="background:#37474f;color:#fff"><th>Carton#</th><th>Product</th><th>Batch</th><th>Qty</th><th>PO No</th><th></th></tr></thead><tbody>${rows}</tbody></table>`;}
+function dispatchItemsHtml(){if(!temp.dispatchItems.length)return"";const rows=temp.dispatchItems.map((it,idx)=>`<tr><td>${esc(cartonLabel(it.cartonNo))}</td><td>${esc(it.productName)}</td><td>${it.batchNo?`<span class="chip">${esc(it.batchNo)}</span>`:"—"}</td><td>${esc(it.qty)} ${esc(it.qtyType)}</td><td><span class="badge" style="background:${it.poNo?"#1565c0":"#999"}">${esc(it.poNo)||"No PO"}</span></td><td><button class="btn btn-sm btn-danger" onclick="App.removeDispatchItem(${idx})">✕</button></td></tr>`).join("");return`<table class="tbl"><thead><tr style="background:#37474f;color:#fff"><th>Carton#</th><th>Product</th><th>Batch</th><th>Qty</th><th>PO No</th><th></th></tr></thead><tbody>${rows}</tbody></table>`;}
 const DispatchApp={
   onDispatchPartySelect(){
     const party=(document.getElementById("dpParty")?.value||"").trim();
@@ -1478,7 +1482,7 @@ const DispatchApp={
     if(!pn){wrap.innerHTML=`<input class="inp" id="dpSelCarton" placeholder="Carton # (optional)" style="min-width:170px;margin-bottom:0">`;return;}
     const cartons=getAvailableCartonsForProduct(pn,""); // sab batches, auto-detect hoga
     if(!cartons.length){wrap.innerHTML=`<input class="inp" id="dpSelCarton" placeholder="Carton # (optional) — stock nahi mila" style="min-width:220px;margin-bottom:0">`;return;}
-    wrap.innerHTML=`<select class="inp" id="dpSelCarton" style="min-width:220px;margin-bottom:0" onchange="App.onDispatchCartonSelect()"><option value="">-- Carton (optional) --</option>${cartons.map(c=>`<option value="${esc(c.cartonNo)}" data-remaining="${esc(c.remaining)}" data-batch="${esc(c.batchNo)}">#${esc(c.cartonNo)} — Batch ${esc(c.batchNo)} — ${esc(c.remaining)} ${esc(c.qtyType)} left</option>`).join("")}</select>`;
+    wrap.innerHTML=`<select class="inp" id="dpSelCarton" style="min-width:220px;margin-bottom:0" onchange="App.onDispatchCartonSelect()"><option value="">-- Carton (optional) --</option>${cartons.map(c=>`<option value="${esc(c.cartonNo)}" data-remaining="${esc(c.remaining)}" data-batch="${esc(c.batchNo)}">#${esc(cartonLabel(c.cartonNo))} — Batch ${esc(c.batchNo)} — ${esc(c.remaining)} ${esc(c.qtyType)} left</option>`).join("")}</select>`;
     // Agar is product ke saare cartons ek hi batch mein hain, to Batch field khud bhar do
     const uniqueBatches=[...new Set(cartons.map(c=>c.batchNo).filter(Boolean))];
     const batchSel=document.getElementById("dpBatch");
@@ -4271,10 +4275,11 @@ const AuthApp={
   pickTab(k){App.closeTabMenu();App.switchTab(k);},
   switchTab(tab){if(state.activeTab&&state.activeTab!==tab){if(!temp.tabHistory)temp.tabHistory=[];temp.tabHistory.push(state.activeTab);if(temp.tabHistory.length>20)temp.tabHistory.shift();}state.activeTab=tab;temp.editPackingId=null;temp.editPOId=null;temp.editDispatchId=null;temp.editMtPoId=null;temp.editMtDispatchId=null;temp.editMtPackingId=null;temp.editUserId=null;temp.poItems=[];temp.dispatchItems=[];temp.mtPoItems=[];temp.mtDispatchItems=[];temp.mtPoAttach=null;temp.mtDispatchAttach=null;temp.plannerItems=[];temp.plannerResult=null;temp.editProgramId=null;temp.plannerRequiredDate="";temp.grnItems=[];temp.mtPlannerItems=[];temp.mtPlannerResult=null;temp.editMtProgramId=null;temp.mtPlannerRequiredDate="";temp.mtPlannerNote="";temp.plannerNote="";render();},
   goToPreviousTab(){if(!temp.tabHistory||!temp.tabHistory.length){return;}const prev=temp.tabHistory.pop();state.activeTab=prev;temp.editPackingId=null;temp.editPOId=null;temp.editDispatchId=null;temp.editMtPoId=null;temp.editMtDispatchId=null;temp.editMtPackingId=null;temp.editUserId=null;temp.poItems=[];temp.dispatchItems=[];temp.mtPoItems=[];temp.mtDispatchItems=[];temp.mtPoAttach=null;temp.mtDispatchAttach=null;render();},
-  clearAllEntries(){
+  async clearAllEntries(){
     if(state.currentUser.role!=="admin"){alert("Sirf admin hi entries clear kar sakta hai");return;}
-    if(!confirm("⚠️ Ye Packing, PO, MT PO aur MT Packing ki SAARI entries permanently delete kar dega (local + Google Sheet dono se). Kya aap sure hain?"))return;
+    if(!confirm("⚠️ FY "+FY.label+" ki Packing, PO, MT PO aur MT Packing ki SAARI entries permanently delete ho jayengi.\n\n(Dispatch, Invoice, Store aur Accounts ki entries nahi hatengi.)\n\nDelete se pehle ek backup apne aap download hoga. Kya aap sure hain?"))return;
     if(!confirm("Final confirmation: Ye action UNDO nahi ho sakta. Continue karein?"))return;
+    try{await App.downloadBackup();}catch(e){}
     state.packings.forEach(p=>Tombstone.add("packings",p.id));
     state.purchaseOrders.forEach(p=>Tombstone.add("pos",p.id));
     state.mtPos.forEach(p=>Tombstone.add("mt_pos",p.id));
@@ -4286,7 +4291,7 @@ const AuthApp={
     temp.editPackingId=null;temp.editPOId=null;temp.editMtPoId=null;temp.editMtDispatchId=null;temp.editMtPackingId=null;
     temp.poItems=[];temp.mtPoItems=[];temp.mtDispatchItems=[];
     render();
-    setTimeout(()=>alert("✅ Packing, PO, MT PO aur MT Packing ki saari entries fresh kar di gayi hain."),300);
+    setTimeout(()=>alert("✅ FY "+FY.label+" ki Packing, PO, MT PO aur MT Packing ki saari entries fresh kar di gayi hain. Backup file safe rakhna."),300);
   },
   async downloadBackup(){
     const backup=await buildFullBackup();
@@ -4682,7 +4687,7 @@ const Batch1App={
     if(!q){alert("Search ke liye kuch likho (PO no., carton no., challan no., party, product...)");return;}
     const has=(...v)=>v.some(x=>String(x==null?"":x).toLowerCase().includes(q));
     const res=[];
-    if(can("packing"))state.packings.forEach(p=>{if(has(p.cartonNo,p.productName,p.batchNo))res.push({type:"📦 Packing",tab:"packing",val:p.cartonNo,main:`Carton #${p.cartonNo} — ${p.productName}`,sub:`${fmtDate(p.date)} | Batch ${p.batchNo||"-"} | ${p.totalQty} ${p.qtyType}`});});
+    if(can("packing"))state.packings.forEach(p=>{if(has(p.cartonNo,p.productName,p.batchNo))res.push({type:"📦 Packing",tab:"packing",val:p.cartonNo,main:`Carton #${cartonLabel(p.cartonNo)} — ${p.productName}`,sub:`${fmtDate(p.date)} | Batch ${p.batchNo||"-"} | ${p.totalQty} ${p.qtyType}`});});
     if(can("dispatchRegister"))state.dispatches.forEach(d=>{if(has(d.challanNo,d.partyName,d.vehicleNo,d.poNo))res.push({type:"🚚 Dispatch",tab:"dispatchRegister",val:d.challanNo,main:`Challan #${d.challanNo} — ${d.partyName}`,sub:`${fmtDate(d.date)} | Vehicle ${d.vehicleNo||"-"}`});});
     if(can("po"))state.purchaseOrders.forEach(p=>{if(has(p.poNo,p.partyName))res.push({type:"📝 PO",tab:"po",val:p.poNo,main:`${p.poNo} — ${p.partyName}`,sub:`${fmtDate(p.date)} | ${(p.items||[]).length} items`});});
     if(can("mtPo"))state.mtPos.forEach(p=>{if(has(p.poNo,p.dc))res.push({type:"🏪 MT PO",tab:"mtPo",val:p.poNo,main:`${p.poNo} — ${p.dc}`,sub:`Delivery ${fmtDate(p.deliveryDate)} | Dispatch ${fmtDate(p.dispatchDate)}`});});
@@ -4897,7 +4902,7 @@ function stockAuditHtml(cartonQ,prodQ){
   const cq=String(cartonQ||"").trim(),pq=String(prodQ||"").trim().toLowerCase();
   if(!cq&&!pq)return`<div style="color:#999;text-align:center;padding:16px">Carton number ya product ka naam likho</div>`;
   const dispMap=buildDispMap();
-  const recs=state.packings.filter(p=>(!cq||String(p.cartonNo)===cq)&&(!pq||String(p.productName||"").toLowerCase().includes(pq)));
+  const recs=state.packings.filter(p=>(!cq||cartonMatch(p.cartonNo,cq))&&(!pq||String(p.productName||"").toLowerCase().includes(pq)));
   if(!recs.length)return`<div style="background:#ffebee;border:1px solid #ef9a9a;border-radius:8px;padding:12px;color:#c62828">⚠️ Packing records me ye carton / product nahi mila.</div>`;
   const keyCount={};state.packings.forEach(p=>{const k=p.cartonNo+"-"+p.productName;keyCount[k]=(keyCount[k]||0)+1;});
   const recRows=recs.map(p=>{
@@ -4905,7 +4910,7 @@ function stockAuditHtml(cartonQ,prodQ){
     const flags=[];
     if(keyCount[k]>1)flags.push("⚠️ Is carton+product ki "+keyCount[k]+" packing entries hain");
     if(disp>p.totalQty)flags.push("⚠️ Packed se zyada dispatch ("+disp+" > "+p.totalQty+")");
-    return`<tr><td><b>${esc(p.cartonNo)}</b></td><td>${esc(p.productName)}</td><td>${esc(p.batchNo)}</td><td>${esc(p.category)}</td><td>${esc(fmtDate(p.date))}</td><td style="text-align:right">${esc(p.totalQty)}</td><td style="text-align:right">${esc(disp)}</td><td style="text-align:right;font-weight:800;color:${rem>0?"#2e7d32":"#c62828"}">${esc(rem)}</td><td style="text-align:center">${rem>0?"✅":"—"}</td><td style="font-size:11px;color:#c62828">${flags.join("<br>")||"—"}</td></tr>`;
+    return`<tr><td><b>${esc(cartonLabel(p.cartonNo))}</b></td><td>${esc(p.productName)}</td><td>${esc(p.batchNo)}</td><td>${esc(p.category)}</td><td>${esc(fmtDate(p.date))}</td><td style="text-align:right">${esc(p.totalQty)}</td><td style="text-align:right">${esc(disp)}</td><td style="text-align:right;font-weight:800;color:${rem>0?"#2e7d32":"#c62828"}">${esc(rem)}</td><td style="text-align:center">${rem>0?"✅":"—"}</td><td style="font-size:11px;color:#c62828">${flags.join("<br>")||"—"}</td></tr>`;
   }).join("");
   const groups={};
   recs.forEach(p=>{groups[`${p.batchNo}||${p.productName}||${p.category}||${p.qtyType}`]=1;});
@@ -4924,7 +4929,7 @@ function stockAuditHtml(cartonQ,prodQ){
     if(!cartonSet.has(String(i.cartonNo)))return;
     if(pq&&!String(i.productName||"").toLowerCase().includes(pq)&&!cq)return;
     const found=state.packings.some(p=>String(p.cartonNo)===String(i.cartonNo)&&p.productName===i.productName);
-    lines.push(`<tr><td><b>${esc(d.challanNo)}</b></td><td>${esc(fmtDate(d.date))}</td><td>${esc(d.partyName)}</td><td>${esc(i.cartonNo)}</td><td>${esc(i.productName)}</td><td style="text-align:right">${esc(i.qty)}</td><td style="font-size:11px;color:#c62828">${found?"—":"⚠️ Is carton me ye product packed nahi mila"}</td></tr>`);
+    lines.push(`<tr><td><b>${esc(d.challanNo)}</b></td><td>${esc(fmtDate(d.date))}</td><td>${esc(d.partyName)}</td><td>${esc(cartonLabel(i.cartonNo))}</td><td>${esc(i.productName)}</td><td style="text-align:right">${esc(i.qty)}</td><td style="font-size:11px;color:#c62828">${found?"—":"⚠️ Is carton me ye product packed nahi mila"}</td></tr>`);
   }));
   return`<h4 style="margin:0 0 6px 0;color:#1a237e">📦 Packing records</h4><div style="overflow-x:auto"><table class="tbl"><thead><tr style="background:#37474f;color:#fff"><th>Carton</th><th>Product</th><th>Batch</th><th>Category</th><th>Date</th><th style="text-align:right">Packed</th><th style="text-align:right">Dispatched</th><th style="text-align:right">Bacha</th><th>Dispatch list</th><th>Dikkat</th></tr></thead><tbody>${recRows}</tbody></table></div>
   <h4 style="margin:16px 0 6px 0;color:#1a237e">📊 Stock Summary me ye product-batch kaise ginta hai</h4><div style="overflow-x:auto"><table class="tbl"><thead><tr style="background:#37474f;color:#fff"><th>Product</th><th>Batch</th><th style="text-align:right">Total Packed</th><th style="text-align:right">Total Dispatched</th><th style="text-align:right">Asli Bacha (carton-wise)</th><th>Stock Summary</th></tr></thead><tbody>${grpRows}</tbody></table></div>
@@ -5101,27 +5106,32 @@ function accEnsureParty(name,kind){
 }
 // side: "recv" (lene wale: sale bill − receipt) | "pay" (dene wale: purchase bill − payment)
 // Paisa pehle opening ko, phir sabse purane bill ko cutta hai (FIFO).
-function accCompute(side,asOf,cut){
+function accCompute(side,asOf,cut,excl){
   const kind=side==="recv"?"sale":"purchase",pk=side==="recv"?"receipt":"payment";
   const m={};
   const mk=(n,p)=>({party:p||null,name:n,state:(p&&p.state)||"",opening:0,billed:0,paid:0,bills:[],pays:[]});
   (state.parties||[]).forEach(p=>{m[p.name]=mk(p.name,p);if(p.openSide===side)m[p.name].opening=r2(p.openAmt);});
   const ens=n=>m[n]||(m[n]=mk(n,null));
   (state.accBills||[]).filter(b=>!b.void&&b.kind===kind&&(!cut||b.date<=asOf)).forEach(b=>{const o=ens(b.partyName);o.billed=r2(o.billed+Number(b.total||0));o.bills.push(b);});
-  (state.accReceipts||[]).filter(r=>!r.void&&r.kind===pk&&(!cut||r.date<=asOf)).forEach(r=>{const o=ens(r.partyName);o.paid=r2(o.paid+Number(r.amount||0));o.pays.push(r);});
+  (state.accReceipts||[]).filter(r=>!r.void&&r.kind===pk&&(!cut||r.date<=asOf)&&String(r.id)!==String(excl)).forEach(r=>{const o=ens(r.partyName);o.paid=r2(o.paid+Number(r.amount||0));o.pays.push(r);});
   return Object.values(m).filter(o=>o.opening||o.billed||o.paid).map(o=>{
     o.outstanding=r2(o.opening+o.billed-o.paid);
-    let rem=o.paid;const used=Math.min(rem,o.opening);
-    const openLeft=r2(o.opening-used);rem=r2(rem-used);
+    // khaas bill se jodi hui rakam pehle us bill me, baaki paisa opening phir sabse purane bill me (FIFO)
+    const ids=new Set(o.bills.map(b=>String(b.id))),spec={};
+    o.pays.forEach(r=>(r.alloc||[]).forEach(a=>{const k=String(a.billId);if(ids.has(k))spec[k]=r2((spec[k]||0)+Number(a.amount||0));}));
+    let free=o.paid;
+    o.bills.forEach(b=>{const k=String(b.id),sp=Math.min(spec[k]||0,Number(b.total||0));spec[k]=sp;free=r2(free-sp);});
+    if(free<0)free=0;
+    const used=Math.min(free,o.opening),openLeft=r2(o.opening-used);let rem=r2(free-used);
     o.age={open:openLeft,b0:0,b30:0,b60:0,b90:0};o.overdue=0;o.billRows=[];
     o.bills.slice().sort((a,b)=>String(a.date).localeCompare(String(b.date))||String(a.billNo).localeCompare(String(b.billNo))).forEach(b=>{
-      const tot=Number(b.total||0),take=Math.min(rem,tot);rem=r2(rem-take);
-      const bal=r2(tot-take),days=accDays(b.date,asOf),od=accDays(b.dueDate||b.date,asOf);
+      const tot=Number(b.total||0),sp=spec[String(b.id)]||0,need=r2(tot-sp),take=Math.min(rem,need);rem=r2(rem-take);
+      const bal=r2(need-take),days=accDays(b.date,asOf),od=accDays(b.dueDate||b.date,asOf);
       if(bal>0){
         if(days<=30)o.age.b0=r2(o.age.b0+bal);else if(days<=60)o.age.b30=r2(o.age.b30+bal);else if(days<=90)o.age.b60=r2(o.age.b60+bal);else o.age.b90=r2(o.age.b90+bal);
         if(od>0)o.overdue=r2(o.overdue+bal);
       }
-      o.billRows.push({bill:b,applied:take,balance:bal,days,overdueDays:Math.max(0,od)});
+      o.billRows.push({bill:b,applied:r2(sp+take),balance:bal,days,overdueDays:Math.max(0,od)});
     });
     o.advance=rem>0?rem:0;
     return o;
@@ -5172,6 +5182,16 @@ function renderAccPartyTab(){
 }
 
 // ── BILLS ──
+function accPendingGrns(){
+  const used=new Set();(state.accBills||[]).filter(b=>!b.void).forEach(b=>(b.grnIds||[]).forEach(id=>used.add(String(id))));
+  return(state.grns||[]).filter(g=>g.kind==="purchase"&&!used.has(String(g.id))).sort((a,b)=>String(b.date).localeCompare(String(a.date)));
+}
+function accGrnPanelHtml(){
+  const list=accPendingGrns().slice(0,60);window.__grnPend=list.map(g=>g.id);
+  if(!list.length)return`<div style="font-size:12px;color:#777;margin-bottom:10px">📥 GRN se Purchase Bill: abhi koi GRN baki nahi hai (sabke bill ban chuke hain).</div>`;
+  return`<details style="margin-bottom:12px"${temp.grnOpen?" open":""} ontoggle="App.grnToggle(this.open)"><summary style="cursor:pointer;font-weight:700;color:#1a237e">📥 GRN se Purchase Bill — ${list.length} GRN ka bill baki</summary><div style="max-height:260px;overflow:auto;border:1px solid #e0e0e0;border-radius:6px;margin-top:6px;background:#fff"><table class="tbl" style="margin:0"><thead><tr style="background:#37474f;color:#fff"><th></th><th>Date</th><th>GRN No</th><th>Supplier</th><th>Items</th><th></th></tr></thead><tbody>${list.map((g,i)=>`<tr><td><input type="checkbox" id="grnSel_${i}"></td><td>${esc(fmtDate(g.date))}</td><td><b>${esc(g.grnNo)}</b></td><td>${esc(g.supplier||"—")}</td><td style="font-size:11px">${esc((g.items||[]).map(x=>x.name+" ×"+x.qty).join(", "))}</td><td><button class="btn btn-sm btn-primary" onclick="App.abFromGrn([${i}])">🧾 Bill banao</button></td></tr>`).join("")}</tbody></table></div><div style="margin-top:6px"><button class="btn btn-sm btn-secondary" onclick="App.abFromGrnSelected()">Selected GRN se ek bill</button> <span style="font-size:11px;color:#777">(ek supplier ke kai GRN ka ek hi bill ho to)</span></div></details>`;
+}
+
 function accBillsListHtml(){
   const bm=accBillMap();let rows=(state.accBills||[]).filter(b=>temp.abVoid||!b.void);
   if(temp.abKind)rows=rows.filter(b=>b.kind===temp.abKind);
@@ -5194,20 +5214,22 @@ function renderAccBillsTab(){
   const ro=isRO();
   const e=temp.abEdit?(state.accBills||[]).find(b=>String(b.id)===String(temp.abEdit)):null;
   const v=k=>e?esc(e[k]==null?"":e[k]):"";
-  const kind=e?e.kind:"sale";
+  const kind=e?e.kind:(temp.abPre?temp.abPre.kind:"sale");
+  const vv=k=>e?esc(e[k]==null?"":e[k]):(temp.abPre?esc(temp.abPre[k]==null?"":temp.abPre[k]):"");
   return`<div class="card"><div class="card-title">🧾 Bills — Sale / Purchase</div><div class="card-body">${accTrialBanner()}
-  ${ro?"":`<div style="background:#f5f7ff;border:1px solid #c5cae9;border-radius:8px;padding:12px 14px;margin-bottom:14px"><div style="font-weight:700;color:#1a237e;margin-bottom:8px">${e?"✏️ Bill edit: "+esc(e.billNo):"➕ Naya Bill"}</div>
+  ${ro?"":`<div style="background:#f5f7ff;border:1px solid #c5cae9;border-radius:8px;padding:12px 14px;margin-bottom:14px"><div style="font-weight:700;color:#1a237e;margin-bottom:8px">${e?"✏️ Bill edit: "+esc(e.billNo):(temp.abPre?"➕ Naya Purchase Bill (GRN se) — supplier ka Bill No. aur amount daalo":"➕ Naya Bill")}</div>
+  ${e?"":accGrnPanelHtml()}
   <div style="display:grid;grid-template-columns:repeat(auto-fit,minmax(160px,1fr));gap:10px">
     <div><label class="lbl">Bill Type</label><select class="inp" id="abKind"><option value="sale" ${kind==="sale"?"selected":""}>Sale (lene wale)</option><option value="purchase" ${kind==="purchase"?"selected":""}>Purchase (dene wale)</option></select></div>
-    <div><label class="lbl">Date *</label><input class="inp" type="date" id="abDate" value="${e?esc(e.date):todayStr()}"></div>
+    <div><label class="lbl">Date *</label><input class="inp" type="date" id="abDate" value="${e?esc(e.date):(temp.abPre&&temp.abPre.date?esc(temp.abPre.date):todayStr())}"></div>
     <div><label class="lbl">Bill No *</label><input class="inp" id="abNo" value="${v("billNo")}"></div>
-    <div><label class="lbl">Party * (list se chuno / likho)</label><input class="inp" id="abParty" list="abPartyList" value="${v("partyName")}"><datalist id="abPartyList">${(state.parties||[]).map(p=>`<option value="${esc(p.name)}">`).join("")}</datalist></div>
+    <div><label class="lbl">Party * (list se chuno / likho)</label><input class="inp" id="abParty" list="abPartyList" value="${vv("partyName")}"><datalist id="abPartyList">${(state.parties||[]).map(p=>`<option value="${esc(p.name)}">`).join("")}</datalist></div>
     <div><label class="lbl">Taxable Amount (₹)</label><input class="inp" type="number" step="0.01" min="0" id="abTaxable" value="${e?esc(e.taxable):""}" oninput="App.abCalc()"></div>
     <div><label class="lbl">GST %</label><select class="inp" id="abGst" onchange="App.abCalc()">${[0,5,12,18,28].map(g=>`<option value="${g}" ${e&&Number(e.gstPct)===g?"selected":(!e&&g===18?"selected":"")}>${g}%</option>`).join("")}</select></div>
     <div><label class="lbl">Total * (auto, badal sakte ho)</label><input class="inp" type="number" step="0.01" min="0" id="abTotal" value="${e?esc(e.total):""}"></div>
     <div><label class="lbl">Due Date (khali = credit days se)</label><input class="inp" type="date" id="abDue" value="${e?esc(e.dueDate||""):""}"></div>
-    <div><label class="lbl">Challan No(s)</label><input class="inp" id="abChallan" value="${v("challanNo")}"></div>
-    <div><label class="lbl">Remark</label><input class="inp" id="abRemark" value="${v("remark")}"></div>
+    <div><label class="lbl">Challan No(s)</label><input class="inp" id="abChallan" value="${vv("challanNo")}"></div>
+    <div><label class="lbl">Remark</label><input class="inp" id="abRemark" value="${vv("remark")}"></div>
   </div>
   <div style="margin-top:10px;display:flex;gap:8px"><button class="btn btn-primary" onclick="App.abSave()">${e?"💾 Update Bill":"💾 Save Bill"}</button>${e?`<button class="btn btn-secondary" onclick="App.abCancel()">✖ Cancel</button>`:""}</div></div>`}
   <div style="display:flex;gap:10px;flex-wrap:wrap;align-items:flex-end;margin-bottom:10px">
@@ -5222,6 +5244,21 @@ function renderAccBillsTab(){
 }
 
 // ── RECEIPT / PAYMENT ──
+function accOpenBills(partyName,side,exclId){
+  const o=accCompute(side,todayStr(),false,exclId).find(x=>x.name===partyName);
+  return o?o.billRows.filter(r=>r.balance>0).map(r=>({id:r.bill.id,billNo:r.bill.billNo,date:r.bill.date,balance:r.balance})):[];
+}
+function accAllocHtml(partyName,kind,exclId,existing){
+  window.__payBills=[];window.__payBillsParty="";
+  const p=accFindParty(partyName);
+  if(!p)return`<div style="font-size:11px;color:#888">Party chuno — uske baki bills yahan dikhenge, taaki paisa kisi khaas bill se jod sako. Khali chhodo to paisa sabse purane bill se kat'ta hai.</div>`;
+  const side=kind==="payment"?"pay":"recv",bills=accOpenBills(p.name,side,exclId);
+  window.__payBills=bills;window.__payBillsParty=p.name;
+  if(!bills.length)return`<div style="font-size:11px;color:#888">Is party ka koi baki bill nahi hai — paisa advance (on-account) maana jayega.</div>`;
+  const ex={};(existing||[]).forEach(a=>{ex[String(a.billId)]=a.amount;});
+  return`<div style="font-weight:600;font-size:12px;color:#1a237e;margin-bottom:4px">🔗 Kisi khaas bill se jodo (optional)</div><div style="max-height:220px;overflow:auto;border:1px solid #c5cae9;border-radius:6px;background:#fff"><table class="tbl" style="margin:0"><thead><tr style="background:#e8eaf6"><th>Bill No</th><th>Date</th><th style="text-align:right">Baki</th><th style="text-align:right">Is entry se (₹)</th></tr></thead><tbody>${bills.map(b=>`<tr><td><b>${esc(b.billNo)}</b></td><td>${esc(fmtDate(b.date))}</td><td style="text-align:right">${inr(b.balance)}</td><td style="text-align:right"><input class="inp" type="number" step="0.01" min="0" max="${b.balance}" id="pal_${b.id}" value="${ex[String(b.id)]!=null?esc(ex[String(b.id)]):""}" style="width:110px;margin:0" oninput="App.payAllocSum()"></td></tr>`).join("")}</tbody></table></div><div style="display:flex;gap:10px;align-items:center;margin-top:6px;flex-wrap:wrap"><button class="btn btn-sm btn-secondary" onclick="App.payAllocFifo()">Sabse purane se bharo</button><button class="btn btn-sm btn-secondary" onclick="App.payAllocClear()">Clear</button><span id="payAllocSum" style="font-size:12px;color:#555"></span></div>`;
+}
+
 function accPayListHtml(){
   let rows=(state.accReceipts||[]).filter(r=>temp.apyVoid||!r.void);
   if(temp.apyKind)rows=rows.filter(r=>r.kind===temp.apyKind);
@@ -5230,7 +5267,7 @@ function accPayListHtml(){
   rows=rows.slice().sort((a,b)=>String(b.date).localeCompare(String(a.date)));
   const live=rows.filter(r=>!r.void),sum=k=>r2(live.filter(r=>r.kind===k).reduce((s,r)=>s+Number(r.amount||0),0));
   const ro=isRO(),shown=rows.slice(0,300);
-  return`<div style="font-size:12px;color:#444;margin-bottom:6px">${rows.length} entries${rows.length>300?" (pehle 300)":""} | <b>Receipt (mila):</b> ${inr(sum("receipt"))} | <b>Payment (diya):</b> ${inr(sum("payment"))}</div><div style="max-height:520px;overflow:auto;border:1px solid #e0e0e0;border-radius:6px"><table class="tbl" style="margin:0"><thead><tr style="background:#1a237e;color:#fff;position:sticky;top:0;z-index:5"><th>Date</th><th>Type</th><th>Party</th><th style="text-align:right">Amount</th><th>Mode</th><th>Ref No</th><th>Remark</th><th></th></tr></thead><tbody>${shown.map(r=>`<tr style="${r.void?"opacity:.55;text-decoration:line-through":""}"><td>${esc(fmtDate(r.date))}</td><td><span class="badge" style="background:${r.kind==="receipt"?"#2e7d32":"#e65100"}">${r.kind==="receipt"?"RECEIPT":"PAYMENT"}</span></td><td>${esc(r.partyName)}</td><td style="text-align:right;font-weight:700">${inr(r.amount)}</td><td>${esc(r.mode)}</td><td>${esc(r.refNo)||"—"}</td><td style="font-size:12px">${esc(r.remark)||"—"}</td><td style="white-space:nowrap">${ro?"":(r.void?`<button class="btn btn-sm btn-success" onclick="App.payRestore(${r.id})">↩</button>`:`<button class="btn btn-sm" style="background:#1565c0;color:#fff" onclick="App.payEdit(${r.id})">✏️</button> <button class="btn btn-sm btn-danger" onclick="App.payVoid(${r.id})">🗑️</button>`)}</td></tr>`).join("")||`<tr><td colspan="8" style="text-align:center;color:#999;padding:20px">Koi entry nahi mili</td></tr>`}</tbody></table></div>`;
+  return`<div style="font-size:12px;color:#444;margin-bottom:6px">${rows.length} entries${rows.length>300?" (pehle 300)":""} | <b>Receipt (mila):</b> ${inr(sum("receipt"))} | <b>Payment (diya):</b> ${inr(sum("payment"))}</div><div style="max-height:520px;overflow:auto;border:1px solid #e0e0e0;border-radius:6px"><table class="tbl" style="margin:0"><thead><tr style="background:#1a237e;color:#fff;position:sticky;top:0;z-index:5"><th>Date</th><th>Type</th><th>Party</th><th style="text-align:right">Amount</th><th>Mode</th><th>Ref No</th><th>Remark</th><th></th></tr></thead><tbody>${shown.map(r=>`<tr style="${r.void?"opacity:.55;text-decoration:line-through":""}"><td>${esc(fmtDate(r.date))}</td><td><span class="badge" style="background:${r.kind==="receipt"?"#2e7d32":"#e65100"}">${r.kind==="receipt"?"RECEIPT":"PAYMENT"}</span></td><td>${esc(r.partyName)}</td><td style="text-align:right;font-weight:700">${inr(r.amount)}</td><td>${esc(r.mode)}</td><td>${esc(r.refNo)||"—"}</td><td style="font-size:12px">${esc(r.remark)||"—"}${(r.alloc&&r.alloc.length)?`<div style="font-size:11px;color:#1a237e">🔗 Bill: ${r.alloc.map(a=>esc(a.billNo)+" ("+inr(a.amount)+")").join(", ")}</div>`:""}</td><td style="white-space:nowrap">${ro?"":(r.cnId?`<span style="font-size:10px;color:#6a1b9a">↩️ Credit Note se</span>`:r.void?`<button class="btn btn-sm btn-success" onclick="App.payRestore(${r.id})">↩</button>`:`<button class="btn btn-sm" style="background:#1565c0;color:#fff" onclick="App.payEdit(${r.id})">✏️</button> <button class="btn btn-sm btn-danger" onclick="App.payVoid(${r.id})">🗑️</button>`)}</td></tr>`).join("")||`<tr><td colspan="8" style="text-align:center;color:#999;padding:20px">Koi entry nahi mili</td></tr>`}</tbody></table></div>`;
 }
 function renderAccPayTab(){
   if(!canAcc())return accDenied();
@@ -5239,20 +5276,22 @@ function renderAccPayTab(){
   const v=k=>e?esc(e[k]==null?"":e[k]):"";
   const kind=e?e.kind:"receipt";
   const msg=temp.payMsg;temp.payMsg=null;
+  if(e)setTimeout(()=>App.payAllocSum(),0);
   return`<div class="card"><div class="card-title">💵 Receipt / Payment</div><div class="card-body">${accTrialBanner()}
   ${msg?`<div style="background:#e8f5e9;border:1px solid #2e7d32;border-radius:8px;padding:8px 12px;font-size:13px;color:#1b5e20;margin-bottom:12px">${msg}</div>`:""}
   ${ro?"":`<div style="background:#f5f7ff;border:1px solid #c5cae9;border-radius:8px;padding:12px 14px;margin-bottom:14px"><div style="font-weight:700;color:#1a237e;margin-bottom:8px">${e?"✏️ Entry edit":"➕ Nayi Entry"}</div>
   <div style="display:grid;grid-template-columns:repeat(auto-fit,minmax(160px,1fr));gap:10px">
-    <div><label class="lbl">Type</label><select class="inp" id="payKind"><option value="receipt" ${kind==="receipt"?"selected":""}>Receipt (party se mila)</option><option value="payment" ${kind==="payment"?"selected":""}>Payment (party ko diya)</option></select></div>
+    <div><label class="lbl">Type</label><select class="inp" id="payKind" onchange="App.payPickParty()"><option value="receipt" ${kind==="receipt"?"selected":""}>Receipt (party se mila)</option><option value="payment" ${kind==="payment"?"selected":""}>Payment (party ko diya)</option></select></div>
     <div><label class="lbl">Date *</label><input class="inp" type="date" id="payDate" value="${e?esc(e.date):todayStr()}"></div>
-    <div><label class="lbl">Party * (list se chuno / likho)</label><input class="inp" id="payParty" list="payPartyList" value="${v("partyName")}"><datalist id="payPartyList">${(state.parties||[]).map(p=>`<option value="${esc(p.name)}">`).join("")}</datalist></div>
-    <div><label class="lbl">Amount (₹) *</label><input class="inp" type="number" step="0.01" min="0" id="payAmt" value="${e?esc(e.amount):""}"></div>
+    <div><label class="lbl">Party * (list se chuno / likho)</label><input class="inp" id="payParty" list="payPartyList" value="${v("partyName")}" onchange="App.payPickParty()"><datalist id="payPartyList">${(state.parties||[]).map(p=>`<option value="${esc(p.name)}">`).join("")}</datalist></div>
+    <div><label class="lbl">Amount (₹) *</label><input class="inp" type="number" step="0.01" min="0" id="payAmt" value="${e?esc(e.amount):""}" oninput="App.payAllocSum()"></div>
     <div><label class="lbl">Mode</label><select class="inp" id="payMode">${["Bank","Cash","UPI","Cheque","Other"].map(m=>`<option ${e&&e.mode===m?"selected":""}>${m}</option>`).join("")}</select></div>
     <div><label class="lbl">Ref / Cheque / UTR No</label><input class="inp" id="payRef" value="${v("refNo")}"></div>
     <div><label class="lbl">Remark</label><input class="inp" id="payRemark" value="${v("remark")}"></div>
   </div>
+  <div id="payAlloc" style="margin-top:10px;background:#fff;border:1px dashed #c5cae9;border-radius:8px;padding:8px 10px">${accAllocHtml(e?e.partyName:"",kind,e?e.id:null,e?e.alloc:null)}</div>
   <div style="margin-top:10px;display:flex;gap:8px"><button class="btn btn-primary" onclick="App.paySave()">${e?"💾 Update":"💾 Save"}</button>${e?`<button class="btn btn-secondary" onclick="App.payCancel()">✖ Cancel</button>`:""}</div>
-  <div style="font-size:11px;color:#777;margin-top:6px">Paisa party ke sabse purane bill me apne aap (FIFO) adjust hota hai. Alag bill chun ke adjust karne ka option trial me nahi hai.</div></div>`}
+  <div style="font-size:11px;color:#777;margin-top:6px">Jo rakam kisi bill se nahi jodi, wo party ke sabse purane bill me apne aap (FIFO) adjust hoti hai.</div></div>`}
   <div style="display:flex;gap:10px;flex-wrap:wrap;align-items:flex-end;margin-bottom:10px">
     <div><label class="lbl">Type</label><select class="inp" style="width:140px;margin-bottom:0" onchange="App.payFilter('apyKind',this.value)"><option value="">Sab</option><option value="receipt" ${temp.apyKind==="receipt"?"selected":""}>Receipt</option><option value="payment" ${temp.apyKind==="payment"?"selected":""}>Payment</option></select></div>
     <div><label class="lbl">Search</label><input class="inp" id="paySearchInp" style="width:200px;margin-bottom:0" value="${esc(temp.apyQ||"")}" placeholder="Party / ref / remark" oninput="App.payFilter('apyQ',this.value)"></div>
@@ -5264,10 +5303,18 @@ function renderAccPayTab(){
 }
 
 // ── ACCOUNTS REPORT (Party Ledger / Ageing / State-wise / Date-wise) ──
+function copyText(t){try{if(navigator.clipboard&&navigator.clipboard.writeText){navigator.clipboard.writeText(t);return;}}catch(e){}const ta=document.createElement("textarea");ta.value=t;ta.style.position="fixed";ta.style.opacity="0";document.body.appendChild(ta);ta.select();try{document.execCommand("copy");}catch(e){}ta.remove();}
+function accReminderText(o){
+  const co=getCompany(),MON=["Jan","Feb","Mar","Apr","May","Jun","Jul","Aug","Sep","Oct","Nov","Dec"];
+  const dt=x=>{const p=String(x||"").split("-");return p.length===3?parseInt(p[2],10)+"-"+MON[parseInt(p[1],10)-1]+"-"+p[0].slice(2):String(x||"");};
+  const od=o.billRows.filter(r=>r.balance>0&&r.overdueDays>0);
+  return"Namaste "+o.name+" ji,\n\n"+co.name+" ki taraf se yaad dilana hai ki aapka "+inr(o.outstanding)+" baki hai, jisme "+inr(o.overdue)+" ki payment ki date nikal chuki hai:\n"+od.map(r=>"• Bill "+r.bill.billNo+" ("+dt(r.bill.date)+"): "+inr(r.balance)+" — "+r.overdueDays+" din se overdue").join("\n")+"\n\nKripya jald payment kar dein.\nBank: "+co.bankName+", A/c No. "+co.bankAcNo+", "+co.bankBranch+"\n\nDhanyawad.\n"+co.name+" | "+co.contact;
+}
+
 function arEvents(side){
   const kind=side==="recv"?"sale":"purchase",pk=side==="recv"?"receipt":"payment",ev=[];
   (state.accBills||[]).filter(b=>!b.void&&b.kind===kind).forEach(b=>ev.push({date:b.date,party:b.partyName,type:"bill",ref:b.billNo,amt:Number(b.total||0)}));
-  (state.accReceipts||[]).filter(r=>!r.void&&r.kind===pk).forEach(r=>ev.push({date:r.date,party:r.partyName,type:"pay",ref:(r.mode||"")+(r.refNo?" #"+r.refNo:""),amt:Number(r.amount||0)}));
+  (state.accReceipts||[]).filter(r=>!r.void&&r.kind===pk).forEach(r=>ev.push({date:r.date,party:r.partyName,type:"pay",ref:(r.mode||"")+(r.refNo?" #"+r.refNo:"")+(r.alloc&&r.alloc.length?" → Bill "+r.alloc.map(a=>a.billNo).join(", "):""),amt:Number(r.amount||0)}));
   return ev;
 }
 function arPartyState(n){const p=accFindParty(n);return(p&&p.state)||"";}
@@ -5306,7 +5353,7 @@ function renderAccOutTab(){
     window.__arNames=list.map(o=>o.name);
     const T=list.reduce((t,o)=>{t.out+=o.outstanding;t.od+=o.overdue;t.open+=o.age.open;t.b0+=o.age.b0;t.b30+=o.age.b30;t.b60+=o.age.b60;t.b90+=o.age.b90;return t;},{out:0,od:0,open:0,b0:0,b30:0,b60:0,b90:0});
     temp.__arExp={h:["Party","State","Outstanding","Overdue","Opening","0-30","31-60","61-90","90+"],r:list.map(o=>[o.name,o.state,o.outstanding,o.overdue,o.age.open,o.age.b0,o.age.b30,o.age.b60,o.age.b90]),f:"ageing_"+side+"_"+asOf+".csv"};
-    body=`<div style="font-size:12px;color:#666;margin-bottom:6px">⏳ Ageing as on <b>${esc(fmtDate(asOf))}</b> (bill date se din) — party par click karo to ledger khulega</div><div style="max-height:520px;overflow:auto;border:1px solid #e0e0e0;border-radius:6px"><table class="tbl" style="margin:0"><thead><tr style="background:#1a237e;color:#fff;position:sticky;top:0;z-index:5"><th>Party</th><th>State</th><th style="text-align:right">Outstanding</th><th style="text-align:right">Overdue</th><th style="text-align:right">Opening</th><th style="text-align:right">0–30</th><th style="text-align:right">31–60</th><th style="text-align:right">61–90</th><th style="text-align:right">90+</th></tr></thead><tbody>${list.map((o,i)=>`<tr style="cursor:pointer" onclick="App.arOpenLedger(${i})"><td><b>${esc(o.name)}</b></td><td>${esc(o.state)||"—"}</td><td style="text-align:right;font-weight:800;color:${o.outstanding>0?"#1a237e":"#2e7d32"}">${o.outstanding>0?inr(o.outstanding):"Advance "+inr(-o.outstanding)}</td><td style="text-align:right;color:#c62828">${o.overdue?inr(o.overdue):"—"}</td><td style="text-align:right">${o.age.open?inr(o.age.open):"—"}</td><td style="text-align:right">${o.age.b0?inr(o.age.b0):"—"}</td><td style="text-align:right">${o.age.b30?inr(o.age.b30):"—"}</td><td style="text-align:right">${o.age.b60?inr(o.age.b60):"—"}</td><td style="text-align:right;color:#c62828">${o.age.b90?inr(o.age.b90):"—"}</td></tr>`).join("")||`<tr><td colspan="9" style="text-align:center;color:#999;padding:20px">Koi outstanding nahi mila</td></tr>`}</tbody>${list.length?`<tfoot><tr style="background:#eceff1;font-weight:800"><td colspan="2">Total (${list.length} parties)</td><td style="text-align:right">${inr(T.out)}</td><td style="text-align:right">${inr(T.od)}</td><td style="text-align:right">${inr(T.open)}</td><td style="text-align:right">${inr(T.b0)}</td><td style="text-align:right">${inr(T.b30)}</td><td style="text-align:right">${inr(T.b60)}</td><td style="text-align:right">${inr(T.b90)}</td></tr></tfoot>`:""}</table></div>`;
+    body=`<div style="font-size:12px;color:#666;margin-bottom:6px">⏳ Ageing as on <b>${esc(fmtDate(asOf))}</b> (bill date se din) — party par click karo to ledger khulega</div><div style="max-height:520px;overflow:auto;border:1px solid #e0e0e0;border-radius:6px"><table class="tbl" style="margin:0"><thead><tr style="background:#1a237e;color:#fff;position:sticky;top:0;z-index:5"><th>Party</th><th>State</th><th style="text-align:right">Outstanding</th><th style="text-align:right">Overdue</th><th style="text-align:right">Opening</th><th style="text-align:right">0–30</th><th style="text-align:right">31–60</th><th style="text-align:right">61–90</th><th style="text-align:right">90+</th>${side==="recv"?"<th>Yaad dilao</th>":""}</tr></thead><tbody>${list.map((o,i)=>`<tr style="cursor:pointer" onclick="App.arOpenLedger(${i})"><td><b>${esc(o.name)}</b></td><td>${esc(o.state)||"—"}</td><td style="text-align:right;font-weight:800;color:${o.outstanding>0?"#1a237e":"#2e7d32"}">${o.outstanding>0?inr(o.outstanding):"Advance "+inr(-o.outstanding)}</td><td style="text-align:right;color:#c62828">${o.overdue?inr(o.overdue):"—"}</td><td style="text-align:right">${o.age.open?inr(o.age.open):"—"}</td><td style="text-align:right">${o.age.b0?inr(o.age.b0):"—"}</td><td style="text-align:right">${o.age.b30?inr(o.age.b30):"—"}</td><td style="text-align:right">${o.age.b60?inr(o.age.b60):"—"}</td><td style="text-align:right;color:#c62828">${o.age.b90?inr(o.age.b90):"—"}</td>${side==="recv"?`<td style="white-space:nowrap">${o.overdue>0?`<button class="btn btn-sm btn-success" onclick="event.stopPropagation();App.arRemind(${i},'wa')">📲 WhatsApp</button> <button class="btn btn-sm btn-secondary" onclick="event.stopPropagation();App.arRemind(${i},'copy')">📋</button>`:"—"}</td>`:""}</tr>`).join("")||`<tr><td colspan="10" style="text-align:center;color:#999;padding:20px">Koi outstanding nahi mila</td></tr>`}</tbody>${list.length?`<tfoot><tr style="background:#eceff1;font-weight:800"><td colspan="2">Total (${list.length} parties)</td><td style="text-align:right">${inr(T.out)}</td><td style="text-align:right">${inr(T.od)}</td><td style="text-align:right">${inr(T.open)}</td><td style="text-align:right">${inr(T.b0)}</td><td style="text-align:right">${inr(T.b30)}</td><td style="text-align:right">${inr(T.b60)}</td><td style="text-align:right">${inr(T.b90)}</td>${side==="recv"?"<td></td>":""}</tr></tfoot>`:""}</table></div>`;
   }else if(view==="state"){
     const list=accCompute(side,asOf,true),inR=e=>(!from||e.date>=from)&&(!to||e.date<=to),g={};
     const ens=k=>g[k]||(g[k]={state:k,parties:0,billed:0,received:0,outstanding:0,overdue:0});
@@ -5388,7 +5435,19 @@ const AccApp={
   abCalc(){const t=Number((document.getElementById("abTaxable")||{}).value)||0,gp=Number((document.getElementById("abGst")||{}).value)||0,el=document.getElementById("abTotal");if(el&&t)el.value=r2(t*(1+gp/100));},
   abFilter(k,v){temp[k]=v;const el=document.getElementById("abList");if(el)el.innerHTML=accBillsListHtml();},
   abEdit(id){const _b=state.accBills.find(x=>String(x.id)===String(id));if(_b&&_b.invId){alert("Ye bill Invoice se bana hai — badalne ke liye Invoice tab use karo");return;}temp.abEdit=id;renderTabContent();window.scrollTo({top:0,behavior:"smooth"});},
-  abCancel(){temp.abEdit=null;renderTabContent();},
+  abCancel(){temp.abEdit=null;temp.abPre=null;renderTabContent();},
+  grnToggle(o){temp.grnOpen=o;},
+  abFromGrn(idxs){
+    const ids=window.__grnPend||[],gs=idxs.map(i=>(state.grns||[]).find(g=>String(g.id)===String(ids[i]))).filter(Boolean);
+    if(!gs.length)return;
+    gs.sort((a,b)=>String(a.date).localeCompare(String(b.date))||String(a.grnNo).localeCompare(String(b.grnNo)));
+    const sup=gs[0].supplier||"";
+    if(gs.some(g=>(g.supplier||"")!==sup)){alert("Ek bill me sirf ek hi supplier ke GRN jod sakte ho");return;}
+    const items=[];gs.forEach(g=>(g.items||[]).forEach(x=>items.push(x.name+" ×"+x.qty)));
+    temp.abEdit=null;temp.abPre={kind:"purchase",date:gs.map(g=>g.date).sort().slice(-1)[0],partyName:sup,challanNo:gs.map(g=>g.grnNo).join(", "),remark:"GRN: "+items.join(", "),grnIds:gs.map(g=>g.id)};
+    temp.grnOpen=false;renderTabContent();window.scrollTo({top:0,behavior:"smooth"});
+  },
+  abFromGrnSelected(){const idx=[];(window.__grnPend||[]).forEach((id,i)=>{const e=document.getElementById("grnSel_"+i);if(e&&e.checked)idx.push(i);});if(!idx.length){alert("Pehle GRN select karo");return;}App.abFromGrn(idx);},
   abSave(){
     if(isRO()||!canAcc())return;
     const g=id=>(document.getElementById(id)||{}).value||"";
@@ -5402,9 +5461,10 @@ const AccApp={
     if(dup&&!confirm("Is party ka ye bill no pehle se hai. Phir bhi save karna hai?"))return;
     const taxable=taxableIn||total;
     const rec={kind,date,billNo,partyName:party.name,taxable,gstPct,gstAmt:r2(total-taxable),total,dueDate:g("abDue")||accAddDays(date,party.creditDays),challanNo:g("abChallan").trim(),remark:g("abRemark").trim()};
+    if(!editing&&temp.abPre&&temp.abPre.grnIds)rec.grnIds=temp.abPre.grnIds;
     if(editing)Object.assign(editing,rec,{updatedAt:nowStr(),updatedBy:state.currentUser?state.currentUser.name:""});
     else state.accBills.push({id:uid(),...rec,createdAt:nowStr(),createdBy:state.currentUser?state.currentUser.name:""});
-    persist("acc_bills",state.accBills);temp.abEdit=null;renderTabContent();
+    persist("acc_bills",state.accBills);temp.abEdit=null;temp.abPre=null;renderTabContent();
   },
   abVoid(id){
     if(isRO()||!canAcc())return;
@@ -5417,8 +5477,22 @@ const AccApp={
   abRestore(id){const b=state.accBills.find(x=>String(x.id)===String(id));if(!b||isRO())return;delete b.void;persist("acc_bills",state.accBills);renderTabContent();},
   // receipts / payments
   payFilter(k,v){temp[k]=v;const el=document.getElementById("payList");if(el)el.innerHTML=accPayListHtml();},
-  payEdit(id){temp.payEdit=id;renderTabContent();window.scrollTo({top:0,behavior:"smooth"});},
+  payEdit(id){const _r=state.accReceipts.find(x=>String(x.id)===String(id));if(_r&&_r.cnId){alert("Ye entry Credit Note se bani hai — badalne ke liye Credit Note tab use karo");return;}temp.payEdit=id;renderTabContent();window.scrollTo({top:0,behavior:"smooth"});},
   payCancel(){temp.payEdit=null;renderTabContent();},
+  payPickParty(){
+    const g=id=>(document.getElementById(id)||{}).value||"",el=document.getElementById("payAlloc");if(!el)return;
+    const ed=temp.payEdit?state.accReceipts.find(r=>String(r.id)===String(temp.payEdit)):null;
+    el.innerHTML=accAllocHtml(g("payParty").trim(),g("payKind"),ed?ed.id:null,ed&&ed.partyName===g("payParty").trim()?ed.alloc:null);
+    App.payAllocSum();
+  },
+  payAllocFifo(){const amt=Number((document.getElementById("payAmt")||{}).value)||0;let rem=amt;(window.__payBills||[]).forEach(b=>{const e=document.getElementById("pal_"+b.id);if(!e)return;const x=Math.min(rem,b.balance);e.value=x>0?r2(x):"";rem=r2(rem-x);});App.payAllocSum();},
+  payAllocClear(){(window.__payBills||[]).forEach(b=>{const e=document.getElementById("pal_"+b.id);if(e)e.value="";});App.payAllocSum();},
+  payAllocSum(){
+    const amt=Number((document.getElementById("payAmt")||{}).value)||0;let t=0;
+    (window.__payBills||[]).forEach(b=>{const e=document.getElementById("pal_"+b.id);if(e)t+=Number(e.value)||0;});
+    const sEl=document.getElementById("payAllocSum");t=r2(t);
+    if(sEl)sEl.innerHTML="Jodha gaya: <b>"+inr(t)+"</b> / Amount <b>"+inr(amt)+"</b>"+(t>amt+0.005?' <span style="color:#c62828">⚠️ amount se zyada</span>':(t>0&&t<amt?" — baaki "+inr(amt-t)+" sabse purane bill se kat'ega":""));
+  },
   paySave(){
     if(isRO()||!canAcc())return;
     const g=id=>(document.getElementById(id)||{}).value||"";
@@ -5427,7 +5501,10 @@ const AccApp={
     if(!(amount>0)){alert("Amount sahi daalo");return;}
     const editing=temp.payEdit?state.accReceipts.find(r=>String(r.id)===String(temp.payEdit)):null;
     const party=accEnsureParty(pname,kind);if(!party)return;
-    const rec={kind,date,partyName:party.name,amount,mode:g("payMode")||"Bank",refNo:g("payRef").trim(),remark:g("payRemark").trim()};
+    const alloc=[];let at=0;
+    if(window.__payBillsParty===party.name){(window.__payBills||[]).forEach(b=>{const e2=document.getElementById("pal_"+b.id),val=e2?r2(e2.value):0;if(val>0){const a1=Math.min(val,b.balance);alloc.push({billId:b.id,billNo:b.billNo,amount:a1});at=r2(at+a1);}});}
+    if(at>amount+0.005){alert("Bills se jodi hui rakam ("+inr(at)+") Amount ("+inr(amount)+") se zyada hai");return;}
+    const rec={kind,date,partyName:party.name,amount,mode:g("payMode")||"Bank",refNo:g("payRef").trim(),remark:g("payRemark").trim(),alloc};
     if(editing)Object.assign(editing,rec,{updatedAt:nowStr(),updatedBy:state.currentUser?state.currentUser.name:""});
     else state.accReceipts.push({id:uid(),...rec,createdAt:nowStr(),createdBy:state.currentUser?state.currentUser.name:""});
     persist("acc_receipts",state.accReceipts);
@@ -5439,6 +5516,7 @@ const AccApp={
   payVoid(id){
     if(isRO()||!canAcc())return;
     const r=state.accReceipts.find(x=>String(x.id)===String(id));if(!r)return;
+    if(r.cnId){alert("Ye entry Credit Note se bani hai — Credit Note tab se void karo");return;}
     if(!confirm(inr(r.amount)+" ("+r.partyName+") void karna hai? 'Void bhi dikhao' se wapas la sakte ho."))return;
     r.void=true;r.voidAt=nowStr();r.voidBy=state.currentUser?state.currentUser.name:"";
     persist("acc_receipts",state.accReceipts);renderTabContent();
@@ -5451,6 +5529,17 @@ const AccApp={
     renderTabContent();
   },
   arOpenLedger(i){const n=(window.__arNames||[])[i];if(!n)return;temp.arParty=n;temp.arView="ledger";renderTabContent();},
+  arRemind(i,mode){
+    const n=(window.__arNames||[])[i];if(!n)return;
+    const asOf=temp.arTo||todayStr(),o=accCompute("recv",asOf,true).find(x=>x.name===n);if(!o||!(o.overdue>0))return;
+    const msg=accReminderText(o),p=accFindParty(n);
+    let ph=String((p&&p.phone)||"").split(/[\/,;]/)[0].replace(/\D/g,"");
+    if(ph.length>10)ph=ph.replace(/^0+/,"");
+    if(ph.length===10)ph="91"+ph;
+    if(mode==="wa"&&ph.length>=11&&ph.length<=13){window.open("https://wa.me/"+ph+"?text="+encodeURIComponent(msg),"_blank");return;}
+    copyText(msg);
+    alert(mode==="wa"?"Is party ka sahi phone number nahi mila (Party Master me daalo). Message copy ho gaya hai, WhatsApp me paste kar do.":"Message copy ho gaya.");
+  },
   arPickState(i){const n=(window.__arStates||[])[i];if(n==null)return;temp.arState=n;temp.arView="ageing";renderTabContent();},
   arExport(){const x=temp.__arExp;if(!x||!x.r.length){alert("Export ke liye kuch nahi hai");return;}exportCSV(x.h,x.r,x.f);}
 };
@@ -5525,8 +5614,8 @@ function invCalc(inv){
   const exact=r2(taxable+tax),total=Math.round(exact),roundOff=r2(total-exact);
   return{lines,taxable,taxLines,tax,roundOff,total,intra};
 }
-function invoiceHtml(inv){
-  const co=getCompany(),c=invCalc(inv);
+function invoiceHtml(inv,opt){
+  const cr=!!(opt&&opt.credit),co=getCompany(),c=invCalc(inv);
   const f2=n=>Number(n||0).toLocaleString("en-IN",{minimumFractionDigits:2,maximumFractionDigits:2});
   const MON=["Jan","Feb","Mar","Apr","May","Jun","Jul","Aug","Sep","Oct","Nov","Dec"];
   const dt=x=>{if(!x)return"";const p=String(x).split("-");if(p.length!==3)return esc(x);return parseInt(p[2],10)+"-"+MON[parseInt(p[1],10)-1]+"-"+p[0].slice(2);};
@@ -5549,7 +5638,18 @@ function invoiceHtml(inv){
   const hsnRows=hr.map(x=>c.intra?`<tr><td>${esc(x.hsn)}</td><td class="rt">${f2(x.taxable)}</td><td class="rt">${x.gst/2}%</td><td class="rt">${f2(x.cg)}</td><td class="rt">${x.gst/2}%</td><td class="rt">${f2(x.sg)}</td><td class="rt">${f2(x.tax)}</td></tr>`:`<tr><td>${esc(x.hsn)}</td><td class="rt">${f2(x.taxable)}</td><td class="rt">${x.gst}%</td><td class="rt">${f2(x.ig)}</td><td class="rt">${f2(x.tax)}</td></tr>`).join("");
   const hsnTot=c.intra?`<tr class="b"><td class="rt">Total</td><td class="rt">${f2(sT)}</td><td></td><td class="rt">${f2(r2(hr.reduce((s,x)=>s+x.cg,0)))}</td><td></td><td class="rt">${f2(r2(hr.reduce((s,x)=>s+x.sg,0)))}</td><td class="rt">${f2(sX)}</td></tr>`:`<tr class="b"><td class="rt">Total</td><td class="rt">${f2(sT)}</td><td></td><td class="rt">${f2(r2(hr.reduce((s,x)=>s+x.ig,0)))}</td><td class="rt">${f2(sX)}</td></tr>`;
   const cons=inv.consignee&&inv.consignee.name?inv.consignee:inv.buyer;
-  return`<!DOCTYPE html><html><head><meta charset="utf-8"><title>Invoice ${esc(inv.invNo)}</title><style>
+  const gridRows=cr?`<tr>${g("Credit Note No.",inv.cnNo)}${g("Dated",dt(inv.date))}</tr>
+<tr>${g("Original Invoice No.",inv.invNo)}${g("Original Invoice Date",dt(inv.invDate))}</tr>
+<tr>${g2("Reason for Credit Note / Return",inv.reason,40)}</tr>`:`<tr>${g("Invoice No.",inv.invNo)}${g("Dated",dt(inv.date))}</tr>
+<tr>${g("e-Way Bill No.",inv.ewayNo)}${g("e-Way Bill Date",dt(inv.ewayDate))}</tr>
+<tr>${g("Delivery Note No.",inv.deliveryNote)}${g("Delivery Note Date",dt(inv.deliveryNoteDate))}</tr>
+<tr>${g("Reference No. &amp; Date.",inv.refNo)}${g("Other References",inv.otherRef)}</tr>
+<tr>${g("Buyer's Order No.",inv.buyerOrderNo)}${g("Dated",dt(inv.buyerOrderDate))}</tr>
+<tr>${g("Bill of Lading/LR-RR No.",inv.lrNo)}${g("Motor Vehicle No./GST No.",inv.vehicleNo)}</tr>
+<tr>${g("Dispatched through",inv.dispatchedThrough)}${g("Destination",inv.destination)}</tr>
+<tr>${g2("Mode/Terms of Payment",inv.payTerms)}</tr>
+<tr>${g2("Terms of Delivery",inv.deliveryTerms,52)}</tr>`;
+  return`<!DOCTYPE html><html><head><meta charset="utf-8"><title>${cr?"Credit Note "+esc(inv.cnNo):"Invoice "+esc(inv.invNo)}</title><style>
 @page{size:A4;margin:7mm}*{box-sizing:border-box}body{font-family:Arial,Helvetica,sans-serif;font-size:11px;color:#000;margin:0}
 table{border-collapse:collapse;width:100%}td,th{vertical-align:top}.hd{border:1px solid #000;padding:4px 6px}.hd h1{margin:0 0 2px;font-size:22px}
 .ti{text-align:center;font-weight:bold;font-size:10px;border-left:1px solid #000;border-right:1px solid #000;padding:1px}
@@ -5561,26 +5661,18 @@ table{border-collapse:collapse;width:100%}td,th{vertical-align:top}.hd{border:1p
 .words{border:1px solid #000;border-top:0;padding:3px 6px}.bot{border:1px solid #000;border-top:0}.bot td{padding:4px 6px}
 .ft{text-align:center;font-size:10px;margin-top:6px}</style></head><body>
 <div class="hd"><h1>${esc(co.name)}</h1>${esc(co.addr)}<br>GSTIN/UIN: <b>${esc(co.gstin)}</b>, State Name : <b>${esc(co.state)}, Code : ${esc(co.stateCode)}</b><br>Contact : ${esc(co.contact)}, E-Mail : ${esc(co.email)}</div>
-<div class="ti">TAX INVOICE</div>
+<div class="ti">${cr?"CREDIT NOTE":"TAX INVOICE"}</div>
 <table class="top"><tr><td style="width:50%">${party("Consignee (Ship To)",cons,false)}${party("Buyer (Bill To)",inv.buyer,true)}</td><td style="width:50%"><table>
-<tr>${g("Invoice No.",inv.invNo)}${g("Dated",dt(inv.date))}</tr>
-<tr>${g("e-Way Bill No.",inv.ewayNo)}${g("e-Way Bill Date",dt(inv.ewayDate))}</tr>
-<tr>${g("Delivery Note No.",inv.deliveryNote)}${g("Delivery Note Date",dt(inv.deliveryNoteDate))}</tr>
-<tr>${g("Reference No. &amp; Date.",inv.refNo)}${g("Other References",inv.otherRef)}</tr>
-<tr>${g("Buyer's Order No.",inv.buyerOrderNo)}${g("Dated",dt(inv.buyerOrderDate))}</tr>
-<tr>${g("Bill of Lading/LR-RR No.",inv.lrNo)}${g("Motor Vehicle No./GST No.",inv.vehicleNo)}</tr>
-<tr>${g("Dispatched through",inv.dispatchedThrough)}${g("Destination",inv.destination)}</tr>
-<tr>${g2("Mode/Terms of Payment",inv.payTerms)}</tr>
-<tr>${g2("Terms of Delivery",inv.deliveryTerms,52)}</tr></table></td></tr></table>
+${gridRows}</table></td></tr></table>
 <table class="it"><thead><tr><th style="width:24px">Sl No.</th><th>Description of Goods</th><th style="width:58px">HSN/SAC</th><th style="width:58px">Quantity</th><th style="width:52px">Rate</th><th style="width:28px">per</th><th style="width:42px">${esc(co.discLabel1)}</th><th style="width:42px">${esc(co.discLabel2)}</th><th style="width:42px">${esc(co.discLabel3)}</th><th style="width:48px">${esc(co.discLabel4)}</th><th style="width:76px">Amount</th></tr></thead><tbody>${rows}${subRow}<tr class="fill">${E(11)}</tr>${taxRows}${roRow}</tbody>
 <tfoot><tr class="tot"><td></td><td class="rt">Total</td><td></td><td class="rt">${esc(qtyTxt)}</td>${E(6)}<td class="rt">₹ ${f2(c.total)}</td></tr></tfoot></table>
 <div class="words"><div style="display:flex;justify-content:space-between"><span class="lb">Amount Chargeable (in words)</span><i>E. &amp; O.E</i></div><b>${esc(inrWords(c.total))}</b></div>
 <table class="hsn"><thead>${hsnHead}</thead><tbody>${hsnRows}${hsnTot}</tbody></table>
 <div class="words"><span class="lb">Tax Amount (in words) :</span> <b>${esc(inrWords(c.tax))}</b></div>
-<table class="bot"><tr><td style="width:50%;border-right:1px solid #000"><u>Declaration</u><br>${esc(co.declaration)}</td><td><b>Company's Bank Details</b><br>A/c Holder's Name : <b>${esc(co.bankHolder)}</b><br>Bank Name : <b>${esc(co.bankName)}</b><br>A/c No. : <b>${esc(co.bankAcNo)}</b><br>Branch &amp; IFS Code : <b>${esc(co.bankBranch)}</b></td></tr>
+<table class="bot"><tr><td style="width:50%;border-right:1px solid #000"><u>Declaration</u><br>${esc(cr?String(co.declaration).replace(/invoice/gi,"credit note"):co.declaration)}</td><td><b>Company's Bank Details</b><br>A/c Holder's Name : <b>${esc(co.bankHolder)}</b><br>Bank Name : <b>${esc(co.bankName)}</b><br>A/c No. : <b>${esc(co.bankAcNo)}</b><br>Branch &amp; IFS Code : <b>${esc(co.bankBranch)}</b></td></tr>
 <tr><td style="border-right:1px solid #000;border-top:1px solid #000;height:62px">Customer's Seal and Signature</td><td style="border-top:1px solid #000;text-align:right">for <b>${esc(co.name)}</b><br><br><br>Authorised Signatory</td></tr>
 <tr><td colspan="2" style="border-top:1px solid #000;text-align:center;font-size:10px">Prepared by &nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp; Verified by</td></tr></table>
-<div class="ft">${esc(co.jurisdiction)}<br>This is a Computer Generated Invoice</div></body></html>`;
+<div class="ft">${esc(co.jurisdiction)}<br>This is a Computer Generated ${cr?"Credit Note":"Invoice"}</div></body></html>`;
 }
 function invTotalsHtml(c){
   return`<table style="width:100%;font-size:13px"><tr><td>Taxable Amount</td><td style="text-align:right"><b>${inr(c.taxable)}</b></td></tr>${c.taxLines.map(t=>`<tr><td>${t.label} ${t.rate}%</td><td style="text-align:right">${inr(t.amt)}</td></tr>`).join("")}${c.roundOff?`<tr><td>Round Off</td><td style="text-align:right">${c.roundOff<0?"(-)":"(+)"}${inr(Math.abs(c.roundOff))}</td></tr>`:""}<tr style="border-top:2px solid #1a237e"><td><b>Grand Total</b></td><td style="text-align:right;font-size:17px;color:#1a237e"><b>${inr(c.total)}</b></td></tr></table><div style="font-size:11px;color:#555;margin-top:4px">${esc(inrWords(c.total))}</div>`;
@@ -5608,7 +5700,7 @@ function invCompanyHtml(){
   ${adm?`<div style="margin-top:10px;display:flex;gap:8px"><button class="btn btn-primary" onclick="App.coSave()">💾 Save Settings</button><button class="btn btn-secondary" onclick="App.coReset()">↺ Default par wapas</button></div>`:`<div style="font-size:12px;color:#777;margin-top:8px">Sirf admin badal sakta hai.</div>`}</div>`;
 }
 function invEditorHtml(){
-  const dr=temp.invDraft,c=invCalc(dr),co=getCompany();
+  const dr=temp.invDraft,c=invCalc(dr),co=getCompany(),credit=dr.kind==="credit";
   const blk=(p,t,b)=>`<div style="border:1px solid #c5cae9;border-radius:8px;padding:10px 12px"><div style="font-weight:700;color:#1a237e;margin-bottom:6px">${t}${p==="ivC"?` <button class="btn btn-sm btn-secondary" onclick="App.invCopyBuyer()">Buyer jaisa</button>`:""}</div>
   <label class="lbl">Naam</label><input class="inp" id="${p}Name" list="ivPartyList" value="${esc(b.name)}" onchange="App.invPickParty('${p}',this.value)">
   <label class="lbl">Address</label><textarea class="inp" id="${p}Addr" rows="3">${esc(b.address)}</textarea>
@@ -5617,10 +5709,11 @@ function invEditorHtml(){
   const fld=(id,l,v,type)=>`<div><label class="lbl">${l}</label><input class="inp" ${type?`type="${type}"`:""} id="${id}" value="${esc(v)}"></div>`;
   const num=(id,v,w)=>`<input class="inp" type="number" step="any" id="${id}" value="${esc(v==null?"":v)}" style="width:${w}px;margin:0" oninput="App.invRecalc()">`;
   const lineRows=dr.lines.map((l,i)=>`<tr><td>${i+1}</td><td><input class="inp" id="ivl_desc_${i}" list="ivItemList" value="${esc(l.desc)}" style="min-width:200px;margin:0" onchange="App.invDescPick(${i})"></td><td><input class="inp" id="ivl_hsn_${i}" value="${esc(l.hsn)}" style="width:90px;margin:0"></td><td style="white-space:nowrap">${num("ivl_qty_"+i,l.qty,80)} ${esc(l.per)}</td><td><input class="inp" type="number" step="any" id="ivl_rate_${i}" value="${esc(l.rate)}" style="width:90px;margin:0;${(l.rate===""||l.rate==null)?"border:2px solid #c62828":""}" oninput="App.invRecalc()">${l.noMaster?`<div style="font-size:10px;color:#e65100">naya rate — save par set ho jayega</div>`:""}</td><td>${num("ivl_disc_"+i,l.disc||0,64)}</td><td>${num("ivl_d2_"+i,l.d2||0,64)}</td><td>${num("ivl_d3_"+i,l.d3||0,64)}</td><td>${num("ivl_d4_"+i,l.d4||0,64)}</td><td>${num("ivl_gst_"+i,l.gst,56)}</td><td id="ivl_amt_${i}" style="text-align:right;font-weight:700">${inr(c.lines[i]?c.lines[i].amount:0)}</td><td><button class="btn btn-sm btn-danger" onclick="App.invDelLine(${i})">✖</button></td></tr>`).join("");
-  return`<div class="card"><div class="card-title">🧾 Invoice No. ${esc(dr.invNo)} — ${dr.challanType==="MT"?"MT":"General"} challan ${dr.id?"(edit)":"(nayi)"}</div><div class="card-body">
-  <datalist id="ivPartyList">${(state.parties||[]).map(x=>`<option value="${esc(x.name)}">`).join("")}</datalist><datalist id="ivItemList">${accRatesNames().map(x=>`<option value="${esc(x)}">`).join("")}</datalist>
-  <div style="display:grid;grid-template-columns:repeat(auto-fit,minmax(300px,1fr));gap:12px;margin-bottom:12px">${blk("ivC","Consignee (Ship To)",dr.consignee)}${blk("ivB","Buyer (Bill To)",dr.buyer)}</div>
-  <div style="display:grid;grid-template-columns:repeat(auto-fit,minmax(170px,1fr));gap:10px;margin-bottom:12px">
+  const head=credit?`↩️ Credit Note ${esc(dr.cnNo)} — Invoice ${esc(dr.invNo)} ke against ${dr.id?"(edit)":"(naya)"}`:`🧾 Invoice No. ${esc(dr.invNo)} — ${dr.challanType==="MT"?"MT":"General"} challan ${dr.id?"(edit)":"(nayi)"}`;
+  const fields=credit?`<div style="display:grid;grid-template-columns:repeat(auto-fit,minmax(200px,1fr));gap:10px;margin-bottom:12px">
+    <div><label class="lbl">Credit Note No.</label><input class="inp" value="${esc(dr.cnNo)}" disabled></div>${fld("ivDate","Credit Note Date",dr.date,"date")}
+    <div><label class="lbl">Original Invoice No.</label><input class="inp" value="${esc(dr.invNo)}" disabled></div><div><label class="lbl">Original Invoice Date</label><input class="inp" value="${esc(dr.invDate)}" disabled></div>
+    ${fld("ivReason","Reason (Return / Rate difference / Damage...)",dr.reason)}</div>`:`<div style="display:grid;grid-template-columns:repeat(auto-fit,minmax(170px,1fr));gap:10px;margin-bottom:12px">
     <div><label class="lbl">Invoice No. (= Challan No.)</label><input class="inp" value="${esc(dr.invNo)}" disabled></div>${fld("ivDate","Invoice Date",dr.date,"date")}
     ${fld("ivEway","e-Way Bill No. (Tally se)",dr.ewayNo)}${fld("ivEwayDate","e-Way Bill Date",dr.ewayDate,"date")}
     ${fld("ivDN","Delivery Note No. (challan ka marka)",dr.deliveryNote)}${fld("ivDNDate","Delivery Note Date",dr.deliveryNoteDate,"date")}
@@ -5629,14 +5722,21 @@ function invEditorHtml(){
     ${fld("ivLR","Bill of Lading / LR-RR No.",dr.lrNo)}${fld("ivVehicle","Motor Vehicle No.",dr.vehicleNo)}
     ${fld("ivThrough","Dispatched through",dr.dispatchedThrough)}${fld("ivDest","Destination",dr.destination)}
     ${fld("ivPay","Mode / Terms of Payment",dr.payTerms)}${fld("ivTerms","Terms of Delivery",dr.deliveryTerms)}
-  </div>
+  </div>`;
+  const note=credit?"Jo maal wapas aaya (ya jis par rate/discount ka fark hai) uski Quantity daalo — invoice ki quantity default me bhari hai, kam kar sakte ho. Jo item wapas nahi aaya use ✖ se hata do. Rate aur discount invoice wale hi hain."
+    :`Chaar discount ek ke baad ek lagte hain (pehle ${esc(co.discLabel1)}, phir baaki). Party ka discount pehli baar daalne par us party ke liye save ho jata hai. Jis item ka rate set nahi, wo bhi aise hi save hota hai. Kuch alag chahiye to yahin badal do — us invoice ke liye hi lagega.`;
+  const btns=credit?`<button class="btn btn-primary" style="padding:10px 22px" onclick="App.cnSave(true)">💾 Save &amp; 🖨️ Print</button><button class="btn btn-success" onclick="App.cnSave(false)">💾 Save</button>`:`<button class="btn btn-primary" style="padding:10px 22px" onclick="App.invSave(true)">💾 Save &amp; 🖨️ Print</button><button class="btn btn-success" onclick="App.invSave(false)">💾 Save</button>`;
+  return`<div class="card"><div class="card-title">${head}</div><div class="card-body">
+  <datalist id="ivPartyList">${(state.parties||[]).map(x=>`<option value="${esc(x.name)}">`).join("")}</datalist><datalist id="ivItemList">${accRatesNames().map(x=>`<option value="${esc(x)}">`).join("")}</datalist>
+  <div style="display:grid;grid-template-columns:repeat(auto-fit,minmax(300px,1fr));gap:12px;margin-bottom:12px">${blk("ivC","Consignee (Ship To)",dr.consignee)}${blk("ivB","Buyer (Bill To)",dr.buyer)}</div>
+  ${fields}
   <div style="overflow-x:auto;margin-bottom:8px"><table class="tbl"><thead><tr style="background:#37474f;color:#fff"><th>#</th><th>Description of Goods</th><th>HSN/SAC</th><th>Quantity</th><th>Rate (₹)</th><th>${esc(co.discLabel1)}</th><th>${esc(co.discLabel2)}</th><th>${esc(co.discLabel3)}</th><th>${esc(co.discLabel4)}</th><th>GST %</th><th style="text-align:right">Amount</th><th></th></tr></thead><tbody>${lineRows}</tbody></table></div>
-  <div style="display:flex;justify-content:space-between;align-items:flex-start;gap:16px;flex-wrap:wrap"><div><button class="btn btn-secondary" onclick="App.invAddLine()">➕ Item jodo</button><div style="font-size:11px;color:#777;margin-top:6px;max-width:460px;line-height:1.5">Chaar discount ek ke baad ek lagte hain (pehle ${esc(co.discLabel1)}, phir baaki). Party ka discount pehli baar daalne par us party ke liye save ho jata hai. Jis item ka rate set nahi, wo bhi aise hi save hota hai. Kuch alag chahiye to yahin badal do — us invoice ke liye hi lagega.</div></div><div id="ivTotals" style="min-width:290px;background:#f5f7ff;border:1px solid #c5cae9;border-radius:8px;padding:10px 14px">${invTotalsHtml(c)}</div></div>
-  <div style="margin-top:14px;display:flex;gap:8px;flex-wrap:wrap"><button class="btn btn-primary" style="padding:10px 22px" onclick="App.invSave(true)">💾 Save &amp; 🖨️ Print</button><button class="btn btn-success" onclick="App.invSave(false)">💾 Save</button><button class="btn btn-secondary" onclick="App.invClose()">✖ Cancel</button></div></div></div>`;
+  <div style="display:flex;justify-content:space-between;align-items:flex-start;gap:16px;flex-wrap:wrap"><div><button class="btn btn-secondary" onclick="App.invAddLine()">➕ Item jodo</button><div style="font-size:11px;color:#777;margin-top:6px;max-width:460px;line-height:1.5">${note}</div></div><div id="ivTotals" style="min-width:290px;background:#f5f7ff;border:1px solid #c5cae9;border-radius:8px;padding:10px 14px">${invTotalsHtml(c)}</div></div>
+  <div style="margin-top:14px;display:flex;gap:8px;flex-wrap:wrap">${btns}<button class="btn btn-secondary" onclick="App.invClose()">✖ Cancel</button></div></div></div>`;
 }
 function renderInvoiceTab(){
   if(!can("invoice"))return`<div class="card"><div class="card-body">🔒 Is tab ke liye permission nahi hai. Admin se <b>Invoice (Dispatch)</b> permission lo.</div></div>`;
-  if(temp.invDraft)return invEditorHtml();
+  if(temp.invDraft&&temp.invDraft.kind!=="credit")return invEditorHtml();
   const msg=temp.invMsg;temp.invMsg=null;
   const st=temp.ivStatus===undefined?"pending":temp.ivStatus;
   return`<div class="card"><div class="card-title" style="display:flex;justify-content:space-between;align-items:center;flex-wrap:wrap;gap:8px"><span>🧾 Tax Invoice — Challan se (Invoice No. = Challan No.)</span><button class="btn btn-sm btn-secondary" onclick="App.coToggle()">⚙️ Company / Bank Settings</button></div><div class="card-body">
@@ -5700,6 +5800,7 @@ const InvoiceApp={
     const dr=temp.invDraft;if(!dr||!document.getElementById("ivDate"))return;
     const g=id=>{const e=document.getElementById(id);return e?e.value:"";};
     dr.date=g("ivDate")||dr.date;
+    if(document.getElementById("ivReason"))dr.reason=g("ivReason").trim();
     const blk=p=>{const b={name:g(p+"Name").trim(),address:g(p+"Addr").trim(),gstin:g(p+"Gstin").trim().toUpperCase(),state:g(p+"State"),contact:g(p+"Contact").trim()};b.stateCode=stateCodeOf(b.state);return b;};
     dr.buyer=blk("ivB");dr.consignee=blk("ivC");
     [["ewayNo","ivEway"],["ewayDate","ivEwayDate"],["deliveryNote","ivDN"],["deliveryNoteDate","ivDNDate"],["refNo","ivRef"],["otherRef","ivOther"],["buyerOrderNo","ivBO"],["buyerOrderDate","ivBODate"],["lrNo","ivLR"],["dispatchedThrough","ivThrough"],["destination","ivDest"],["vehicleNo","ivVehicle"],["payTerms","ivPay"],["deliveryTerms","ivTerms"]].forEach(([k,id])=>{dr[k]=g(id).trim();});
@@ -5791,6 +5892,97 @@ const InvoiceApp={
 };
 Object.assign(App,InvoiceApp);
 
+// ── CREDIT NOTE (Sales Return) ──
+function cnNextNo(){const pre="CN/"+FY.label+"/";let mx=0;(state.creditNotes||[]).forEach(c=>{const n=String(c.cnNo||"");if(n.indexOf(pre)===0)mx=Math.max(mx,parseInt(n.slice(pre.length),10)||0);});return pre+String(mx+1).padStart(3,"0");}
+function cnLines(ls){return(ls||[]).map(l=>({desc:l.desc,hsn:l.hsn||"",qty:l.qty,per:l.per||"PC",rate:l.rate,disc:Number(l.disc)||0,d2:Number(l.d2)||0,d3:Number(l.d3)||0,d4:Number(l.d4)||0,gst:l.gst,noMaster:false}));}
+function cnDraftFromInvoice(invId){
+  const inv=(state.invoices||[]).find(i=>String(i.id)===String(invId)&&!i.void);if(!inv)return null;
+  const cp=o=>JSON.parse(JSON.stringify(o));
+  return{id:null,kind:"credit",cnNo:cnNextNo(),invId:inv.id,invNo:inv.invNo,invDate:inv.date,date:todayStr(),buyer:cp(inv.buyer),consignee:cp(inv.consignee&&inv.consignee.name?inv.consignee:inv.buyer),reason:"Sales Return",lines:cnLines(inv.lines)};
+}
+function cnDraftFromNote(id){
+  const cn=(state.creditNotes||[]).find(c=>String(c.id)===String(id)&&!c.void);if(!cn)return null;
+  const c=JSON.parse(JSON.stringify(cn));c.kind="credit";c.lines=cnLines(c.lines);return c;
+}
+function cnInvListHtml(){
+  const q=(temp.cnQ||"").toLowerCase().trim(),cr={};
+  (state.creditNotes||[]).filter(c=>!c.void).forEach(c=>{cr[c.invId]=r2((cr[c.invId]||0)+Number(c.total||0));});
+  const rows=(state.invoices||[]).filter(i=>!i.void&&(!q||(String(i.invNo)+" "+i.buyer.name).toLowerCase().includes(q))).sort((a,b)=>String(b.date).localeCompare(String(a.date))||Number(b.invNo)-Number(a.invNo)).slice(0,100),ro=isRO();
+  return`<div style="font-size:12px;color:#666;margin-bottom:6px">${rows.length} invoice (latest 100)</div><div style="max-height:360px;overflow:auto;border:1px solid #e0e0e0;border-radius:6px"><table class="tbl" style="margin:0"><thead><tr style="background:#1a237e;color:#fff;position:sticky;top:0"><th>Invoice No</th><th>Date</th><th>Party</th><th style="text-align:right">Invoice Total</th><th style="text-align:right">Pehle se Credit Note</th><th></th></tr></thead><tbody>${rows.map(i=>`<tr><td><b>${esc(i.invNo)}</b></td><td>${esc(fmtDate(i.date))}</td><td>${esc(i.buyer.name)}</td><td style="text-align:right">${inr(i.total)}</td><td style="text-align:right;color:#c62828">${cr[i.id]?inr(cr[i.id]):"—"}</td><td>${ro?"":`<button class="btn btn-sm btn-primary" onclick="App.cnOpen(${i.id})">↩️ Credit Note Banao</button>`}</td></tr>`).join("")||`<tr><td colspan="6" style="text-align:center;color:#999;padding:20px">Koi invoice nahi mili</td></tr>`}</tbody></table></div>`;
+}
+function renderCreditNoteTab(){
+  if(!can("invoice"))return`<div class="card"><div class="card-body">🔒 Is tab ke liye permission nahi hai. Admin se <b>Invoice (Dispatch)</b> permission lo.</div></div>`;
+  if(temp.invDraft&&temp.invDraft.kind==="credit")return invEditorHtml();
+  const msg=temp.invMsg;temp.invMsg=null;
+  const ro=isRO(),adm=state.currentUser&&state.currentUser.role==="admin";
+  const notes=[...(state.creditNotes||[])].sort((a,b)=>String(b.date).localeCompare(String(a.date))||String(b.cnNo).localeCompare(String(a.cnNo)));
+  return`<div class="card"><div class="card-title">↩️ Credit Note — Sales Return / Rate Difference</div><div class="card-body">
+  ${msg?`<div style="background:#e8f5e9;border:1px solid #2e7d32;border-radius:8px;padding:8px 12px;font-size:13px;color:#1b5e20;margin-bottom:12px">${msg}</div>`:""}
+  <div style="background:#e3f2fd;border:1px solid #90caf9;border-radius:8px;padding:10px 14px;font-size:12px;color:#0d47a1;margin-bottom:12px;line-height:1.6">ℹ️ Invoice chuno aur <b>↩️ Credit Note Banao</b> dabao. Credit Note ki rakam party ke <b>lene wale se ghat</b> jati hai (us invoice me adjust hoti hai). Wapas aaya maal finished stock me apne aap jama <b>nahi</b> hota — wo Packing se alag se daalna padega.</div>
+  <div style="display:flex;gap:10px;align-items:flex-end;margin-bottom:8px"><div><label class="lbl">Invoice search</label><input class="inp" style="width:260px;margin-bottom:0" value="${esc(temp.cnQ||"")}" placeholder="Invoice no. / party" oninput="App.cnFilter(this.value)"></div></div>
+  <div id="cnInvList" style="margin-bottom:18px">${cnInvListHtml()}</div>
+  <div style="font-weight:700;color:#1a237e;margin:6px 0">📋 Bane hue Credit Notes</div>
+  <div style="max-height:420px;overflow:auto;border:1px solid #e0e0e0;border-radius:6px"><table class="tbl" style="margin:0"><thead><tr style="background:#37474f;color:#fff;position:sticky;top:0"><th>Credit Note</th><th>Date</th><th>Invoice</th><th>Party</th><th style="text-align:right">Total</th><th>Reason</th><th></th></tr></thead><tbody>${notes.map(c=>`<tr style="${c.void?"opacity:.55;text-decoration:line-through":""}"><td><b>${esc(c.cnNo)}</b></td><td>${esc(fmtDate(c.date))}</td><td>${esc(c.invNo)}</td><td>${esc(c.buyer.name)}</td><td style="text-align:right;font-weight:700">${inr(c.total)}</td><td style="font-size:12px">${esc(c.reason)||"—"}</td><td style="white-space:nowrap">${c.void?"VOID":`<button class="btn btn-sm btn-success" onclick="App.cnPrint(${c.id})">🖨️ Print</button>${ro?"":` <button class="btn btn-sm" style="background:#1565c0;color:#fff" onclick="App.cnEdit(${c.id})">✏️ Edit</button>`}${adm?` <button class="btn btn-sm btn-danger" onclick="App.cnVoid(${c.id})">🗑️</button>`:""}`}</td></tr>`).join("")||`<tr><td colspan="7" style="text-align:center;color:#999;padding:20px">Abhi koi Credit Note nahi bana</td></tr>`}</tbody></table></div>
+  </div></div>`;
+}
+const CreditApp={
+  cnFilter(v){temp.cnQ=v;const el=document.getElementById("cnInvList");if(el)el.innerHTML=cnInvListHtml();},
+  cnOpen(invId){if(isRO())return;const dr=cnDraftFromInvoice(invId);if(!dr){alert("Invoice nahi mili");return;}temp.invDraft=dr;renderTabContent();window.scrollTo({top:0,behavior:"smooth"});},
+  cnEdit(id){if(isRO())return;const dr=cnDraftFromNote(id);if(!dr){alert("Credit Note nahi mila");return;}temp.invDraft=dr;renderTabContent();window.scrollTo({top:0,behavior:"smooth"});},
+  cnSave(andPrint){
+    if(isRO())return;
+    App.invSync();const dr=temp.invDraft;if(!dr||dr.kind!=="credit")return;
+    if(!dr.buyer.name){alert("Buyer ka naam zaroori hai");return;}
+    if(!dr.buyer.state){alert("Buyer ka State chuno — GST state se tay hota hai");return;}
+    if(!dr.consignee.name)dr.consignee=Object.assign({},dr.buyer);
+    const ls=dr.lines.filter(l=>l.desc);
+    if(!ls.length){alert("Kam se kam ek item chahiye");return;}
+    const bad=ls.find(l=>!(Number(l.qty)>0)||!(Number(l.rate)>0));
+    if(bad){alert('"'+bad.desc+'" ka Quantity aur Rate zaroori hai');return;}
+    dr.lines=ls;
+    const inv=(state.invoices||[]).find(i=>String(i.id)===String(dr.invId));
+    if(inv){
+      const prev={};(state.creditNotes||[]).filter(c=>!c.void&&String(c.invId)===String(dr.invId)&&c.id!==dr.id).forEach(c=>c.lines.forEach(l=>{prev[l.desc]=(prev[l.desc]||0)+Number(l.qty||0);}));
+      const over=ls.filter(l=>{const il=inv.lines.find(x=>x.desc===l.desc);return !il||Number(l.qty)+(prev[l.desc]||0)>Number(il.qty)+1e-9;});
+      if(over.length&&!confirm("Ye item invoice ki quantity se zyada hain (ya invoice me nahi hain): "+over.map(l=>l.desc).join(", ")+"\n\nPhir bhi save karna hai?"))return;
+    }
+    const c=invCalc(dr),by=state.currentUser?state.currentUser.name:"";
+    const clean=c.lines.map(l=>({desc:l.desc,hsn:l.hsn,qty:l.qty,per:l.per,rate:l.rate,disc:l.disc,d2:l.d2,d3:l.d3,d4:l.d4,gst:l.gst,amount:l.amount}));
+    const rec={cnNo:dr.cnNo,date:dr.date,invId:dr.invId,invNo:dr.invNo,invDate:dr.invDate,buyer:dr.buyer,consignee:dr.consignee,reason:dr.reason||"",lines:clean,taxable:c.taxable,tax:c.tax,taxLines:c.taxLines,roundOff:c.roundOff,total:c.total,intra:c.intra};
+    let cn=dr.id?state.creditNotes.find(x=>x.id===dr.id):null;
+    if(cn)Object.assign(cn,rec,{updatedAt:nowStr(),updatedBy:by});
+    else{cn=Object.assign({id:uid()},rec,{createdAt:nowStr(),createdBy:by});state.creditNotes.push(cn);}
+    // accounts: credit note party ke lene wale ko ghatata hai (us invoice me adjust)
+    const party=accFindParty(dr.buyer.name);
+    const bill=inv?state.accBills.find(b=>b.invId===inv.id&&b.invFy===FY.label):null;
+    const rr={kind:"receipt",date:cn.date,partyName:party?party.name:dr.buyer.name,amount:c.total,mode:"Credit Note",refNo:cn.cnNo,remark:"Credit Note against Invoice "+cn.invNo+(cn.reason?" ("+cn.reason+")":""),alloc:bill?[{billId:bill.id,billNo:inv.invNo,amount:Math.min(c.total,Number(bill.total||0))}]:[],cnId:cn.id,cnFy:FY.label,fromCreditNote:true};
+    const ex=state.accReceipts.find(r=>r.cnId===cn.id&&r.cnFy===FY.label);
+    if(ex){Object.assign(ex,rr,{updatedAt:nowStr()});delete ex.void;}
+    else state.accReceipts.push(Object.assign({id:uid()+Math.floor(Math.random()*1000)},rr,{createdAt:nowStr(),createdBy:by}));
+    persist("credit_notes",state.creditNotes);persist("acc_receipts",state.accReceipts);
+    temp.invDraft=null;
+    temp.invMsg="✅ Credit Note "+esc(cn.cnNo)+" save ho gaya ("+inr(c.total)+") — "+esc(rr.partyName)+" ka lene wala itna kam ho gaya.";
+    renderTabContent();
+    if(andPrint)App.cnPrint(cn.id);
+  },
+  cnVoid(id){
+    if(!state.currentUser||state.currentUser.role!=="admin")return;
+    const cn=state.creditNotes.find(x=>String(x.id)===String(id));if(!cn)return;
+    if(!confirm("Credit Note "+cn.cnNo+" ("+cn.buyer.name+") void karna hai? Party ka lene wala wapas badh jayega."))return;
+    cn.void=true;cn.voidAt=nowStr();cn.voidBy=state.currentUser.name;
+    const rc=state.accReceipts.find(r=>r.cnId===cn.id&&r.cnFy===FY.label);if(rc){rc.void=true;rc.voidAt=nowStr();}
+    persist("credit_notes",state.creditNotes);persist("acc_receipts",state.accReceipts);renderTabContent();
+  },
+  cnPrint(id){
+    const cn=(state.creditNotes||[]).find(x=>String(x.id)===String(id));if(!cn)return;
+    const w=window.open("","_blank");
+    if(!w){alert("Popup block ho gaya — browser me popup allow karo");return;}
+    w.document.write(invoiceHtml(cn,{credit:true}));w.document.close();
+    setTimeout(()=>{try{w.focus();w.print();}catch(e){}},500);
+  }
+};
+Object.assign(App,CreditApp);
+
 // ══ YEAR END PROCESS (Utility) ══
 function yeCompute(){
   const src=FY.label;
@@ -5808,9 +6000,10 @@ function yeCompute(){
     const pq=Number(p.totalQty||0)-(dm[`${p.cartonNo}-${p.productName}`]||0);
     if(pq<=0)return;
     const qpc=Number(p.qtyPerCarton)||0,ct=qpc?Math.ceil(pq/qpc):Number(p.cartons||0);
-    packings.push({...p,totalQty:pq,cartons:ct,remark:(p.remark?p.remark+" | ":"")+"Carry forward FY "+src,carryFwd:true,cfFrom:src,...meta()});
+    const cno=String(p.cartonNo==null?"":p.cartonNo).trim(),newNo=(cno&&cno.indexOf("/")<0)?cno+"/"+fyShort(src):cno;
+    packings.push({...p,cartonNo:newNo,totalQty:pq,cartons:ct,remark:(p.remark?p.remark+" | ":"")+"Carry forward FY "+src,carryFwd:true,cfFrom:src,...meta()});
     prodSet.add(p.productName);fgCartons+=ct;
-    lines.push(["Finish Goods",p.productName,"Carton "+p.cartonNo,pq]);
+    lines.push(["Finish Goods",p.productName,"Carton "+newNo,pq]);
   });
   // 2. MT Finish Goods
   const mst=getMtItemStats(),mtPackings=[];
@@ -5859,7 +6052,7 @@ function renderYearEndTab(){
   const done=temp.yeDone;
   const box=(t,n,sub,col)=>`<div style="flex:1;min-width:160px;background:#fff;border:1px solid #e0e0e0;border-left:4px solid ${col};border-radius:8px;padding:10px 14px"><div style="font-size:11px;color:#777">${t}</div><div style="font-size:22px;font-weight:800;color:${col}">${n}</div><div style="font-size:11px;color:#888">${sub}</div></div>`;
   return`<div class="card"><div class="card-title">📅 Year End Process</div><div class="card-body">
-    ${done?`<div style="background:#e8f5e9;border:2px solid #2e7d32;border-radius:10px;padding:14px 18px;margin-bottom:16px"><div style="font-weight:800;color:#1b5e20;font-size:15px">✅ FY ${esc(done.tgt)} ${done.rerun?"refresh ho gaya":"ban gaya"}</div><div style="font-size:12px;color:#37474f;margin:6px 0 10px">Opening stock aur pending orders naye year me aa gaye hain. FY ${esc(done.src)} ka data jyon ka tyon hai.</div><button class="btn btn-success" onclick="fyChoose('${esc(done.tgt)}')">▶️ FY ${esc(done.tgt)} me jao</button></div>`:""}
+    ${done?`<div style="background:#e8f5e9;border:2px solid #2e7d32;border-radius:10px;padding:14px 18px;margin-bottom:16px"><div style="font-weight:800;color:#1b5e20;font-size:15px">✅ FY ${esc(done.tgt)} ${done.rerun?"refresh ho gaya":"ban gaya"}</div><div style="font-size:12px;color:#37474f;margin:6px 0 10px">Opening stock aur pending orders naye year me aa gaye hain. Naye year me carton number 1 se shuru hoga (jaise 1/${esc(fyShort(done.tgt))}), aur purane cartons apne purane year ke number ke saath (jaise 947/${esc(fyShort(done.src))}) dikhenge. FY ${esc(done.src)} ka data jyon ka tyon hai.</div><button class="btn btn-success" onclick="fyChoose('${esc(done.tgt)}')">▶️ FY ${esc(done.tgt)} me jao</button></div>`:""}
     <div style="background:#e3f2fd;border:1px solid #90caf9;border-radius:8px;padding:10px 14px;font-size:12px;color:#0d47a1;margin-bottom:14px;line-height:1.6">ℹ️ Ek click me <b>FY ${esc(c.src)}</b> ka closing stock aur pending orders <b>naye year</b> me opening ban kar chale jate hain. Purane year ka data waisa hi rehta hai (login par year chun kar dekh sakte ho). Ye dobara chalane par sirf carry-forward wali entries naye hisaab se badalti hain, naye year ki apni entries nahi chhuti.</div>
     <div style="display:flex;gap:14px;flex-wrap:wrap;align-items:flex-end;margin-bottom:12px"><div><label class="lbl">Chalu Year</label><div style="padding:9px 14px;background:#eceff1;border-radius:6px;font-weight:800;color:#1a237e">FY ${esc(c.src)}</div></div><div><label class="lbl">Naya Year (aise likho: 2027-28)</label><input class="inp" style="width:150px;margin-bottom:0" value="${esc(c.tgt)}" onchange="App.yeSet('yeTarget',this.value)"></div><label style="font-size:12px;cursor:pointer;padding-bottom:10px"><input type="checkbox" ${c.zeroNeg?"checked":""} onchange="App.yeSet('yeZeroNeg',this.checked)"> Minus (negative) accessory stock zero se shuru karo${c.negCount?` <b style="color:#c62828">(${c.negCount} items minus)</b>`:""}</label></div>
     ${bad?`<div style="color:#c62828;font-size:12px;margin-bottom:10px">⚠️ Naya year ka format sahi nahi ya ${esc(c.src)} se aage ka nahi hai.</div>`:(ex?`<div style="color:#e65100;font-size:12px;margin-bottom:10px">ℹ️ FY ${esc(c.tgt)} pehle se bana hua hai — dobara chalane par sirf opening stock aur pending orders refresh honge.</div>`:"")}
@@ -5939,7 +6132,7 @@ window.App=App; window.AC=AC;
   try{sessionStorage.setItem("jpl_fy",FY.label);}catch(e){}
   const map={users:"users",packings:"packings",categories:"categories",dispatches:"dispatches",
     purchaseOrders:"pos",mtPos:"mt_pos",mtDispatches:"mt_dispatches",batchOptions:"batch_options",
-    mtItems:"mt_items",mtPackings:"mt_packings",itemMaster:"item_master",bomMaster:"bom_master",productionPlans:"production_plans",storeLedger:"store_ledger",grns:"grns",mtBomMaster:"mt_bom_master",mtProductionPlans:"mt_production_plans",mtDivisions:"mt_divisions",storeItems:"store_items",storeQtyTypes:"store_qty_types",storeBatches:"store_batches",recycleBin:"recycle_bin",nextChallanOverride:"next_challan_override",partyEmails:"party_emails",autoTriggeredProducts:"auto_triggered_products",lastAutoBackupDate:"last_auto_backup_date",lastAutoEmailDate:"last_auto_email_date",lastMtAlertEmailDate:"last_mt_alert_email_date",lastPendingCategoryEmailDate:"last_pending_category_email_date",lastProductionReminderDate:"last_production_reminder_date",gatePasses:"gate_passes",parties:"parties",accBills:"acc_bills",accReceipts:"acc_receipts",invoices:"invoices",itemRates:"item_rates",company:"company"};
+    mtItems:"mt_items",mtPackings:"mt_packings",itemMaster:"item_master",bomMaster:"bom_master",productionPlans:"production_plans",storeLedger:"store_ledger",grns:"grns",mtBomMaster:"mt_bom_master",mtProductionPlans:"mt_production_plans",mtDivisions:"mt_divisions",storeItems:"store_items",storeQtyTypes:"store_qty_types",storeBatches:"store_batches",recycleBin:"recycle_bin",nextChallanOverride:"next_challan_override",partyEmails:"party_emails",autoTriggeredProducts:"auto_triggered_products",lastAutoBackupDate:"last_auto_backup_date",lastAutoEmailDate:"last_auto_email_date",lastMtAlertEmailDate:"last_mt_alert_email_date",lastPendingCategoryEmailDate:"last_pending_category_email_date",lastProductionReminderDate:"last_production_reminder_date",gatePasses:"gate_passes",parties:"parties",accBills:"acc_bills",accReceipts:"acc_receipts",invoices:"invoices",creditNotes:"credit_notes",itemRates:"item_rates",company:"company"};
   for(const [sk,dbk] of Object.entries(map)){ const d=await DB.get(dbk); if(d)state[sk]=d; }
   await migratePlaintextPasswords();
   backfillDispatchBatches();
