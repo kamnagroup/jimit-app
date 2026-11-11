@@ -234,10 +234,10 @@ const DEFAULT_CATS  = ["Jar","Bottle","Lunchbox","Diwali Item"];
 const INIT_USERS    = [{id:1,username:"admin",password:"admin123",role:"admin",name:"Admin User",
   permissions:{packing:true,pendingStock:true,stockSummary:true,dispatch:true,dispatchRegister:true,
     po:true,pendingOrder:true,mtPo:true,mtDispatch:true,mtPending:true,mtPacking:true,userManagement:true}}];
-const PERMS = ["gatePass","packing","pendingStock","stockSummary","dispatch","dispatchRegister","po","pendingOrder","orderVsAvailable","mtPo","mtDispatch","mtPending","mtPacking","mtVehReq","planner","store","inventoryStock","productionReport","mtPlanner","home","minStock","mtReport","mtSalesDashboard","programStock","canMake","accounts","invoice"];
+const PERMS = ["gatePass","packing","pendingStock","stockSummary","dispatch","dispatchRegister","po","pendingOrder","orderVsAvailable","mtPo","mtDispatch","mtPending","mtPacking","mtVehReq","planner","store","inventoryStock","productionReport","mtPlanner","home","minStock","mtReport","mtSalesDashboard","programStock","canMake","accounts","invoice","mouldPlanner"];
 const PERM_LABELS = {gatePass:"Gate Pass",packing:"Packing",pendingStock:"Pending Stock",stockSummary:"Stock Summary",dispatch:"Dispatch",
   dispatchRegister:"Dispatch Register",po:"Purchase Order",pendingOrder:"Pending Orders",orderVsAvailable:"Order vs Available",
-  mtPo:"MT PO",mtDispatch:"MT Dispatch",mtPending:"MT Pending",mtPacking:"MT Packing",mtVehReq:"MT Vehicle Req",planner:"Production Planner",store:"Store / Inventory",inventoryStock:"Inventory Stock",mtPlanner:"MT Production Planner",mtSalesDashboard:"MT Sales Dashboard",productionReport:"Production Report",home:"Home Dashboard",minStock:"Min Stock & Purchase List",mtReport:"MT Delivery Report",programStock:"Program Stock Check",canMake:"Can Make Report",accounts:"Accounts — Party, Bills, Payments, Reports",invoice:"Invoice (Dispatch)"};
+  mtPo:"MT PO",mtDispatch:"MT Dispatch",mtPending:"MT Pending",mtPacking:"MT Packing",mtVehReq:"MT Vehicle Req",planner:"Production Planner",store:"Store / Inventory",inventoryStock:"Inventory Stock",mtPlanner:"MT Production Planner",mtSalesDashboard:"MT Sales Dashboard",productionReport:"Production Report",home:"Home Dashboard",minStock:"Min Stock & Purchase List",mtReport:"MT Delivery Report",programStock:"Program Stock Check",canMake:"Can Make Report",accounts:"Accounts — Party, Bills, Payments, Reports",invoice:"Invoice (Dispatch)",mouldPlanner:"Moulding Planner"};
 
 // ── STATE ─────────────────────────────────────
 let state = {
@@ -255,6 +255,7 @@ let state = {
   lastProductionReminderDate:"",
   itemMaster:[], dispatches:[], purchaseOrders:[], gatePasses:[],
   mtItems:[], mtPos:[], mtDispatches:[], mtPackings:[], bomMaster:[], productionPlans:[], storeLedger:[], grns:[], mtBomMaster:[], mtProductionPlans:[], mtDivisions:["AVENUE","STYLE","VISHAL MEGA MART"], storeItems:[], storeQtyTypes:["Box","Pcs","Kgs"], storeBatches:[],
+  mouldItems:[], mouldMats:[], mouldColours:[], mouldPrograms:[],
   activeTab:"packing"
 };
 let temp = {
@@ -532,7 +533,7 @@ function alertBadge(days){
   return`<span class="badge" style="background:#2e7d32;">✅ ${days}d</span>`;
 }
 function canAcc(){const u=state.currentUser;return !!u&&(u.role==="admin"||!!(u.permissions&&u.permissions.accounts));}
-function can(p){const u=state.currentUser;if(!u)return false;return u.role==="admin"||!!(u.permissions&&u.permissions[p])||!!u.readOnly;}
+function can(p){const u=state.currentUser;if(!u)return false;return u.role==="admin"||!!(u.permissions&&u.permissions[p])||!!u.readOnly||(p==="mouldPlanner"&&!!(u.permissions&&u.permissions.planner));}
 function isRO(){const u=state.currentUser;return!!u&&u.role!=="admin"&&!!u.readOnly;}
 function roBanner(){return isRO()?`<div class="ro-banner">👁️ <b>Read Only Mode</b></div>`:"";}
 function buildDispMap(){
@@ -1024,7 +1025,7 @@ function backfillDispatchItemBatches(){
 function buildBackupData(){
   const map={users:"users",packings:"packings",categories:"categories",dispatches:"dispatches",
     purchaseOrders:"pos",mtPos:"mt_pos",mtDispatches:"mt_dispatches",batchOptions:"batch_options",
-    mtItems:"mt_items",mtPackings:"mt_packings",itemMaster:"item_master",bomMaster:"bom_master",productionPlans:"production_plans",storeLedger:"store_ledger",grns:"grns",mtBomMaster:"mt_bom_master",mtProductionPlans:"mt_production_plans",mtDivisions:"mt_divisions",storeItems:"store_items",storeQtyTypes:"store_qty_types",storeBatches:"store_batches",recycleBin:"recycle_bin",nextChallanOverride:"next_challan_override",partyEmails:"party_emails",autoTriggeredProducts:"auto_triggered_products",lastAutoBackupDate:"last_auto_backup_date",lastAutoEmailDate:"last_auto_email_date",lastMtAlertEmailDate:"last_mt_alert_email_date",lastPendingCategoryEmailDate:"last_pending_category_email_date",lastProductionReminderDate:"last_production_reminder_date",gatePasses:"gate_passes",parties:"parties",accBills:"acc_bills",accReceipts:"acc_receipts",invoices:"invoices",creditNotes:"credit_notes",debitNotes:"debit_notes",itemRates:"item_rates",company:"company"};
+    mtItems:"mt_items",mtPackings:"mt_packings",itemMaster:"item_master",bomMaster:"bom_master",productionPlans:"production_plans",storeLedger:"store_ledger",grns:"grns",mtBomMaster:"mt_bom_master",mouldItems:"mould_items",mouldMats:"mould_mats",mouldColours:"mould_colours",mouldPrograms:"mould_programs",mtProductionPlans:"mt_production_plans",mtDivisions:"mt_divisions",storeItems:"store_items",storeQtyTypes:"store_qty_types",storeBatches:"store_batches",recycleBin:"recycle_bin",nextChallanOverride:"next_challan_override",partyEmails:"party_emails",autoTriggeredProducts:"auto_triggered_products",lastAutoBackupDate:"last_auto_backup_date",lastAutoEmailDate:"last_auto_email_date",lastMtAlertEmailDate:"last_mt_alert_email_date",lastPendingCategoryEmailDate:"last_pending_category_email_date",lastProductionReminderDate:"last_production_reminder_date",gatePasses:"gate_passes",parties:"parties",accBills:"acc_bills",accReceipts:"acc_receipts",invoices:"invoices",creditNotes:"credit_notes",debitNotes:"debit_notes",itemRates:"item_rates",company:"company"};
   const backup={ _meta:{app:"JimitPetLLP",exportedAt:new Date().toISOString(),version:1}, data:{} };
   Object.entries(map).forEach(([sk,dbk])=>{ backup.data[dbk]=state[sk]; });
   backup.data.tombstones=Tombstone.get();
@@ -1077,6 +1078,7 @@ function shellHtml(){
     {key:"mtPacking",label:"🏭 MT Packing",perm:"mtPacking"},
     {key:"mtVehReq",label:"🚛 MT Vehc Req",perm:"mtVehReq"},
     {key:"planner",label:"🧮 Planner",perm:"planner"},
+    {key:"mouldPlanner",label:"🏭 Moulding Planner",perm:"mouldPlanner"},
     {key:"mtPlanner",label:"🧮 MT Planner",perm:"mtPlanner"},
     {key:"mtSalesDashboard",label:"📊 MT Sales Dashboard",perm:"mtSalesDashboard"},
     {key:"store",label:"🏬 Store",perm:"store"},
@@ -1085,7 +1087,7 @@ function shellHtml(){
   ].filter(t=>t.perm==="accounts"?canAcc():can(t.perm));
   // ── TAB GROUPS (sirf navigation grouping; tabs ka kaam same hai) ──
   const TAB_GROUPS=[
-    {k:"packingDept",label:"📦 PACKING DEPT",keys:["packing","pendingStock","stockSummary","planner"]},
+    {k:"packingDept",label:"📦 PACKING DEPT",keys:["packing","pendingStock","stockSummary","planner","mouldPlanner"]},
     {k:"dispatchGrp",label:"🚚 DISPATCH",keys:["dispatch","dispatchRegister","gatePass","invoice","creditNote","debitNote"]},
     {k:"ordersGrp",label:"📝 ORDERS",keys:["po","pendingOrder","orderVsAvailable"]},
     {k:"mtGrp",label:"🏪 MT",keys:["mtPo","mtDispatch","mtPending","mtPacking","mtVehReq","mtPlanner","mtSalesDashboard","mtReport"]},
@@ -1134,7 +1136,7 @@ function renderTabContent(){
   const fns={packing:renderPackingTab,pendingStock:renderPendingStockTab,stockSummary:renderStockSummaryTab,
     dispatch:renderDispatchTab,dispatchRegister:renderDispatchRegisterTab,gatePass:renderGatePassTab,po:renderPOTab,
     pendingOrder:renderPendingOrderTab,orderVsAvailable:renderOrderVsAvailableTab,mtPo:renderMTPoTab,mtDispatch:renderMTDispatchTab,
-    mtPending:renderMTPendingTab,mtPacking:renderMTPackingTab,mtVehReq:renderMtVehReqTab,planner:renderPlannerTab,store:renderStoreTab,inventoryStock:renderInventoryStockTab,canMake:renderCanMakeTab,yearEnd:renderYearEndTab,accParty:renderAccPartyTab,accBills:renderAccBillsTab,accPay:renderAccPayTab,accOut:renderAccOutTab,accRates:renderAccRatesTab,invoice:renderInvoiceTab,creditNote:renderCreditNoteTab,debitNote:renderDebitNoteTab,productionReport:renderProductionReportTab,home:renderHomeTab,minStock:renderMinStockTab,mtReport:renderMtReportTab,programStock:renderProgramStockTabV2,mtPlanner:renderMtPlannerTab,mtSalesDashboard:renderMtSalesDashboardTab,userManagement:renderUserManagementTab,recycleBin:renderRecycleBinTab};
+    mtPending:renderMTPendingTab,mtPacking:renderMTPackingTab,mtVehReq:renderMtVehReqTab,planner:renderPlannerTab,mouldPlanner:renderMouldPlannerTab,store:renderStoreTab,inventoryStock:renderInventoryStockTab,canMake:renderCanMakeTab,yearEnd:renderYearEndTab,accParty:renderAccPartyTab,accBills:renderAccBillsTab,accPay:renderAccPayTab,accOut:renderAccOutTab,accRates:renderAccRatesTab,invoice:renderInvoiceTab,creditNote:renderCreditNoteTab,debitNote:renderDebitNoteTab,productionReport:renderProductionReportTab,home:renderHomeTab,minStock:renderMinStockTab,mtReport:renderMtReportTab,programStock:renderProgramStockTabV2,mtPlanner:renderMtPlannerTab,mtSalesDashboard:renderMtSalesDashboardTab,userManagement:renderUserManagementTab,recycleBin:renderRecycleBinTab};
   el.innerHTML=(fns[state.activeTab]||(() =>""))();
   const mr=document.getElementById("modalRoot");if(mr)mr.innerHTML=renderItemMasterModal()+renderMtItemModal();
   setTimeout(registerAC,0);
@@ -4363,9 +4365,281 @@ const AuthApp={
   }
 };
 
+// ══════════════════════════════════════════════════════════════════════════
+// 🏭 MOULDING PLANNER  (General Planner ke neeche)
+// Item ka 1 pc weight + recipe (PP/CP/LLDP... %) + Master Batch % + Colour %
+// → kitne pcs ka program, utna powder (kg + bags), colour-wise.
+// ══════════════════════════════════════════════════════════════════════════
+const MOULD_DEF_MATS=[{id:1,name:"PP",type:"powder",bagKg:25},{id:2,name:"CP",type:"powder",bagKg:25},{id:3,name:"LLDP",type:"powder",bagKg:25},{id:4,name:"LDPE",type:"powder",bagKg:25},{id:5,name:"MASTER BATCH",type:"mb",bagKg:25}];
+const mldN=v=>{const n=parseFloat(v);return isFinite(n)?n:0;};
+const mldF=(v,d)=>{d=(d==null?2:d);return (Math.round(v*Math.pow(10,d))/Math.pow(10,d)).toLocaleString("en-IN",{minimumFractionDigits:d,maximumFractionDigits:d});};
+const mldV=id=>{const e=document.getElementById(id);return e?e.value:"";};
+function mouldInit(){
+  if(!Array.isArray(state.mouldMats)||!state.mouldMats.length){state.mouldMats=JSON.parse(JSON.stringify(MOULD_DEF_MATS));persist("mould_mats",state.mouldMats);}
+  if(!Array.isArray(state.mouldItems))state.mouldItems=[];
+  if(!Array.isArray(state.mouldColours))state.mouldColours=[];
+  if(!Array.isArray(state.mouldPrograms))state.mouldPrograms=[];
+  if(!temp.mould)temp.mould={date:new Date().toISOString().slice(0,10),machine:"",note:"",lines:[]};
+}
+const mouldMat=id=>(state.mouldMats||[]).find(m=>m.id===id);
+function mouldSyncHead(){
+  if(!temp.mould)return;
+  const d=document.getElementById("mpDate");if(d)temp.mould.date=d.value;
+  const m=document.getElementById("mpMachine");if(m)temp.mould.machine=m.value;
+  const n=document.getElementById("mpNote");if(n)temp.mould.note=n.value;
+}
+function mouldCalcLine(l){
+  const it=(state.mouldItems||[]).find(i=>i.id===l.itemId);if(!it)return null;
+  const pcs=mldN(l.pcs);
+  const wp=(l.wastage===undefined||l.wastage===null||l.wastage==="")?mldN(it.wastePct):mldN(l.wastage);
+  const baseKg=pcs*mldN(it.wtG)/1000*(1+wp/100);
+  const mats={};
+  (it.base||[]).forEach(b=>{if(b.matId)mats[b.matId]=(mats[b.matId]||0)+baseKg*mldN(b.pct)/100;});
+  if(it.mbMatId&&mldN(it.mbPct)>0)mats[it.mbMatId]=(mats[it.mbMatId]||0)+baseKg*mldN(it.mbPct)/100;
+  const colKg=l.colour?baseKg*mldN(it.colPct)/100:0;
+  const totKg=Object.values(mats).reduce((a,b)=>a+b,0)+colKg;
+  return {it,pcs,wp,baseKg,mats,colKg,totKg};
+}
+function mouldTotals(lines){
+  const mats={},cols={};let pcs=0,kg=0;
+  (lines||[]).forEach(l=>{const c=mouldCalcLine(l);if(!c)return;pcs+=c.pcs;kg+=c.totKg;
+    Object.entries(c.mats).forEach(([id,v])=>{mats[id]=(mats[id]||0)+v;});
+    if(l.colour&&c.colKg>0)cols[l.colour]=(cols[l.colour]||0)+c.colKg;});
+  const matList=(state.mouldMats||[]).filter(m=>mats[m.id]>0).map(m=>({name:m.name,kg:mats[m.id],bagKg:mldN(m.bagKg)||25}));
+  const colList=Object.entries(cols).map(([name,v])=>({name,kg:v}));
+  return {pcs,kg,matList,colList,matsById:mats};
+}
+function mouldSnapshot(){
+  mouldSyncHead();const m=temp.mould;const lines=[];
+  m.lines.forEach(l=>{const c=mouldCalcLine(l);if(!c)return;
+    lines.push({itemName:c.it.name,colour:l.colour||"",pcs:c.pcs,wtG:mldN(c.it.wtG),wastePct:c.wp,totKg:c.totKg,colKg:c.colKg,
+      mats:Object.entries(c.mats).map(([id,kg])=>{const mt=mouldMat(+id);return{name:mt?mt.name:"?",kg:kg};})});});
+  const T=mouldTotals(m.lines);
+  return {date:m.date,machine:m.machine,note:m.note,lines,totals:{pcs:T.pcs,kg:T.kg,mats:T.matList,colours:T.colList}};
+}
+function mouldBagTxt(kg,bagKg){
+  const bags=kg/bagKg;const full=Math.floor(bags+1e-9);const loose=kg-full*bagKg;
+  return mldF(bags,3)+" bag"+(full>0?` <span style="font-size:11px;color:#555">(${full} full + ${mldF(Math.max(loose,0),2)} kg)</span>`:"");
+}
+function mouldTotalsHtml(snap){
+  const t=snap.totals;
+  if(!t.mats.length&&!t.colours.length)return `<div style="color:#999;text-align:center;padding:14px">Abhi koi line nahi hai</div>`;
+  const th='style="border:1px solid #bbb;padding:6px 10px;background:#e8eaf6;text-align:center"';
+  const td='style="border:1px solid #bbb;padding:6px 10px;text-align:center"';
+  const ty='style="border:1px solid #bbb;padding:6px 10px;text-align:center;background:#ffeb3b;font-weight:700"';
+  return `<table style="border-collapse:collapse;width:100%;font-size:13px;margin-bottom:12px"><thead><tr><th ${th}>Material</th><th ${th}>KGS</th><th ${th}>BAGS</th></tr></thead><tbody>
+  ${t.mats.map(m=>`<tr><td ${td}><b>${esc(m.name)}</b></td><td ${ty}>${mldF(m.kg,3)}</td><td ${td}>${mouldBagTxt(m.kg,m.bagKg)}</td></tr>`).join("")}
+  ${t.colours.map(c=>`<tr><td ${td}><b>🎨 ${esc(c.name)}</b> (colour)</td><td ${ty}>${mldF(c.kg,3)}</td><td ${td}>${mldF(c.kg*1000,0)} gm</td></tr>`).join("")}
+  <tr><td ${th}>TOTAL</td><td ${th}>${mldF(t.kg,3)} kg</td><td ${th}>${mldF(t.pcs,0)} pcs</td></tr></tbody></table>`;
+}
+function mouldRecipeTxt(it){
+  const parts=(it.base||[]).map(b=>{const m=mouldMat(b.matId);return (m?m.name:"?")+" "+mldN(b.pct)+"%";});
+  let s=parts.join(" · ")||"—";
+  if(it.mbMatId&&mldN(it.mbPct)>0){const m=mouldMat(it.mbMatId);s+=` + ${m?m.name:"MB"} ${mldN(it.mbPct)}%`;}
+  return s;
+}
+// ── MAIN TAB ───────────────────────────────────────────────────────────
+function renderMouldPlannerTab(){
+  mouldInit();const m=temp.mould,ro=isRO();
+  const items=[...state.mouldItems].sort((a,b)=>(a.name||"").localeCompare(b.name||""));
+  const calcs=m.lines.map(l=>({l,c:mouldCalcLine(l)}));
+  const snap=mouldSnapshot();
+  const usedMatIds=(state.mouldMats||[]).filter(mt=>calcs.some(x=>x.c&&x.c.mats[mt.id]>0));
+  const hasCol=calcs.some(x=>x.c&&x.c.colKg>0);
+  const thS='style="padding:8px 10px;white-space:nowrap"';
+  const rows=calcs.map(({l,c},i)=>{
+    if(!c)return `<tr><td>${i+1}</td><td colspan="${5+usedMatIds.length+(hasCol?1:0)}" style="color:#c62828">⚠️ Item master se delete ho gaya</td><td><button class="btn btn-sm btn-danger" onclick="App.mouldDelLine(${l.id})">✕</button></td></tr>`;
+    return `<tr><td>${i+1}</td><td><b>${esc(c.it.name)}</b></td>
+      <td><select class="inp" style="margin:0;min-width:110px" ${ro?"disabled":""} onchange="App.mouldUpdLine(${l.id},'colour',this.value)"><option value="">— No colour —</option>${state.mouldColours.map(co=>`<option ${co.name===l.colour?"selected":""}>${esc(co.name)}</option>`).join("")}</select></td>
+      <td><input class="inp" type="number" min="0" style="margin:0;width:100px" value="${esc(l.pcs)}" ${ro?"disabled":""} onchange="App.mouldUpdLine(${l.id},'pcs',this.value)"></td>
+      <td style="text-align:center">${mldN(c.it.wtG)} g</td>
+      <td><input class="inp" type="number" step="0.1" style="margin:0;width:70px" placeholder="${mldN(c.it.wastePct)}" value="${esc(l.wastage==null?"":l.wastage)}" ${ro?"disabled":""} onchange="App.mouldUpdLine(${l.id},'wastage',this.value)"></td>
+      ${usedMatIds.map(mt=>`<td style="text-align:right">${c.mats[mt.id]?mldF(c.mats[mt.id],3):"—"}</td>`).join("")}
+      ${hasCol?`<td style="text-align:right">${c.colKg?mldF(c.colKg,3):"—"}</td>`:""}
+      <td style="text-align:right;font-weight:700">${mldF(c.totKg,3)}</td>
+      <td>${ro?"":`<button class="btn btn-sm btn-danger" onclick="App.mouldDelLine(${l.id})">✕</button>`}</td></tr>`;}).join("");
+  const addRow=ro?"":`<div style="display:flex;gap:10px;flex-wrap:wrap;align-items:flex-end;background:#f3f4ff;border:1px solid #c5cae9;border-radius:8px;padding:10px 14px;margin-bottom:14px">
+    <div style="min-width:220px"><label class="lbl">Item</label><select class="inp" id="mpItem" style="margin:0">${items.length?`<option value="">-- Select Item --</option>`+items.map(i=>`<option value="${i.id}">${esc(i.name)} (${mldN(i.wtG)} g)</option>`).join(""):`<option value="">Pehle Moulding Items banao</option>`}</select></div>
+    <div><label class="lbl">Colour</label><select class="inp" id="mpColour" style="margin:0"><option value="">— No colour —</option>${state.mouldColours.map(co=>`<option>${esc(co.name)}</option>`).join("")}</select></div>
+    <div><label class="lbl">Pcs to Make</label><input class="inp" type="number" min="0" id="mpPcs" style="margin:0;width:130px" placeholder="e.g. 5000"></div>
+    <div><label class="lbl">Wastage % (khali = item wala)</label><input class="inp" type="number" step="0.1" id="mpWaste" style="margin:0;width:120px"></div>
+    <button class="btn btn-primary" onclick="App.mouldAddLine()">➕ Add Line</button></div>`;
+  return `${roBanner()}
+  <div style="display:flex;gap:8px;flex-wrap:wrap;justify-content:flex-end;margin-bottom:12px">
+    <button class="btn btn-primary" onclick="App.mouldOpenItems()">📐 Moulding Items (${state.mouldItems.length})</button>
+    <button class="btn btn-primary" onclick="App.mouldOpenMats()">🧪 Materials &amp; Colours</button>
+    <button class="btn btn-secondary" onclick="App.mouldOpenPrograms()">📚 Saved Programs (${state.mouldPrograms.length})</button></div>
+  <div class="card"><div class="card-title">🏭 Moulding Planner — Powder Requirement</div><div class="card-body">
+    <div class="grid2" style="grid-template-columns:repeat(auto-fit,minmax(180px,1fr));margin-bottom:10px">
+      <div><label class="lbl">Date</label><input class="inp" type="date" id="mpDate" value="${esc(m.date)}"></div>
+      <div><label class="lbl">Machine / Mould No.</label><input class="inp" id="mpMachine" value="${esc(m.machine)}" placeholder="e.g. M-3"></div>
+      <div><label class="lbl">Note</label><input class="inp" id="mpNote" value="${esc(m.note)}"></div></div>
+    ${addRow}
+    <div style="overflow-x:auto"><table class="tbl"><thead><tr style="background:#1a237e;color:#fff"><th ${thS}>#</th><th ${thS}>Item</th><th ${thS}>Colour</th><th ${thS}>Pcs</th><th ${thS}>1 pc</th><th ${thS}>Wastage %</th>${usedMatIds.map(mt=>`<th ${thS}>${esc(mt.name)} kg</th>`).join("")}${hasCol?`<th ${thS}>Colour kg</th>`:""}<th ${thS}>Total kg</th><th></th></tr></thead>
+    <tbody>${rows||`<tr><td colspan="9" style="text-align:center;color:#999;padding:20px">Upar se item, colour aur pcs daal kar Add Line dabao</td></tr>`}</tbody></table></div>
+    <div style="background:#fff3e0;border:1px solid #ffcc80;border-radius:8px;padding:8px 12px;font-size:12px;color:#e65100;margin:12px 0">ℹ️ Powder = Pcs × 1 pc weight × (1 + wastage%). Recipe % usi powder par lagta hai. Master Batch aur Colour % bhi usi powder weight par extra lagte hain.</div>
+    <div class="card-title" style="border-radius:8px;margin-bottom:10px">📊 Total Requirement</div>
+    ${mouldTotalsHtml(snap)}
+    <div style="display:flex;gap:8px;flex-wrap:wrap">
+      ${ro?"":`<button class="btn btn-success" onclick="App.mouldSave()">💾 Save Program</button><button class="btn btn-danger" onclick="App.mouldClear()">🗑 Clear</button>`}
+      <button class="btn btn-primary" onclick="App.mouldPrint()">🖨️ Print</button>
+      <button class="btn" style="background:#2e7d32" onclick="App.mouldExcel()">📥 Excel</button></div>
+  </div></div>`;
+}
+// ── MODAL HELPERS ──────────────────────────────────────────────────────
+function mouldShowModal(title,body){
+  let o=document.getElementById("mouldModal");
+  if(!o){o=document.createElement("div");o.id="mouldModal";o.className="modal-overlay";document.body.appendChild(o);}
+  o.innerHTML=`<div class="modal-box"><div class="modal-head"><span style="font-weight:700;font-size:16px">${title}</span><button class="btn btn-sm" style="background:rgba(255,255,255,.2)" onclick="App.mouldClose()">✕ Close</button></div><div style="padding:18px">${body}</div></div>`;
+}
+function mouldBlankForm(){const p=(state.mouldMats||[]).find(m=>m.type==="powder");return{id:null,name:"",group:"",wtG:"",wastePct:"",base:[{matId:p?p.id:"",pct:100}],mbMatId:"",mbPct:"",colPct:""};}
+function mouldSyncForm(){
+  const f=temp.mouldForm;if(!f||!document.getElementById("mfName"))return;
+  f.name=mldV("mfName");f.group=mldV("mfGroup");f.wtG=mldV("mfWt");f.wastePct=mldV("mfWaste");
+  f.mbMatId=mldV("mfMbMat")?+mldV("mfMbMat"):"";f.mbPct=mldV("mfMbPct");f.colPct=mldV("mfColPct");
+  f.base=f.base.map((b,i)=>({matId:mldV("mfBM"+i)?+mldV("mfBM"+i):"",pct:mldV("mfBP"+i)}));
+}
+function mouldItemRowsHtml(){
+  const q=(temp.mouldItemQ||"").toLowerCase();
+  const list=[...state.mouldItems].filter(i=>!q||(i.name||"").toLowerCase().includes(q)||(i.group||"").toLowerCase().includes(q)).sort((a,b)=>(a.name||"").localeCompare(b.name||""));
+  return list.map(i=>`<tr><td><b>${esc(i.name)}</b></td><td>${esc(i.group||"—")}</td><td style="text-align:center">${mldN(i.wtG)} g</td><td style="font-size:12px">${esc(mouldRecipeTxt(i))}</td><td style="text-align:center">${mldN(i.colPct)}%</td>
+    <td style="white-space:nowrap">${isRO()?"":`<button class="btn btn-sm btn-primary" onclick="App.mouldEditItem(${i.id})">Edit</button> <button class="btn btn-sm btn-secondary" onclick="App.mouldCopyItem(${i.id})">Copy</button> <button class="btn btn-sm btn-danger" onclick="App.mouldDelItem(${i.id})">Del</button>`}</td></tr>`).join("")
+    ||`<tr><td colspan="6" style="text-align:center;color:#999;padding:16px">Koi item nahi</td></tr>`;
+}
+function mouldItemModalHtml(){
+  const f=temp.mouldForm||mouldBlankForm();temp.mouldForm=f;
+  const mats=state.mouldMats;
+  const opt=(sel,filter)=>mats.filter(filter||(()=>true)).map(m=>`<option value="${m.id}" ${m.id===sel?"selected":""}>${esc(m.name)}</option>`).join("");
+  const sum=f.base.reduce((a,b)=>a+mldN(b.pct),0);
+  const groups=[...new Set([...["Bowl","Cap","Lid","Ring","Bottom","Top","Lunch Box Lid","Lunch Box Base"],...state.mouldItems.map(i=>i.group).filter(Boolean)])];
+  const form=isRO()?"":`<div style="background:#f3f4ff;border:1px solid #c5cae9;border-radius:10px;padding:14px;margin-bottom:16px">
+    <div style="font-weight:700;color:#1a237e;margin-bottom:6px">${f.id?"✏️ Edit Item":"➕ Naya Moulding Item"}</div>
+    <div class="grid2" style="grid-template-columns:repeat(auto-fit,minmax(170px,1fr))">
+      <div><label class="lbl">Item Name *</label><input class="inp" id="mfName" value="${esc(f.name)}" placeholder="e.g. 500ml Bowl"></div>
+      <div><label class="lbl">Group</label><input class="inp" id="mfGroup" list="mfGroupList" value="${esc(f.group)}"><datalist id="mfGroupList">${groups.map(g=>`<option value="${esc(g)}">`).join("")}</datalist></div>
+      <div><label class="lbl">1 pc Weight (gram) *</label><input class="inp" type="number" step="0.01" id="mfWt" value="${esc(f.wtG)}"></div>
+      <div><label class="lbl">Wastage % (default)</label><input class="inp" type="number" step="0.1" id="mfWaste" value="${esc(f.wastePct)}"></div></div>
+    <label class="lbl">Powder Recipe (total 100% hona chahiye) — abhi: <b style="color:${Math.abs(sum-100)<0.001?"#2e7d32":"#c62828"}">${mldF(sum,2)}%</b></label>
+    ${f.base.map((b,i)=>`<div style="display:flex;gap:8px;align-items:center;margin-bottom:4px"><select class="inp" style="margin:0;max-width:200px" id="mfBM${i}">${opt(b.matId,m=>m.type!=="mb")}</select><input class="inp" type="number" step="0.01" style="margin:0;width:100px" id="mfBP${i}" value="${esc(b.pct)}" onchange="App.mouldFormRefresh()"> %<button class="btn btn-sm btn-danger" onclick="App.mouldFormDelBase(${i})">✕</button></div>`).join("")}
+    <button class="btn btn-sm btn-secondary" onclick="App.mouldFormAddBase()">➕ Powder add</button>
+    <div class="grid2" style="grid-template-columns:repeat(auto-fit,minmax(170px,1fr));margin-top:8px">
+      <div><label class="lbl">Master Batch (agar lagta hai)</label><select class="inp" id="mfMbMat"><option value="">— Nahi lagta —</option>${opt(f.mbMatId,m=>m.type==="mb")}</select></div>
+      <div><label class="lbl">Master Batch %</label><input class="inp" type="number" step="0.01" id="mfMbPct" value="${esc(f.mbPct)}"></div>
+      <div><label class="lbl">Colour % (jab colour select ho)</label><input class="inp" type="number" step="0.01" id="mfColPct" value="${esc(f.colPct)}"></div></div>
+    <div style="display:flex;gap:8px;margin-top:10px"><button class="btn btn-success" onclick="App.mouldFormSave()">💾 ${f.id?"Update":"Save"} Item</button>${f.id?`<button class="btn btn-secondary" onclick="App.mouldFormCancel()">Cancel</button>`:""}</div></div>`;
+  return `${form}<input class="inp" placeholder="🔍 Item / group search" value="${esc(temp.mouldItemQ||"")}" oninput="App.mouldItemSearch(this.value)" style="max-width:300px">
+    <div style="overflow-x:auto;max-height:45vh;overflow-y:auto"><table class="tbl"><thead><tr style="background:#1a237e;color:#fff"><th>Item</th><th>Group</th><th>1 pc</th><th>Recipe</th><th>Colour %</th><th></th></tr></thead><tbody id="mouldItemRows">${mouldItemRowsHtml()}</tbody></table></div>`;
+}
+function mouldMatsModalHtml(){
+  const ro=isRO(),dis=ro?"disabled":"";
+  return `<div class="grid2" style="grid-template-columns:repeat(auto-fit,minmax(300px,1fr));gap:20px">
+  <div><div style="font-weight:700;color:#1a237e;margin-bottom:6px">🧪 Materials (Powder / Master Batch)</div>
+    <table class="tbl"><thead><tr style="background:#1a237e;color:#fff"><th>Name</th><th>Type</th><th>Bag kg</th><th></th></tr></thead><tbody>
+    ${state.mouldMats.map(m=>`<tr><td><input class="inp" style="margin:0" ${dis} value="${esc(m.name)}" onchange="App.mouldMatField(${m.id},'name',this.value)"></td>
+      <td><select class="inp" style="margin:0" ${dis} onchange="App.mouldMatField(${m.id},'type',this.value)"><option value="powder" ${m.type==="powder"?"selected":""}>Powder</option><option value="mb" ${m.type==="mb"?"selected":""}>Master Batch</option></select></td>
+      <td><input class="inp" type="number" style="margin:0;width:80px" ${dis} value="${esc(m.bagKg)}" onchange="App.mouldMatField(${m.id},'bagKg',this.value)"></td>
+      <td>${ro?"":`<button class="btn btn-sm btn-danger" onclick="App.mouldDelMat(${m.id})">✕</button>`}</td></tr>`).join("")}</tbody></table>
+    ${ro?"":`<div style="display:flex;gap:6px;margin-top:8px"><input class="inp" id="mmNew" placeholder="Naya material (e.g. HDPE)" style="margin:0"><button class="btn btn-primary" onclick="App.mouldAddMat()">➕ Add</button></div>`}</div>
+  <div><div style="font-weight:700;color:#1a237e;margin-bottom:6px">🎨 Colours</div>
+    <table class="tbl"><tbody>${state.mouldColours.map(c=>`<tr><td><input class="inp" style="margin:0" ${dis} value="${esc(c.name)}" onchange="App.mouldColourRename(${c.id},this.value)"></td><td style="width:50px">${ro?"":`<button class="btn btn-sm btn-danger" onclick="App.mouldDelColour(${c.id})">✕</button>`}</td></tr>`).join("")||`<tr><td style="color:#999;padding:12px">Abhi koi colour nahi</td></tr>`}</tbody></table>
+    ${ro?"":`<div style="display:flex;gap:6px;margin-top:8px"><input class="inp" id="mcNew" placeholder="Naya colour (e.g. Red)" style="margin:0"><button class="btn btn-primary" onclick="App.mouldAddColour()">➕ Add</button></div>`}</div></div>`;
+}
+function mouldProgramsModalHtml(){
+  const list=[...state.mouldPrograms].reverse();
+  return `<div style="overflow-x:auto;max-height:60vh;overflow-y:auto"><table class="tbl"><thead><tr style="background:#1a237e;color:#fff"><th>Date</th><th>Machine</th><th>Items</th><th>Total pcs</th><th>Total kg</th><th>By</th><th></th></tr></thead><tbody>
+  ${list.map(p=>`<tr><td>${esc(fmtDate?fmtDate(p.date):p.date)}</td><td>${esc(p.machine||"—")}</td><td style="font-size:12px">${esc(p.lines.map(l=>l.itemName+(l.colour?" ("+l.colour+")":"")).join(", "))}</td><td style="text-align:center">${mldF(p.totals.pcs,0)}</td><td style="text-align:center">${mldF(p.totals.kg,2)}</td><td>${esc(p.createdBy||"—")}</td>
+  <td style="white-space:nowrap"><button class="btn btn-sm btn-success" onclick="App.mouldPrint(${p.id})">🖨️</button> <button class="btn btn-sm" style="background:#2e7d32" onclick="App.mouldExcel(${p.id})">📥</button> ${isRO()?"":`<button class="btn btn-sm btn-primary" onclick="App.mouldLoadProg(${p.id})">Load</button> <button class="btn btn-sm btn-danger" onclick="App.mouldDelProg(${p.id})">Del</button>`}</td></tr>`).join("")||`<tr><td colspan="7" style="text-align:center;color:#999;padding:16px">Abhi koi program save nahi hua</td></tr>`}</tbody></table></div>`;
+}
+function mouldSnapPrintHtml(s){
+  const th='style="border:1px solid #444;padding:5px 8px;background:#e8eaf6;font-size:12px"',td='style="border:1px solid #444;padding:5px 8px;font-size:12px;text-align:center"';
+  const mnames=[...new Set(s.lines.flatMap(l=>l.mats.map(m=>m.name)))];
+  const rows=s.lines.map((l,i)=>`<tr><td ${td}>${i+1}</td><td ${td}><b>${esc(l.itemName)}</b></td><td ${td}>${esc(l.colour||"—")}</td><td ${td}>${mldF(l.pcs,0)}</td><td ${td}>${l.wtG} g</td><td ${td}>${l.wastePct}%</td>${mnames.map(n=>{const m=l.mats.find(x=>x.name===n);return `<td ${td}>${m?mldF(m.kg,3):"—"}</td>`;}).join("")}<td ${td}>${l.colKg?mldF(l.colKg,3):"—"}</td><td ${td}><b>${mldF(l.totKg,3)}</b></td></tr>`).join("");
+  return `<h2 style="margin:0 0 4px">🏭 Jimit Pet LLP — Moulding Program</h2><div style="font-size:13px;margin-bottom:10px">Date: <b>${esc(s.date)}</b> &nbsp; Machine: <b>${esc(s.machine||"—")}</b> ${s.note?`&nbsp; Note: ${esc(s.note)}`:""}</div>
+  <table style="border-collapse:collapse;width:100%;margin-bottom:14px"><thead><tr><th ${th}>#</th><th ${th}>Item</th><th ${th}>Colour</th><th ${th}>Pcs</th><th ${th}>1 pc</th><th ${th}>Waste</th>${mnames.map(n=>`<th ${th}>${esc(n)} kg</th>`).join("")}<th ${th}>Colour kg</th><th ${th}>Total kg</th></tr></thead><tbody>${rows}</tbody></table>
+  <h3 style="margin:0 0 6px">Total Requirement</h3>${mouldTotalsHtml(s)}`;
+}
+// ── ACTIONS ────────────────────────────────────────────────────────────
+const MouldApp={
+  mouldAddLine(){
+    mouldSyncHead();const id=+mldV("mpItem");if(!id){alert("Item select karo");return;}
+    const pcs=mldN(mldV("mpPcs"));if(pcs<=0){alert("Pcs daalo");return;}
+    temp.mould.lines.push({id:uid(),itemId:id,colour:mldV("mpColour"),pcs:pcs,wastage:mldV("mpWaste")});
+    renderTabContent();
+  },
+  mouldUpdLine(id,f,v){mouldSyncHead();const l=temp.mould.lines.find(x=>x.id===id);if(!l)return;l[f]=v;renderTabContent();},
+  mouldDelLine(id){mouldSyncHead();temp.mould.lines=temp.mould.lines.filter(x=>x.id!==id);renderTabContent();},
+  mouldClear(){if(!confirm("Poora current program clear kar du?"))return;temp.mould={date:new Date().toISOString().slice(0,10),machine:"",note:"",lines:[]};renderTabContent();},
+  async mouldSave(){
+    const s=mouldSnapshot();if(!s.lines.length){alert("Pehle kam se kam ek line add karo");return;}
+    s.id=uid();s.createdBy=state.currentUser?state.currentUser.name:"";s.raw=JSON.parse(JSON.stringify(temp.mould.lines));
+    state.mouldPrograms.push(s);await persist("mould_programs",state.mouldPrograms);
+    showSyncPill("ok","💾 Moulding Program save ho gaya",2500);renderTabContent();
+  },
+  mouldPrint(pid){
+    const s=pid?state.mouldPrograms.find(p=>p.id===pid):mouldSnapshot();if(!s)return;
+    const w=window.open("","_blank");if(!w){alert("Popup blocked!");return;}
+    w.document.write(`<html><head><title>Moulding Program</title><style>body{font-family:Arial,sans-serif;padding:16px}</style></head><body>${mouldSnapPrintHtml(s)}<script>window.onload=function(){window.print();}<\/script></body></html>`);w.document.close();
+  },
+  mouldExcel(pid){
+    if(typeof XLSX==="undefined"){alert("Excel library load nahi hui (internet chahiye)");return;}
+    const s=pid?state.mouldPrograms.find(p=>p.id===pid):mouldSnapshot();if(!s)return;
+    const mnames=[...new Set(s.lines.flatMap(l=>l.mats.map(m=>m.name)))];
+    const aoa=[["Jimit Pet LLP — Moulding Program"],["Date",s.date,"Machine",s.machine||"","Note",s.note||""],[],
+      ["#","Item","Colour","Pcs","1 pc (g)","Wastage %",...mnames.map(n=>n+" kg"),"Colour kg","Total kg"]];
+    s.lines.forEach((l,i)=>aoa.push([i+1,l.itemName,l.colour,l.pcs,l.wtG,l.wastePct,...mnames.map(n=>{const m=l.mats.find(x=>x.name===n);return m?+m.kg.toFixed(3):0;}),+l.colKg.toFixed(3),+l.totKg.toFixed(3)]));
+    aoa.push([],["TOTAL REQUIREMENT"],["Material","KGS","BAGS"]);
+    s.totals.mats.forEach(m=>aoa.push([m.name,+m.kg.toFixed(3),+(m.kg/m.bagKg).toFixed(3)]));
+    s.totals.colours.forEach(c=>aoa.push([c.name+" (colour)",+c.kg.toFixed(3),""]));
+    aoa.push(["TOTAL",+s.totals.kg.toFixed(3),"Pcs: "+s.totals.pcs]);
+    const wb=XLSX.utils.book_new();XLSX.utils.book_append_sheet(wb,XLSX.utils.aoa_to_sheet(aoa),"Moulding Program");
+    XLSX.writeFile(wb,"Moulding_Program_"+(s.date||"")+".xlsx");
+  },
+  mouldClose(){const o=document.getElementById("mouldModal");if(o)o.remove();renderTabContent();},
+  // ── Programs
+  mouldOpenPrograms(){mouldSyncHead();mouldShowModal("📚 Saved Moulding Programs",mouldProgramsModalHtml());},
+  mouldLoadProg(id){const p=state.mouldPrograms.find(x=>x.id===id);if(!p)return;
+    const raw=(p.raw||[]).filter(l=>state.mouldItems.some(i=>i.id===l.itemId));
+    if(raw.length<(p.raw||[]).length)alert("Kuch items ab Item Master me nahi hain, wo load nahi honge.");
+    temp.mould={date:p.date,machine:p.machine||"",note:p.note||"",lines:raw.map(l=>({...l,id:uid()}))};this.mouldClose();},
+  async mouldDelProg(id){if(!confirm("Ye saved program delete karu?"))return;state.mouldPrograms=state.mouldPrograms.filter(p=>p.id!==id);await persist("mould_programs",state.mouldPrograms);mouldShowModal("📚 Saved Moulding Programs",mouldProgramsModalHtml());},
+  // ── Items
+  mouldOpenItems(){mouldSyncHead();temp.mouldForm=mouldBlankForm();temp.mouldItemQ="";mouldShowModal("📐 Moulding Items",mouldItemModalHtml());},
+  mouldItemSearch(v){temp.mouldItemQ=v;const e=document.getElementById("mouldItemRows");if(e)e.innerHTML=mouldItemRowsHtml();},
+  mouldFormRefresh(){mouldSyncForm();mouldShowModal("📐 Moulding Items",mouldItemModalHtml());},
+  mouldFormAddBase(){mouldSyncForm();const p=state.mouldMats.find(m=>m.type!=="mb");temp.mouldForm.base.push({matId:p?p.id:"",pct:""});mouldShowModal("📐 Moulding Items",mouldItemModalHtml());},
+  mouldFormDelBase(i){mouldSyncForm();temp.mouldForm.base.splice(i,1);if(!temp.mouldForm.base.length)temp.mouldForm.base.push({matId:"",pct:""});mouldShowModal("📐 Moulding Items",mouldItemModalHtml());},
+  mouldFormCancel(){temp.mouldForm=mouldBlankForm();mouldShowModal("📐 Moulding Items",mouldItemModalHtml());},
+  mouldEditItem(id){const it=state.mouldItems.find(i=>i.id===id);if(!it)return;temp.mouldForm=JSON.parse(JSON.stringify(it));mouldShowModal("📐 Moulding Items",mouldItemModalHtml());},
+  async mouldCopyItem(id){const it=state.mouldItems.find(i=>i.id===id);if(!it)return;const c=JSON.parse(JSON.stringify(it));c.id=uid();c.name=it.name+" (copy)";state.mouldItems.push(c);await persist("mould_items",state.mouldItems);temp.mouldForm=JSON.parse(JSON.stringify(c));mouldShowModal("📐 Moulding Items",mouldItemModalHtml());},
+  async mouldDelItem(id){if(!confirm("Ye item delete karu?"))return;state.mouldItems=state.mouldItems.filter(i=>i.id!==id);await persist("mould_items",state.mouldItems);mouldShowModal("📐 Moulding Items",mouldItemModalHtml());},
+  async mouldFormSave(){
+    mouldSyncForm();const f=temp.mouldForm;
+    if(!f.name.trim()){alert("Item name daalo");return;}
+    if(mldN(f.wtG)<=0){alert("1 pc weight (gram) daalo");return;}
+    const base=f.base.filter(b=>b.matId&&mldN(b.pct)>0).map(b=>({matId:+b.matId,pct:mldN(b.pct)}));
+    if(!base.length){alert("Kam se kam ek powder aur uska % daalo");return;}
+    const sum=base.reduce((a,b)=>a+b.pct,0);
+    if(Math.abs(sum-100)>0.01&&!confirm("Recipe ka total "+mldF(sum,2)+"% hai (100% nahi). Phir bhi save karu?"))return;
+    const rec={id:f.id||uid(),name:f.name.trim(),group:f.group.trim(),wtG:mldN(f.wtG),wastePct:mldN(f.wastePct),base,mbMatId:f.mbMatId&&mldN(f.mbPct)>0?+f.mbMatId:"",mbPct:mldN(f.mbPct),colPct:mldN(f.colPct)};
+    if(f.id)state.mouldItems=state.mouldItems.map(i=>i.id===f.id?rec:i);else state.mouldItems.push(rec);
+    await persist("mould_items",state.mouldItems);temp.mouldForm=mouldBlankForm();mouldShowModal("📐 Moulding Items",mouldItemModalHtml());
+  },
+  // ── Materials & Colours
+  mouldOpenMats(){mouldSyncHead();mouldShowModal("🧪 Materials & Colours",mouldMatsModalHtml());},
+  async mouldMatField(id,f,v){const m=mouldMat(id);if(!m)return;if(f==="name"){if(!v.trim())return;m.name=v.trim();}else if(f==="bagKg")m.bagKg=mldN(v)||25;else m.type=v;await persist("mould_mats",state.mouldMats);},
+  async mouldAddMat(){const n=mldV("mmNew").trim();if(!n)return;state.mouldMats.push({id:uid(),name:n,type:"powder",bagKg:25});await persist("mould_mats",state.mouldMats);mouldShowModal("🧪 Materials & Colours",mouldMatsModalHtml());},
+  async mouldDelMat(id){
+    const used=state.mouldItems.some(i=>(i.base||[]).some(b=>b.matId===id)||i.mbMatId===id);
+    if(used){alert("Ye material kisi item ki recipe me use ho raha hai, pehle wahan se hatao.");return;}
+    if(!confirm("Material delete karu?"))return;state.mouldMats=state.mouldMats.filter(m=>m.id!==id);await persist("mould_mats",state.mouldMats);mouldShowModal("🧪 Materials & Colours",mouldMatsModalHtml());},
+  async mouldAddColour(){const n=mldV("mcNew").trim();if(!n)return;if(state.mouldColours.some(c=>c.name.toLowerCase()===n.toLowerCase())){alert("Ye colour pehle se hai");return;}state.mouldColours.push({id:uid(),name:n});await persist("mould_colours",state.mouldColours);mouldShowModal("🧪 Materials & Colours",mouldMatsModalHtml());},
+  async mouldColourRename(id,v){const c=state.mouldColours.find(x=>x.id===id);if(!c||!v.trim())return;c.name=v.trim();await persist("mould_colours",state.mouldColours);},
+  async mouldDelColour(id){if(!confirm("Colour delete karu?"))return;state.mouldColours=state.mouldColours.filter(c=>c.id!==id);await persist("mould_colours",state.mouldColours);mouldShowModal("🧪 Materials & Colours",mouldMatsModalHtml());}
+};
+
 const App=Object.assign({},PackingApp,PendingStockApp,StockSummaryApp,DispatchApp,DispatchRegisterApp,
   POApp,PendingOrderApp,OrderVsAvailableApp,ItemMasterApp,MtItemModalApp,MTPoApp,MTDispatchApp,MTPendingApp,MTPackingApp,MtVehReqApp,PlannerApp,ImportApp,StoreApp,StoreItemApp,InventoryStockApp,MtPlannerApp,RecycleBinApp,LotReportApp,
-  UserManagementApp,AuthApp);
+  UserManagementApp,AuthApp,MouldApp);
 // ── PROGRAM STOCK CHECK (General Planner programs vs Inventory Stock) ──
 function getProgramStockCheck(p){
   const wastage=(p.result&&p.result.wastage)||{};
@@ -6251,7 +6525,7 @@ window.App=App; window.AC=AC;
   try{sessionStorage.setItem("jpl_fy",FY.label);}catch(e){}
   const map={users:"users",packings:"packings",categories:"categories",dispatches:"dispatches",
     purchaseOrders:"pos",mtPos:"mt_pos",mtDispatches:"mt_dispatches",batchOptions:"batch_options",
-    mtItems:"mt_items",mtPackings:"mt_packings",itemMaster:"item_master",bomMaster:"bom_master",productionPlans:"production_plans",storeLedger:"store_ledger",grns:"grns",mtBomMaster:"mt_bom_master",mtProductionPlans:"mt_production_plans",mtDivisions:"mt_divisions",storeItems:"store_items",storeQtyTypes:"store_qty_types",storeBatches:"store_batches",recycleBin:"recycle_bin",nextChallanOverride:"next_challan_override",partyEmails:"party_emails",autoTriggeredProducts:"auto_triggered_products",lastAutoBackupDate:"last_auto_backup_date",lastAutoEmailDate:"last_auto_email_date",lastMtAlertEmailDate:"last_mt_alert_email_date",lastPendingCategoryEmailDate:"last_pending_category_email_date",lastProductionReminderDate:"last_production_reminder_date",gatePasses:"gate_passes",parties:"parties",accBills:"acc_bills",accReceipts:"acc_receipts",invoices:"invoices",creditNotes:"credit_notes",debitNotes:"debit_notes",itemRates:"item_rates",company:"company"};
+    mtItems:"mt_items",mtPackings:"mt_packings",itemMaster:"item_master",bomMaster:"bom_master",productionPlans:"production_plans",storeLedger:"store_ledger",grns:"grns",mtBomMaster:"mt_bom_master",mouldItems:"mould_items",mouldMats:"mould_mats",mouldColours:"mould_colours",mouldPrograms:"mould_programs",mtProductionPlans:"mt_production_plans",mtDivisions:"mt_divisions",storeItems:"store_items",storeQtyTypes:"store_qty_types",storeBatches:"store_batches",recycleBin:"recycle_bin",nextChallanOverride:"next_challan_override",partyEmails:"party_emails",autoTriggeredProducts:"auto_triggered_products",lastAutoBackupDate:"last_auto_backup_date",lastAutoEmailDate:"last_auto_email_date",lastMtAlertEmailDate:"last_mt_alert_email_date",lastPendingCategoryEmailDate:"last_pending_category_email_date",lastProductionReminderDate:"last_production_reminder_date",gatePasses:"gate_passes",parties:"parties",accBills:"acc_bills",accReceipts:"acc_receipts",invoices:"invoices",creditNotes:"credit_notes",debitNotes:"debit_notes",itemRates:"item_rates",company:"company"};
   for(const [sk,dbk] of Object.entries(map)){ const d=await DB.get(dbk); if(d)state[sk]=d; }
   await migratePlaintextPasswords();
   backfillDispatchBatches();
