@@ -4427,7 +4427,7 @@ function mouldBagTxt(kg,bagKg){
   const bags=kg/bagKg;const full=Math.floor(bags+1e-9);const loose=kg-full*bagKg;
   return mldF(bags,3)+" bag"+(full>0?` <span style="font-size:11px;color:#555">(${full} full + ${mldF(Math.max(loose,0),2)} kg)</span>`:"");
 }
-function mouldTotalsHtml(snap){
+function mouldTotalsHtml(snap,pr){
   const t=snap.totals;
   if(!t.mats.length&&!t.colours.length&&!(snap.acc||[]).length)return `<div style="color:#999;text-align:center;padding:14px">Abhi koi line nahi hai</div>`;
   const th='style="border:1px solid #bbb;padding:6px 10px;background:#e8eaf6;text-align:center"';
@@ -4437,9 +4437,9 @@ function mouldTotalsHtml(snap){
   return `<table style="border-collapse:collapse;width:100%;font-size:13px;margin-bottom:12px"><thead><tr><th ${th}>Material</th><th ${th}>KGS</th><th ${th}>BAGS</th></tr></thead><tbody>
   ${t.mats.map(m=>`<tr><td ${td}><b>${esc(m.name)}</b></td><td ${ty}>${mldF(m.kg,3)}</td><td ${td}>${mouldBagTxt(m.kg,m.bagKg)}</td></tr>`).join("")}
   <tr><td ${th}>TOTAL</td><td ${th}>${mldF(t.kg,3)} kg</td><td ${th}>${mldF(t.pcs,0)} moulded pcs</td></tr></tbody></table>
-  ${t.colours.length?`<table style="border-collapse:collapse;width:100%;font-size:13px;margin-bottom:12px"><thead><tr><th ${th}>🎨 Colour</th><th ${th}>Code</th><th ${th}>Packets</th><th ${th}>Roundup</th></tr></thead><tbody>
-  ${t.colours.map(c=>`<tr><td ${td}><b>${esc(c.name)}</b></td><td ${td}>${esc(c.code||"—")}</td><td ${tr}>${mldF(c.pkt,2)} pkt</td><td ${td}>${Math.ceil(c.pkt-1e-9)} pkt</td></tr>`).join("")}</tbody></table>`:""}
-  ${mouldAccHtml(snap.acc)}`;
+  ${t.colours.length?`<table style="border-collapse:collapse;width:100%;font-size:13px;margin-bottom:12px"><thead><tr><th ${th}>🎨 Colour</th><th ${th}>Code</th>${pr?"":`<th ${th}>Packets</th>`}<th ${th}>${pr?"Packets (Roundup)":"Roundup"}</th></tr></thead><tbody>
+  ${t.colours.map(c=>`<tr><td ${td}><b>${esc(c.name)}</b></td><td ${td}>${esc(c.code||"—")}</td>${pr?"":`<td ${tr}>${mldF(c.pkt,2)} pkt</td>`}<td ${td}>${Math.ceil(c.pkt-1e-9)} pkt</td></tr>`).join("")}</tbody></table>`:""}
+  ${mouldAccHtml(snap.acc,pr)}`;
 }
 function mouldRecipeTxt(it){
   const parts=(it.base||[]).map(b=>{const m=mouldMat(b.matId);return (m?m.name:"?")+" "+mldN(b.pct)+"%";});
@@ -4470,8 +4470,9 @@ function mouldGenPlanLines(plan){
   const P=mldN(pr.pcsPerCarton);
   (pr.lines||[]).filter(x=>x.type==="mould").forEach(x=>{
     const q=mldN(x.qty)||1,cols=mouldPartColours(x,plan);
-    const sh=cols.length?mouldSplitCartons(plan.cartons,cols.length):[plan.cartons];
-    (cols.length?cols:[""]).forEach((c,i)=>{const pcs=Math.round(sh[i]*P*q);if(pcs>0)temp.mould.lines.push({id:uid(),itemId:x.itemId,colour:c,pcs,wastage:"",planId:plan.id});});
+    const tot=Math.round(plan.cartons*P*q);                       // is part ke total pcs
+    const sh=cols.length?mouldSplitCartons(tot,cols.length):[tot]; // pcs / colours (bacha hua pehle colour ko)
+    (cols.length?cols:[""]).forEach((c,i)=>{const pcs=sh[i];if(pcs>0)temp.mould.lines.push({id:uid(),itemId:x.itemId,colour:c,pcs,wastage:"",planId:plan.id});});
   });
 }
 function mouldAccTotals(plans){
@@ -4495,15 +4496,15 @@ function mouldAccTotals(plans){
     return {name:a.name,unit:a.unit,qty:need,formula:a.f.join(" + "),stock,short:(isK&&stock<need)?need-Math.max(stock,0):0};
   });
 }
-function mouldAccHtml(acc){
+function mouldAccHtml(acc,pr){
   if(!acc||!acc.length)return "";
   const th='style="border:1px solid #bbb;padding:6px 10px;background:#e8eaf6;text-align:center"';
   const td='style="border:1px solid #bbb;padding:6px 10px;text-align:center"';
   const ty='style="border:1px solid #bbb;padding:6px 10px;text-align:center;background:#ffeb3b;font-weight:700"';
-  return `<table style="border-collapse:collapse;width:100%;font-size:13px;margin-bottom:12px"><thead><tr><th ${th}>🧰 Accessory / Material</th><th ${th}>Required</th><th ${th}>Hisaab</th><th ${th}>Store Stock</th><th ${th}>Status</th></tr></thead><tbody>
+  return `<table style="border-collapse:collapse;width:100%;font-size:13px;margin-bottom:12px"><thead><tr><th ${th}>🧰 Accessory / Material</th><th ${th}>Required</th>${pr?"":`<th ${th}>Hisaab</th><th ${th}>Store Stock</th><th ${th}>Status</th>`}</tr></thead><tbody>
   ${acc.map(a=>`<tr><td ${td}><b>${esc(a.name)}</b></td><td ${ty}>${mldF(a.qty,a.unit==="nos"?0:3)} ${esc(a.unit)}${a.unit==="gm"&&a.qty>=1000?` <span style="font-size:11px;font-weight:400">(${mldF(a.qty/1000,3)} kg)</span>`:""}</td>
-  <td ${td}><span style="font-size:12px;color:#555">${esc(a.formula||"")}</span></td>
-  <td ${td}>${a.stock==null?"—":mldF(a.stock,2)}</td><td ${td}>${a.stock==null?"—":(a.short>0?`<span style="color:#c62828;font-weight:700">⚠️ Short ${mldF(a.short,2)}</span>`:`<span style="color:#2e7d32">✅ OK</span>`)}</td></tr>`).join("")}</tbody></table>`;
+  ${pr?"":`<td ${td}><span style="font-size:12px;color:#555">${esc(a.formula||"")}</span></td>
+  <td ${td}>${a.stock==null?"—":mldF(a.stock,2)}</td><td ${td}>${a.stock==null?"—":(a.short>0?`<span style="color:#c62828;font-weight:700">⚠️ Short ${mldF(a.short,2)}</span>`:`<span style="color:#2e7d32">✅ OK</span>`)}</td>`}</tr>`).join("")}</tbody></table>`;
 }
 function mouldPlanCardsHtml(){
   const ro=isRO();
@@ -4513,8 +4514,8 @@ function mouldPlanCardsHtml(){
     const sets=pl.cartons*P;
     const parts=pr?(pr.lines||[]).filter(x=>x.type==="mould").map(x=>{
       const it=state.mouldItems.find(i=>i.id===x.itemId);const q=mldN(x.qty)||1;
-      const cols=mouldPartColours(x,pl);const sh=cols.length?mouldSplitCartons(pl.cartons,cols.length):[pl.cartons];
-      return `<div style="font-size:12px;margin-top:3px">🏭 <b>${esc(it?it.name:"?")}</b> — ${q} per ${esc(U.toLowerCase())} × ${mldF(sets,0)} = <b>${mldF(sets*q,0)} pcs</b> ${cols.length?`→ ${cols.map((c,i)=>esc(c)+" "+mldF(sh[i]*P*q,0)).join(" · ")}`:"(bina colour)"}</div>`;}).join(""):"";
+      const cols=mouldPartColours(x,pl);const tot=Math.round(sets*q);const sh=cols.length?mouldSplitCartons(tot,cols.length):[tot];
+      return `<div style="font-size:12px;margin-top:3px">🏭 <b>${esc(it?it.name:"?")}</b> — ${q} per ${esc(U.toLowerCase())} × ${mldF(sets,0)} = <b>${mldF(sets*q,0)} pcs</b> ${cols.length?`→ ${cols.map((c,i)=>esc(c)+" "+mldF(sh[i],0)).join(" · ")}`:"(bina colour)"}</div>`;}).join(""):"";
     return `<div style="background:#e8f5e9;border:1px solid #a5d6a7;border-radius:8px;padding:8px 12px;margin-bottom:6px">
       <div style="display:flex;gap:10px;flex-wrap:wrap;align-items:center">
       <b>📦 ${esc(pl.productName)}</b>${pr?"":` <span style="color:#c62828">(BOM delete ho gaya)</span>`}
@@ -4531,7 +4532,7 @@ function mouldPlanAddHtml(){
       <div style="min-width:240px"><label class="lbl">Product</label><select class="inp" id="mppProd" style="margin:0">${prods.length?`<option value="">-- Select Product --</option>`+prods.map(p=>`<option value="${p.id}">${esc(p.name)} (${mldN(p.pcsPerCarton)} ${esc((p.unitName||"Set").toLowerCase())}/ctn)</option>`).join(""):`<option value="">Pehle 🧾 Product BOM banao</option>`}</select></div>
       <div><label class="lbl">Cartons (CTS)</label><input class="inp" type="number" min="1" id="mppCtn" style="margin:0;width:120px" placeholder="e.g. 10"></div>
       <button class="btn btn-success" onclick="App.mouldAddPlan()">➕ Plan Add</button></div>
-    <div style="font-size:12px;color:#1b5e20;margin-top:8px">🎨 Colour har moulding item me jo tick kiye hain wahi se aayenge, aur cartons un colours me barabar bantenge (10 ctn, 3 colour → 4-3-3).</div>
+    <div style="font-size:12px;color:#1b5e20;margin-top:8px">🎨 Colour har moulding item me jo tick kiye hain wahi se aayenge, aur us part ke total pcs un colours me barabar bantenge (720 pcs, 3 colour → 240-240-240; 721 pcs → 241-240-240).</div>
     <details style="margin-top:6px"><summary style="cursor:pointer;font-size:12px;color:#555">Sirf kuch colours hi banane hon to yahan tick karo (optional — khali chhodo to item ke sab colours)</summary>
     <div style="display:flex;flex-wrap:wrap;gap:6px;margin-top:6px">${state.mouldColours.map(co=>`<label style="display:flex;align-items:center;gap:5px;font-size:13px;background:#fff;padding:6px 12px;border-radius:20px;border:1px solid #a5d6a7;cursor:pointer"><input type="checkbox" class="mppCol" value="${co.id}"> ${esc(co.name)}${co.code?` <span style="color:#777;font-size:11px">(${esc(co.code)})</span>`:""}</label>`).join("")||`<span style="color:#999;font-size:12px">Colour add nahi hain</span>`}</div></details></div>`;
 }
@@ -4713,7 +4714,7 @@ function mouldSnapPrintHtml(s){
   return `<h2 style="margin:0 0 4px">🏭 Jimit Pet LLP — Moulding Program</h2><div style="font-size:13px;margin-bottom:10px">Date: <b>${esc(s.date)}</b> &nbsp; Machine: <b>${esc(s.machine||"—")}</b> ${s.note?`&nbsp; Note: ${esc(s.note)}`:""}</div>
   <table style="border-collapse:collapse;width:100%;margin-bottom:14px"><thead><tr><th ${th}>#</th><th ${th}>Item</th><th ${th}>Colour</th><th ${th}>Pcs</th><th ${th}>1 pc</th><th ${th}>Waste</th>${mnames.map(n=>`<th ${th}>${esc(n)} kg</th>`).join("")}<th ${th}>Colour pkt</th><th ${th}>Total kg</th></tr></thead><tbody>${rows}</tbody></table>
   ${(s.plans||[]).length?`<div style="font-size:13px;margin-bottom:10px"><b>📦 Product Plan:</b> ${s.plans.map(p=>esc(p.name)+" — "+p.cartons+" ctn ("+mldF(p.pcs,0)+" pcs)"+(p.colours.length?" ["+esc(p.colours.join(", "))+"]":"")).join(" &nbsp;|&nbsp; ")}</div>`:""}
-  <h3 style="margin:0 0 6px">Total Requirement</h3>${mouldTotalsHtml(s)}`;
+  <h3 style="margin:0 0 6px">Total Requirement</h3>${mouldTotalsHtml(s,true)}`;
 }
 // ── ACTIONS ────────────────────────────────────────────────────────────
 const MouldApp={
