@@ -4436,7 +4436,7 @@ function mouldTotalsHtml(snap){
   const tr='style="border:1px solid #bbb;padding:6px 10px;text-align:center;background:#ffcdd2;font-weight:700"';
   return `<table style="border-collapse:collapse;width:100%;font-size:13px;margin-bottom:12px"><thead><tr><th ${th}>Material</th><th ${th}>KGS</th><th ${th}>BAGS</th></tr></thead><tbody>
   ${t.mats.map(m=>`<tr><td ${td}><b>${esc(m.name)}</b></td><td ${ty}>${mldF(m.kg,3)}</td><td ${td}>${mouldBagTxt(m.kg,m.bagKg)}</td></tr>`).join("")}
-  <tr><td ${th}>TOTAL</td><td ${th}>${mldF(t.kg,3)} kg</td><td ${th}>${mldF(t.pcs,0)} pcs</td></tr></tbody></table>
+  <tr><td ${th}>TOTAL</td><td ${th}>${mldF(t.kg,3)} kg</td><td ${th}>${mldF(t.pcs,0)} moulded pcs</td></tr></tbody></table>
   ${t.colours.length?`<table style="border-collapse:collapse;width:100%;font-size:13px;margin-bottom:12px"><thead><tr><th ${th}>🎨 Colour</th><th ${th}>Code</th><th ${th}>Packets</th><th ${th}>Roundup</th></tr></thead><tbody>
   ${t.colours.map(c=>`<tr><td ${td}><b>${esc(c.name)}</b></td><td ${td}>${esc(c.code||"—")}</td><td ${tr}>${mldF(c.pkt,2)} pkt</td><td ${td}>${Math.ceil(c.pkt-1e-9)} pkt</td></tr>`).join("")}</tbody></table>`:""}
   ${mouldAccHtml(snap.acc)}`;
@@ -4453,34 +4453,46 @@ const MOULD_UNITS=["nos","gm","kg","ml","ltr","mtr"];
 function mouldSplitCartons(c,n){const b=Math.floor(c/n),r=c-b*n;return Array.from({length:n},(_,i)=>b+(i<r?1:0));}
 function mouldGroupList(extra){return [...new Set([...(state.mouldGroups||[]),...(extra?[extra]:[])])].filter(Boolean);}
 function mouldProd(id){return (state.mouldProducts||[]).find(p=>p.id===id);}
+function mouldPartColours(x,pl){
+  const mode=x.colMode||"split";
+  if(mode==="none")return [];
+  if(mode.startsWith("fix:"))return [mode.slice(4)];
+  const it=state.mouldItems.find(i=>i.id===x.itemId);
+  const own=it?(it.colours||[]).map(id=>{const c=state.mouldColours.find(k=>k.id===id);return c?c.name:"";}).filter(Boolean):[];
+  const ov=pl.colours||[];
+  if(!ov.length)return own;                 // koi tick nahi = item ke apne colours
+  const inter=own.filter(n=>ov.includes(n));
+  return inter.length?inter:ov;
+}
 function mouldGenPlanLines(plan){
   temp.mould.lines=temp.mould.lines.filter(l=>l.planId!==plan.id);
   const pr=mouldProd(plan.productId);if(!pr)return;
-  const P=mldN(pr.pcsPerCarton),cols=plan.colours||[];
-  const shares=cols.length?mouldSplitCartons(plan.cartons,cols.length):[plan.cartons];
-  const add=(x,colour,pcs)=>{if(pcs>0)temp.mould.lines.push({id:uid(),itemId:x.itemId,colour,pcs,wastage:"",planId:plan.id});};
+  const P=mldN(pr.pcsPerCarton);
   (pr.lines||[]).filter(x=>x.type==="mould").forEach(x=>{
-    const q=mldN(x.qty)||1,mode=x.colMode||"split";
-    if(mode==="split"&&cols.length)cols.forEach((c,i)=>add(x,c,Math.round(shares[i]*P*q)));
-    else add(x,mode.startsWith("fix:")?mode.slice(4):"",Math.round(plan.cartons*P*q));
+    const q=mldN(x.qty)||1,cols=mouldPartColours(x,plan);
+    const sh=cols.length?mouldSplitCartons(plan.cartons,cols.length):[plan.cartons];
+    (cols.length?cols:[""]).forEach((c,i)=>{const pcs=Math.round(sh[i]*P*q);if(pcs>0)temp.mould.lines.push({id:uid(),itemId:x.itemId,colour:c,pcs,wastage:"",planId:plan.id});});
   });
 }
 function mouldAccTotals(plans){
   const map={},known=new Set(getAllStoreItemNames());
   (plans||[]).forEach(pl=>{
     const pr=mouldProd(pl.productId);if(!pr)return;
-    const P=mldN(pr.pcsPerCarton),I=mldN(pr.pcsPerInner),pcs=pl.cartons*P,inner=I>0?pcs/I:0;
+    const U=(pr.unitName||"Set").toLowerCase();
+    const P=mldN(pr.pcsPerCarton),I=mldN(pr.pcsPerInner),sets=pl.cartons*P,inner=I>0?sets/I:0;
     (pr.lines||[]).filter(x=>x.type==="acc"&&x.name).forEach(x=>{
-      const mult=x.basis==="inner"?inner:(x.basis==="carton"?pl.cartons:pcs);
+      const cnt=x.basis==="inner"?inner:(x.basis==="carton"?pl.cartons:sets);
+      const lbl=x.basis==="inner"?"inner box":(x.basis==="carton"?"carton":U);
       const unit=x.unit||"nos",key=x.name+"|"+unit;
-      if(!map[key])map[key]={name:x.name,unit,qty:0};
-      map[key].qty+=mldN(x.qty)*mult;
+      if(!map[key])map[key]={name:x.name,unit,qty:0,f:[]};
+      map[key].qty+=mldN(x.qty)*cnt;
+      map[key].f.push(`${mldN(x.qty)} × ${mldF(cnt,x.basis==="carton"?0:2).replace(/\.00$/,"")} ${lbl}`);
     });
   });
   return Object.values(map).map(a=>{
     const need=a.unit==="nos"?Math.ceil(a.qty-1e-9):Math.round(a.qty*1000)/1000;
     const isK=known.has(a.name);const stock=isK?getStoreStock(a.name):null;
-    return {name:a.name,unit:a.unit,qty:need,stock,short:(isK&&stock<need)?need-stock:0};
+    return {name:a.name,unit:a.unit,qty:need,formula:a.f.join(" + "),stock,short:(isK&&stock<need)?need-Math.max(stock,0):0};
   });
 }
 function mouldAccHtml(acc){
@@ -4488,22 +4500,27 @@ function mouldAccHtml(acc){
   const th='style="border:1px solid #bbb;padding:6px 10px;background:#e8eaf6;text-align:center"';
   const td='style="border:1px solid #bbb;padding:6px 10px;text-align:center"';
   const ty='style="border:1px solid #bbb;padding:6px 10px;text-align:center;background:#ffeb3b;font-weight:700"';
-  return `<table style="border-collapse:collapse;width:100%;font-size:13px;margin-bottom:12px"><thead><tr><th ${th}>🧰 Accessory / Material</th><th ${th}>Required</th><th ${th}>Store Stock</th><th ${th}>Status</th></tr></thead><tbody>
+  return `<table style="border-collapse:collapse;width:100%;font-size:13px;margin-bottom:12px"><thead><tr><th ${th}>🧰 Accessory / Material</th><th ${th}>Required</th><th ${th}>Hisaab</th><th ${th}>Store Stock</th><th ${th}>Status</th></tr></thead><tbody>
   ${acc.map(a=>`<tr><td ${td}><b>${esc(a.name)}</b></td><td ${ty}>${mldF(a.qty,a.unit==="nos"?0:3)} ${esc(a.unit)}${a.unit==="gm"&&a.qty>=1000?` <span style="font-size:11px;font-weight:400">(${mldF(a.qty/1000,3)} kg)</span>`:""}</td>
+  <td ${td}><span style="font-size:12px;color:#555">${esc(a.formula||"")}</span></td>
   <td ${td}>${a.stock==null?"—":mldF(a.stock,2)}</td><td ${td}>${a.stock==null?"—":(a.short>0?`<span style="color:#c62828;font-weight:700">⚠️ Short ${mldF(a.short,2)}</span>`:`<span style="color:#2e7d32">✅ OK</span>`)}</td></tr>`).join("")}</tbody></table>`;
 }
 function mouldPlanCardsHtml(){
   const ro=isRO();
   if(!temp.mould.plans.length)return "";
   return temp.mould.plans.map(pl=>{
-    const pr=mouldProd(pl.productId);const P=pr?mldN(pr.pcsPerCarton):0,I=pr?mldN(pr.pcsPerInner):0;
-    const cols=pl.colours||[];const sh=cols.length?mouldSplitCartons(pl.cartons,cols.length):[];
-    return `<div style="display:flex;gap:10px;flex-wrap:wrap;align-items:center;background:#e8f5e9;border:1px solid #a5d6a7;border-radius:8px;padding:8px 12px;margin-bottom:6px">
+    const pr=mouldProd(pl.productId);const P=pr?mldN(pr.pcsPerCarton):0,I=pr?mldN(pr.pcsPerInner):0,U=pr?(pr.unitName||"Set"):"Set";
+    const sets=pl.cartons*P;
+    const parts=pr?(pr.lines||[]).filter(x=>x.type==="mould").map(x=>{
+      const it=state.mouldItems.find(i=>i.id===x.itemId);const q=mldN(x.qty)||1;
+      const cols=mouldPartColours(x,pl);const sh=cols.length?mouldSplitCartons(pl.cartons,cols.length):[pl.cartons];
+      return `<div style="font-size:12px;margin-top:3px">🏭 <b>${esc(it?it.name:"?")}</b> — ${q} per ${esc(U.toLowerCase())} × ${mldF(sets,0)} = <b>${mldF(sets*q,0)} pcs</b> ${cols.length?`→ ${cols.map((c,i)=>esc(c)+" "+mldF(sh[i]*P*q,0)).join(" · ")}`:"(bina colour)"}</div>`;}).join(""):"";
+    return `<div style="background:#e8f5e9;border:1px solid #a5d6a7;border-radius:8px;padding:8px 12px;margin-bottom:6px">
+      <div style="display:flex;gap:10px;flex-wrap:wrap;align-items:center">
       <b>📦 ${esc(pl.productName)}</b>${pr?"":` <span style="color:#c62828">(BOM delete ho gaya)</span>`}
       <span><input class="inp" type="number" min="1" style="margin:0;width:80px" value="${pl.cartons}" ${ro?"disabled":""} onchange="App.mouldPlanCartons(${pl.id},this.value)"> ctn</span>
-      <span style="font-size:12px">= ${mldF(pl.cartons*P,0)} pcs${I>0?` · ${mldF(pl.cartons*P/I,0)} inner box`:""}</span>
-      <span style="font-size:12px;color:#1b5e20">${cols.length?"🎨 "+cols.map((c,i)=>esc(c)+" "+sh[i]+" ctn").join(" · "):"Bina colour"}</span>
-      ${ro?"":`<button class="btn btn-sm btn-danger" onclick="App.mouldDelPlan(${pl.id})">✕ Hatao</button>`}</div>`;}).join("");
+      <span style="font-size:12px">${pl.cartons} × ${mldF(P,0)} = <b>${mldF(sets,0)} ${esc(U)}</b>${I>0?` · ${mldF(sets/I,0)} inner box`:""}</span>
+      ${ro?"":`<button class="btn btn-sm btn-danger" onclick="App.mouldDelPlan(${pl.id})">✕ Hatao</button>`}</div>${parts}</div>`;}).join("");
 }
 function mouldPlanAddHtml(){
   if(isRO())return "";
@@ -4511,18 +4528,19 @@ function mouldPlanAddHtml(){
   return `<div style="background:#e8f5e9;border:1px solid #a5d6a7;border-radius:8px;padding:10px 14px;margin-bottom:14px">
     <div style="font-weight:700;color:#1b5e20;margin-bottom:6px">📦 Product Plan (BOM se) — sirf carton daalo, moulding programme aur accessories apne aap ban jayenge</div>
     <div style="display:flex;gap:10px;flex-wrap:wrap;align-items:flex-end">
-      <div style="min-width:240px"><label class="lbl">Product</label><select class="inp" id="mppProd" style="margin:0" onchange="App.mouldProdPicked(this.value)">${prods.length?`<option value="">-- Select Product --</option>`+prods.map(p=>`<option value="${p.id}">${esc(p.name)} (${mldN(p.pcsPerCarton)} pcs/ctn)</option>`).join(""):`<option value="">Pehle 🧾 Product BOM banao</option>`}</select></div>
+      <div style="min-width:240px"><label class="lbl">Product</label><select class="inp" id="mppProd" style="margin:0">${prods.length?`<option value="">-- Select Product --</option>`+prods.map(p=>`<option value="${p.id}">${esc(p.name)} (${mldN(p.pcsPerCarton)} ${esc((p.unitName||"Set").toLowerCase())}/ctn)</option>`).join(""):`<option value="">Pehle 🧾 Product BOM banao</option>`}</select></div>
       <div><label class="lbl">Cartons (CTS)</label><input class="inp" type="number" min="1" id="mppCtn" style="margin:0;width:120px" placeholder="e.g. 10"></div>
       <button class="btn btn-success" onclick="App.mouldAddPlan()">➕ Plan Add</button></div>
-    <label class="lbl" style="margin-top:8px">🎨 Colours tick karo — cartons barabar bat jayenge (10 ctn, 3 colour → 4-3-3)</label>
-    <div style="display:flex;flex-wrap:wrap;gap:6px">${state.mouldColours.map(co=>`<label style="display:flex;align-items:center;gap:5px;font-size:13px;background:#fff;padding:6px 12px;border-radius:20px;border:1px solid #a5d6a7;cursor:pointer"><input type="checkbox" class="mppCol" value="${co.id}"> ${esc(co.name)}${co.code?` <span style="color:#777;font-size:11px">(${esc(co.code)})</span>`:""}</label>`).join("")||`<span style="color:#999;font-size:12px">Colour add nahi hain (bina colour bhi chalega)</span>`}</div></div>`;
+    <div style="font-size:12px;color:#1b5e20;margin-top:8px">🎨 Colour har moulding item me jo tick kiye hain wahi se aayenge, aur cartons un colours me barabar bantenge (10 ctn, 3 colour → 4-3-3).</div>
+    <details style="margin-top:6px"><summary style="cursor:pointer;font-size:12px;color:#555">Sirf kuch colours hi banane hon to yahan tick karo (optional — khali chhodo to item ke sab colours)</summary>
+    <div style="display:flex;flex-wrap:wrap;gap:6px;margin-top:6px">${state.mouldColours.map(co=>`<label style="display:flex;align-items:center;gap:5px;font-size:13px;background:#fff;padding:6px 12px;border-radius:20px;border:1px solid #a5d6a7;cursor:pointer"><input type="checkbox" class="mppCol" value="${co.id}"> ${esc(co.name)}${co.code?` <span style="color:#777;font-size:11px">(${esc(co.code)})</span>`:""}</label>`).join("")||`<span style="color:#999;font-size:12px">Colour add nahi hain</span>`}</div></details></div>`;
 }
 // ── Product BOM modal
-function mouldBlankProd(){return{id:null,name:"",pcsPerCarton:"",pcsPerInner:"",lines:[]};}
+function mouldBlankProd(){return{id:null,name:"",unitName:"Set",pcsPerCarton:"",pcsPerInner:"",lines:[]};}
 function mouldBlankLine(type){return type==="mould"?{type:"mould",itemId:"",qty:1,basis:"pc",unit:"nos",colMode:"split"}:{type:"acc",name:"",qty:1,basis:"pc",unit:"nos"};}
 function mouldSyncProd(){
   const f=temp.mouldProdForm;if(!f||!document.getElementById("pbName"))return;
-  f.name=mldV("pbName");f.pcsPerCarton=mldV("pbPC");f.pcsPerInner=mldV("pbPI");
+  f.name=mldV("pbName");f.unitName=mldV("pbUnit")||"Set";f.pcsPerCarton=mldV("pbPC");f.pcsPerInner=mldV("pbPI");
   f.lines.forEach((l,i)=>{
     if(!document.getElementById("pbQ"+i))return;
     if(l.type==="mould"){l.itemId=mldV("pbN"+i)?+mldV("pbN"+i):"";l.colMode=mldV("pbC"+i)||"split";}
@@ -4533,13 +4551,13 @@ function mouldSyncProd(){
 function mouldProdRowsHtml(){
   const q=(temp.mouldProdQ||"").toLowerCase();
   const list=[...state.mouldProducts].filter(p=>!q||(p.name||"").toLowerCase().includes(q)).sort((a,b)=>(a.name||"").localeCompare(b.name||""));
-  return list.map(p=>`<tr><td><b>${esc(p.name)}</b></td><td style="text-align:center">${mldN(p.pcsPerCarton)}</td><td style="text-align:center">${mldN(p.pcsPerInner)||"—"}</td><td style="text-align:center">${(p.lines||[]).filter(l=>l.type==="mould").length}</td><td style="text-align:center">${(p.lines||[]).filter(l=>l.type==="acc").length}</td>
+  return list.map(p=>`<tr><td><b>${esc(p.name)}</b></td><td style="text-align:center">${mldN(p.pcsPerCarton)} ${esc((p.unitName||"Set").toLowerCase())}</td><td style="text-align:center">${mldN(p.pcsPerInner)?mldN(p.pcsPerInner)+" "+esc((p.unitName||"Set").toLowerCase()):"—"}</td><td style="text-align:center">${(p.lines||[]).filter(l=>l.type==="mould").length}</td><td style="text-align:center">${(p.lines||[]).filter(l=>l.type==="acc").length}</td>
   <td style="white-space:nowrap">${isRO()?"":`<button class="btn btn-sm btn-primary" onclick="App.mouldEditProd(${p.id})">Edit</button> <button class="btn btn-sm btn-secondary" onclick="App.mouldCopyProd(${p.id})">Copy</button> <button class="btn btn-sm btn-danger" onclick="App.mouldDelProd(${p.id})">Del</button>`}</td></tr>`).join("")||`<tr><td colspan="6" style="text-align:center;color:#999;padding:16px">Koi Product BOM nahi</td></tr>`;
 }
 function mouldProdModalHtml(){
   const f=temp.mouldProdForm||mouldBlankProd();temp.mouldProdForm=f;
   const items=[...state.mouldItems].sort((a,b)=>(a.name||"").localeCompare(b.name||""));
-  const P=mldN(f.pcsPerCarton),I=mldN(f.pcsPerInner);
+  const P=mldN(f.pcsPerCarton),I=mldN(f.pcsPerInner);const U=f.unitName||"Set";
   const lines=f.lines.map((l,i)=>{
     const nameCell=l.type==="mould"
       ?`<select class="inp" style="margin:0;min-width:190px" id="pbN${i}"><option value="">-- Moulding item --</option>${items.map(it=>`<option value="${it.id}" ${it.id===l.itemId?"selected":""}>${esc(it.name)}</option>`).join("")}</select>`
@@ -4548,22 +4566,23 @@ function mouldProdModalHtml(){
     const colCell=l.type==="mould"?`<select class="inp" style="margin:0;min-width:150px" id="pbC${i}"><option value="split" ${l.colMode==="split"?"selected":""}>Plan ke colours me split</option><option value="none" ${l.colMode==="none"?"selected":""}>Koi colour nahi (natural)</option>${state.mouldColours.map(c=>`<option value="fix:${esc(c.name)}" ${l.colMode==="fix:"+c.name?"selected":""}>Fixed: ${esc(c.name)}</option>`).join("")}</select>`:`<span style="color:#aaa">—</span>`;
     return `<tr><td><select class="inp" style="margin:0;width:120px" onchange="App.mouldProdType(${i},this.value)"><option value="mould" ${l.type==="mould"?"selected":""}>🏭 Moulded part</option><option value="acc" ${l.type==="acc"?"selected":""}>🧰 Accessory</option></select></td>
       <td>${nameCell}</td><td><input class="inp" type="number" step="0.001" style="margin:0;width:80px" id="pbQ${i}" value="${esc(l.qty)}"></td>
-      <td><select class="inp" style="margin:0;width:120px" id="pbB${i}"><option value="pc" ${l.basis==="pc"?"selected":""}>per pc (ready)</option><option value="inner" ${l.basis==="inner"?"selected":""}>per inner box</option><option value="carton" ${l.basis==="carton"?"selected":""}>per carton</option></select></td>
+      <td><select class="inp" style="margin:0;width:120px" id="pbB${i}"><option value="pc" ${l.basis==="pc"?"selected":""}>per ${U} (ready)</option><option value="inner" ${l.basis==="inner"?"selected":""}>per inner box</option><option value="carton" ${l.basis==="carton"?"selected":""}>per carton</option></select></td>
       <td>${unitCell}</td><td>${colCell}</td><td><button class="btn btn-sm btn-danger" onclick="App.mouldProdDelLine(${i})">✕</button></td></tr>`;}).join("");
   const form=isRO()?"":`<div style="background:#f3f4ff;border:1px solid #c5cae9;border-radius:10px;padding:14px;margin-bottom:16px">
     <div style="font-weight:700;color:#1a237e;margin-bottom:6px">${f.id?"✏️ Edit Product BOM":"➕ Naya Product BOM"}</div>
     <datalist id="pbStoreList">${getAllStoreItemNames().map(n=>`<option value="${esc(n)}">`).join("")}</datalist>
     <div class="grid2" style="grid-template-columns:repeat(auto-fit,minmax(190px,1fr))">
       <div><label class="lbl">Product Name *</label><input class="inp" id="pbName" value="${esc(f.name)}" placeholder="e.g. BOROKIDS SMALL"></div>
-      <div><label class="lbl">1 Carton (CTS) me pcs *</label><input class="inp" type="number" id="pbPC" value="${esc(f.pcsPerCarton)}" onchange="App.mouldProdRefresh()"></div>
-      <div><label class="lbl">1 Inner box me pcs</label><input class="inp" type="number" id="pbPI" value="${esc(f.pcsPerInner)}" onchange="App.mouldProdRefresh()"></div></div>
-    <div style="font-size:12px;color:#1a237e;margin:2px 0 8px">${P>0&&I>0?`1 carton me <b>${mldF(P/I,2)}</b> inner box`:"Pcs per carton / inner box daalo"}</div>
-    <div style="font-size:12px;color:#e65100;margin-bottom:6px">ℹ️ <b>per pc</b> = 1 ready piece me kitna · <b>per inner box</b> = 1 inner box me kitna · <b>per carton</b> = 1 carton me kitna. Moulded part ki weight/recipe Moulding Items se aati hai.</div>
+      <div><label class="lbl">Ready unit kya hai?</label><select class="inp" id="pbUnit" onchange="App.mouldProdRefresh()"><option ${U==="Set"?"selected":""}>Set</option><option ${U==="Pc"?"selected":""}>Pc</option></select></div>
+      <div><label class="lbl">1 Carton (CTS) me kitne ${esc(U)} *</label><input class="inp" type="number" id="pbPC" value="${esc(f.pcsPerCarton)}" onchange="App.mouldProdRefresh()"></div>
+      <div><label class="lbl">1 Inner box me kitne ${esc(U)}</label><input class="inp" type="number" id="pbPI" value="${esc(f.pcsPerInner)}" onchange="App.mouldProdRefresh()"></div></div>
+    <div style="font-size:12px;color:#1a237e;margin:2px 0 8px">${P>0&&I>0?`1 carton me <b>${mldF(P/I,2)}</b> inner box`:"Carton / inner box me kitne "+esc(U)+" daalo"}</div>
+    <div style="font-size:12px;color:#e65100;margin-bottom:6px">ℹ️ Qty hamesha <b>1 ready ${esc(U)}</b> ke hisaab se likho. Jaise Simran Rack: STAND qty 2, JALI qty 2 (per ${esc(U)}). Simran 3: STAND 2, JALI 3. Bowl set: Bowl qty 6. Lunch box (Pc): har part qty 1. <b>per inner box</b> / <b>per carton</b> wali lines me qty = 1 inner box / 1 carton me kitna.</div>
     <div style="overflow-x:auto"><table class="tbl"><thead><tr style="background:#1a237e;color:#fff"><th>Type</th><th>Item / Naam</th><th>Qty</th><th>Basis</th><th>Unit</th><th>Colour</th><th></th></tr></thead><tbody>${lines||`<tr><td colspan="7" style="text-align:center;color:#999;padding:12px">Neeche se part / accessory add karo</td></tr>`}</tbody></table></div>
     <div style="display:flex;gap:8px;flex-wrap:wrap;margin-top:8px"><button class="btn btn-sm btn-secondary" onclick="App.mouldProdAddLine('mould')">➕ Moulded part</button><button class="btn btn-sm btn-secondary" onclick="App.mouldProdAddLine('acc')">➕ Accessory / Material</button></div>
     <div style="display:flex;gap:8px;margin-top:12px"><button class="btn btn-success" onclick="App.mouldProdSave()">💾 ${f.id?"Update":"Save"} BOM</button>${f.id||f.lines.length?`<button class="btn btn-secondary" onclick="App.mouldProdCancel()">Cancel</button>`:""}</div></div>`;
   return `${form}<input class="inp" placeholder="🔍 Product search" value="${esc(temp.mouldProdQ||"")}" oninput="App.mouldProdSearch(this.value)" style="max-width:300px">
-    <div style="overflow-x:auto;max-height:40vh;overflow-y:auto"><table class="tbl"><thead><tr style="background:#1a237e;color:#fff"><th>Product</th><th>Pcs/CTS</th><th>Pcs/Inner</th><th>Moulded parts</th><th>Accessories</th><th></th></tr></thead><tbody id="mouldProdRows">${mouldProdRowsHtml()}</tbody></table></div>`;
+    <div style="overflow-x:auto;max-height:40vh;overflow-y:auto"><table class="tbl"><thead><tr style="background:#1a237e;color:#fff"><th>Product</th><th>Per CTS</th><th>Per Inner</th><th>Moulded parts</th><th>Accessories</th><th></th></tr></thead><tbody id="mouldProdRows">${mouldProdRowsHtml()}</tbody></table></div>`;
 }
 
 // ── MAIN TAB ───────────────────────────────────────────────────────────
@@ -4738,7 +4757,7 @@ const MouldApp={
     s.totals.colours.forEach(c=>aoa.push([c.name+(c.code?" ("+c.code+")":"")+" - colour packets",+c.pkt.toFixed(2),"Roundup: "+Math.ceil(c.pkt-1e-9)]));
     aoa.push(["TOTAL",+s.totals.kg.toFixed(3),"Pcs: "+s.totals.pcs]);
     if((s.plans||[]).length){aoa.push([],["PRODUCT PLAN"],["Product","Cartons","Pcs","Colours"]);s.plans.forEach(p=>aoa.push([p.name,p.cartons,p.pcs,p.colours.join(", ")]));}
-    if((s.acc||[]).length){aoa.push([],["ACCESSORIES REQUIRED"],["Accessory","Required","Unit","Store Stock","Short"]);s.acc.forEach(a=>aoa.push([a.name,a.qty,a.unit,a.stock==null?"":a.stock,a.short||0]));}
+    if((s.acc||[]).length){aoa.push([],["ACCESSORIES REQUIRED"],["Accessory","Required","Unit","Hisaab","Store Stock","Short"]);s.acc.forEach(a=>aoa.push([a.name,a.qty,a.unit,a.formula||"",a.stock==null?"":a.stock,a.short||0]));}
     const wb=XLSX.utils.book_new();XLSX.utils.book_append_sheet(wb,XLSX.utils.aoa_to_sheet(aoa),"Moulding Program");
     XLSX.writeFile(wb,"Moulding_Program_"+(s.date||"")+".xlsx");
   },
@@ -4782,6 +4801,8 @@ const MouldApp={
     mouldSyncHead();const pid=+mldV("mppProd");if(!pid){alert("Product select karo");return;}
     const ctn=Math.round(mldN(mldV("mppCtn")));if(ctn<=0){alert("Cartons daalo");return;}
     const pr=mouldProd(pid);if(!pr)return;
+    const noCol=(pr.lines||[]).filter(l=>l.type==="mould"&&(l.colMode||"split")==="split").map(l=>state.mouldItems.find(i=>i.id===l.itemId)).filter(it=>it&&!(it.colours||[]).length).map(it=>it.name);
+    if(noCol.length)alert("Ye item(s) me koi colour tick nahi hai, bina colour ke banenge: "+noCol.join(", ")+"\n(Moulding Items me jakar colour tick kar sakte ho)");
     if(!(pr.lines||[]).some(l=>l.type==="mould"))alert("Is BOM me koi moulded part nahi hai, sirf accessories aayengi.");
     const cols=[...document.querySelectorAll(".mppCol")].filter(cb=>cb.checked).map(cb=>{const c=state.mouldColours.find(x=>x.id===+cb.value);return c?c.name:"";}).filter(Boolean);
     const plan={id:uid(),productId:pid,productName:pr.name,cartons:ctn,colours:cols};
@@ -4812,7 +4833,7 @@ const MouldApp={
       lines.push({...l,qty:mldN(l.qty)});
     }
     if(!lines.length){alert("Kam se kam ek line add karo");return;}
-    const rec={id:f.id||uid(),name:f.name.trim(),pcsPerCarton:mldN(f.pcsPerCarton),pcsPerInner:mldN(f.pcsPerInner),lines};
+    const rec={id:f.id||uid(),name:f.name.trim(),unitName:f.unitName||"Set",pcsPerCarton:mldN(f.pcsPerCarton),pcsPerInner:mldN(f.pcsPerInner),lines};
     if(f.id)state.mouldProducts=state.mouldProducts.map(p=>p.id===f.id?rec:p);else state.mouldProducts.push(rec);
     await persist("mould_products",state.mouldProducts);temp.mouldProdForm=mouldBlankProd();mouldShowModal("🧾 Product BOM",mouldProdModalHtml());
   },
