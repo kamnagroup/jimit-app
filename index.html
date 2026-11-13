@@ -4862,9 +4862,119 @@ const MouldApp={
   async mouldDelColour(id){if(!confirm("Colour delete karu?"))return;state.mouldColours=state.mouldColours.filter(c=>c.id!==id);await persist("mould_colours",state.mouldColours);mouldShowModal("🧪 Materials, Colours & Groups",mouldMatsModalHtml());}
 };
 
+// ══════════════════════════════════════════════════════════════════════════
+// 📤 DAILY REPORT  (Home tab ke button se) — owner ko bhejne ke liye ek hi report
+// 1 Aaj ki Packing · 2 Aaj ka Despatch (Gate Pass se) · 3 Pending Order Shortfall (category A-Z + party list)
+// 4 Stock Summary (category A-Z) · 5 MT Pending Production (division-wise)
+// ══════════════════════════════════════════════════════════════════════════
+function drRound(n){return Math.round((Number(n)||0)*100)/100;}
+function drBuild(date){
+  const norm=s=>String(s||"").trim().toLowerCase();
+  const catMap=buildProductCategoryMap();
+  const catOf=(name,fb)=>catMap[norm(name)]||fb||"Uncategorised";
+  const az=(a,b)=>String(a).localeCompare(String(b),undefined,{sensitivity:"base"});
+  // 1) Packing (date)
+  const pk={};
+  state.packings.filter(p=>p.date===date).forEach(p=>{const k=p.productName;if(!pk[k])pk[k]={name:k,cartons:0};pk[k].cartons+=Number(p.cartons)||0;});
+  const packing=Object.values(pk).sort((a,b)=>az(a.name,b.name));
+  // 2) Despatch — us din ke Gate Pass se (GP no. nahi, sirf summary)
+  const despatch=[];
+  (state.gatePasses||[]).filter(g=>g.date===date).forEach(g=>(g.rows||[]).forEach(r=>despatch.push({party:r.party||"",marka:r.marka||"",cartons:Number(r.cartons)||0,transport:r.transport||""})));
+  despatch.sort((a,b)=>az(a.party,b.party));
+  // 3) Pending order — sirf shortfall, category-wise A-Z, party list ke saath
+  const pend=getPendingOrderRows().filter(r=>r.unit==="Cts");
+  const parties={};
+  pend.forEach(r=>{(parties[r.productName]=parties[r.productName]||new Set()).add(r.party||"");});
+  const shortRows=OrderVsAvailableApp._ovaAgg("","").filter(r=>r.diff>0).map(r=>({name:r.product,category:catOf(r.product),pending:drRound(r.pendingQty),avail:drRound(r.availCartons),short:drRound(r.diff),parties:[...(parties[r.product]||[])].filter(Boolean).sort(az)}));
+  const shortCats=drGroup(shortRows,az);
+  // 4) Stock summary — category-wise A-Z
+  const sm={};
+  stockSummaryRows("","","").forEach(r=>{const k=r.productName;if(!sm[k])sm[k]={name:k,category:catOf(k,r.category),ctn:0};sm[k].ctn+=Number(r.pendingCartons)||0;});
+  const stockRows=Object.values(sm).filter(r=>r.ctn>0).map(r=>({...r,ctn:drRound(r.ctn)}));
+  const stockCats=drGroup(stockRows,az);
+  // 5) MT pending production — division-wise
+  const stats=getMtItemStats("","","");const byDiv={};
+  state.mtItems.forEach(it=>{const s=stats[it.id]||{};const rb=s.remB||0,rp=s.remP||0;if(rb>0||rp>0){const d=it.division||"No Division";(byDiv[d]=byDiv[d]||[]).push({name:it.itemDesc,ean:it.eanNo||"",remB:drRound(rb),remP:drRound(rp)});}});
+  const mtDivs=Object.keys(byDiv).sort((a,b)=>a==="No Division"?1:b==="No Division"?-1:az(a,b)).map(d=>({division:d,items:byDiv[d].sort((a,b)=>az(a.name,b.name))}));
+  return {date,packing,despatch,shortCats,stockCats,mtDivs};
+}
+function drGroup(rows,az){
+  const m={};rows.forEach(r=>{(m[r.category]=m[r.category]||[]).push(r);});
+  return Object.keys(m).sort((a,b)=>a==="Uncategorised"?1:b==="Uncategorised"?-1:az(a,b)).map(c=>({category:c,items:m[c].sort((a,b)=>az(a.name,b.name))}));
+}
+function drHtml(d){
+  const sec=(n,t,body)=>`<h3>${n}. ${t}</h3>${body}`;
+  const empty=(msg,cols)=>`<tr><td colspan="${cols}" style="text-align:center;color:#888;padding:10px">${msg}</td></tr>`;
+  // 1
+  const pkTot=d.packing.reduce((s,r)=>s+r.cartons,0);
+  const s1=sec(1,"📦 Aaj ki Packing",`<table><thead><tr><th style="width:36px">#</th><th>Item</th><th class="r">Cts</th></tr></thead><tbody>${d.packing.map((r,i)=>`<tr><td>${i+1}</td><td><b>${esc(r.name)}</b></td><td class="r">${drRound(r.cartons)}</td></tr>`).join("")||empty("Aaj koi packing nahi hui",3)}</tbody><tfoot><tr><td colspan="2" class="r">TOTAL</td><td class="r">${drRound(pkTot)} Cts</td></tr></tfoot></table>`);
+  // 2
+  const dsTot=d.despatch.reduce((s,r)=>s+r.cartons,0);
+  const s2=sec(2,"🚚 Aaj ka Despatch",`<table><thead><tr><th style="width:36px">#</th><th>Party</th><th>Marka / Cartons</th><th>Transport</th></tr></thead><tbody>${d.despatch.map((r,i)=>`<tr><td>${i+1}</td><td><b>${esc(r.party)}</b></td><td>${r.marka?esc(r.marka)+" / ":""}${drRound(r.cartons)} Ctn</td><td>${esc(r.transport||"—")}</td></tr>`).join("")||empty("Aaj ka koi Gate Pass nahi bana",4)}</tbody><tfoot><tr><td colspan="2" class="r">TOTAL</td><td colspan="2">${drRound(dsTot)} Ctn</td></tr></tfoot></table>`);
+  // 3
+  let shTot=0;
+  const s3rows=d.shortCats.map(c=>{const sub=c.items.reduce((s,r)=>s+r.short,0);shTot+=sub;return `<tr class="cat"><td colspan="5">${esc(c.category)} <span style="font-weight:400">— short ${drRound(sub)} Cts</span></td></tr>`+c.items.map(r=>`<tr><td><b>${esc(r.name)}</b></td><td class="r">${r.pending}</td><td class="r">${r.avail}</td><td class="r short">${r.short}</td><td class="pl">${esc(r.parties.join(", "))}</td></tr>`).join("");}).join("");
+  const s3=sec(3,"⏳ Pending Order — sirf Shortfall (Category A–Z)",`<table><thead><tr><th>Item</th><th class="r">Pending</th><th class="r">Stock</th><th class="r">Short</th><th>Baki Party</th></tr></thead><tbody>${s3rows||empty("✅ Koi shortfall nahi hai",5)}</tbody><tfoot><tr><td colspan="3" class="r">TOTAL SHORT</td><td class="r">${drRound(shTot)} Cts</td><td></td></tr></tfoot></table>`);
+  // 4
+  let stTot=0;
+  const s4rows=d.stockCats.map(c=>{const sub=c.items.reduce((s,r)=>s+r.ctn,0);stTot+=sub;return `<tr class="cat"><td colspan="2">${esc(c.category)} <span style="font-weight:400">— ${drRound(sub)} Ctn</span></td></tr>`+c.items.map(r=>`<tr><td><b>${esc(r.name)}</b></td><td class="r">${r.ctn} Ctn</td></tr>`).join("");}).join("");
+  const s4=sec(4,"📊 Stock Summary (Category A–Z)",`<table><thead><tr><th>Item</th><th class="r">Stock</th></tr></thead><tbody>${s4rows||empty("Stock nahi hai",2)}</tbody><tfoot><tr><td class="r">TOTAL</td><td class="r">${drRound(stTot)} Ctn</td></tr></tfoot></table>`);
+  // 5
+  let mbT=0,mpT=0;
+  const s5rows=d.mtDivs.map(dv=>{const b=dv.items.reduce((s,r)=>s+r.remB,0),p=dv.items.reduce((s,r)=>s+r.remP,0);mbT+=b;mpT+=p;return `<tr class="cat"><td colspan="4">${esc(dv.division)} <span style="font-weight:400">— ${drRound(b)} Box / ${drRound(p)} Pcs</span></td></tr>`+dv.items.map(r=>`<tr><td><b>${esc(r.name)}</b></td><td>${esc(r.ean||"—")}</td><td class="r short">${r.remB}</td><td class="r short">${r.remP}</td></tr>`).join("");}).join("");
+  const s5=sec(5,"🏪 MT Pending Production (Division-wise)",`<table><thead><tr><th>Item</th><th>EAN</th><th class="r">Rem Prod Box</th><th class="r">Rem Prod Pcs</th></tr></thead><tbody>${s5rows||empty("✅ Koi remaining production nahi hai",4)}</tbody><tfoot><tr><td colspan="2" class="r">TOTAL</td><td class="r">${drRound(mbT)}</td><td class="r">${drRound(mpT)}</td></tr></tfoot></table>`);
+  return `<h2>Jimit Pet LLP — Daily Report</h2><div class="sub">Packing / Despatch: <b>${esc(fmtDate(d.date))}</b> &nbsp;|&nbsp; Pending, Stock, MT: abhi tak (${esc(nowStr())})</div>${s1}${s2}${s3}${s4}${s5}<div class="ft">Auto-generated — Jimit Pet LLP Packing Management</div>`;
+}
+function drWhatsappText(d){
+  const cap=(arr,n,f)=>{const a=arr.slice(0,n).map(f);if(arr.length>n)a.push("…aur "+(arr.length-n)+" aur (poori list PDF me)");return a;};
+  const L=[`*Jimit Pet LLP — Daily Report*`,`📅 ${fmtDate(d.date)}`,""];
+  const pkTot=d.packing.reduce((s,r)=>s+r.cartons,0);
+  L.push(`*📦 Aaj ki Packing* — ${drRound(pkTot)} Cts`);
+  L.push(...(d.packing.length?cap(d.packing,40,r=>`• ${r.name} — ${drRound(r.cartons)} Cts`):["• Aaj koi packing nahi"]));
+  const dsTot=d.despatch.reduce((s,r)=>s+r.cartons,0);
+  L.push("",`*🚚 Aaj ka Despatch* — ${drRound(dsTot)} Ctn`);
+  L.push(...(d.despatch.length?cap(d.despatch,40,r=>`• ${r.party} | ${r.marka?r.marka+" / ":""}${drRound(r.cartons)} Ctn | ${r.transport||"—"}`):["• Aaj koi Gate Pass nahi"]));
+  const sh=d.shortCats.flatMap(c=>c.items);
+  L.push("",`*⏳ Pending Order — Shortfall* (${sh.length} item)`);
+  L.push(...(sh.length?cap(sh,40,r=>`• ${r.name} — short ${r.short} Cts`):["• ✅ Koi shortfall nahi"]));
+  L.push("","📎 Poori report (Stock Summary, MT Pending Production, Party list) PDF me attach hai.");
+  return L.join("\n");
+}
+const DailyReportApp={
+  dailyReport(){
+    const date=(document.getElementById("drDate")||{}).value||todayStr();
+    temp.drDateUsed=date;
+    let d;try{d=drBuild(date);}catch(e){console.error(e);alert("Report banane me error: "+(e&&e.message?e.message:e));return;}
+    const w=window.open("","_blank");if(!w){alert("Popup blocked! Popup allow karo is site ke liye.");return;}
+    w.document.write(`<!DOCTYPE html><html><head><meta charset="utf-8"><meta name="viewport" content="width=device-width,initial-scale=1"><title>Daily Report ${esc(date)}</title><style>
+      @page{size:A4;margin:10mm}
+      @media print{.np{display:none!important}body{padding:0}}
+      body{font-family:Arial,sans-serif;padding:16px;color:#222;background:#fff}
+      h2{text-align:center;color:#1a237e;margin:0 0 4px}
+      .sub{text-align:center;font-size:12px;color:#555;margin-bottom:14px}
+      h3{margin:18px 0 6px;font-size:14px;color:#1a237e;border-bottom:2px solid #1a237e;padding-bottom:3px;page-break-after:avoid}
+      table{width:100%;border-collapse:collapse;margin-bottom:6px}
+      th,td{border:1px solid #666;padding:4px 7px;font-size:12px;text-align:left;vertical-align:top}
+      th{background:#1a237e!important;color:#fff!important;-webkit-print-color-adjust:exact;print-color-adjust:exact}
+      thead{display:table-header-group} tr{page-break-inside:avoid}
+      .r{text-align:right} .short{font-weight:700;color:#c62828}
+      .pl{font-size:10px;color:#444;line-height:1.25}
+      tr.cat td{background:#e8eaf6!important;font-weight:800;color:#1a237e;-webkit-print-color-adjust:exact;print-color-adjust:exact}
+      tfoot td{font-weight:800;background:#eee!important;-webkit-print-color-adjust:exact;print-color-adjust:exact}
+      .ft{margin-top:18px;font-size:11px;color:#777;text-align:center;border-top:1px dashed #bbb;padding-top:6px}
+      .btn{margin:4px;padding:9px 18px;background:#1a237e;color:#fff;border:none;border-radius:5px;cursor:pointer;font-size:14px}
+    </style></head><body><div class="np" style="text-align:center;margin-bottom:10px;position:sticky;top:0;background:#fff;padding:6px 0;z-index:9"><button class="btn" onclick="window.print()">🖨️ Print / Save as PDF</button><button class="btn" style="background:#25d366" onclick="window.opener&&window.opener.App.dailyReportWhatsApp()">💬 WhatsApp Text</button><button class="btn" style="background:#555" onclick="window.close()">✕ Close</button></div>${drHtml(d)}</body></html>`);
+    w.document.close();
+  },
+  dailyReportWhatsApp(){
+    const d=drBuild(temp.drDateUsed||todayStr());
+    openWhatsApp(drWhatsappText(d));
+  }
+};
+
 const App=Object.assign({},PackingApp,PendingStockApp,StockSummaryApp,DispatchApp,DispatchRegisterApp,
   POApp,PendingOrderApp,OrderVsAvailableApp,ItemMasterApp,MtItemModalApp,MTPoApp,MTDispatchApp,MTPendingApp,MTPackingApp,MtVehReqApp,PlannerApp,ImportApp,StoreApp,StoreItemApp,InventoryStockApp,MtPlannerApp,RecycleBinApp,LotReportApp,
-  UserManagementApp,AuthApp,MouldApp);
+  UserManagementApp,AuthApp,MouldApp,DailyReportApp);
 // ── PROGRAM STOCK CHECK (General Planner programs vs Inventory Stock) ──
 function getProgramStockCheck(p){
   const wastage=(p.result&&p.result.wastage)||{};
@@ -4974,7 +5084,7 @@ function renderHomeTab(){
   const lowRows=low.map(r=>`<tr><td><b>${esc(r.name)}</b></td><td style="text-align:right;font-weight:700;color:${r.stock<=0?"#c62828":"#e65100"}">${esc(r.stock)}</td><td style="text-align:right">${esc(r.min)}</td></tr>`).join("")||`<tr><td colspan="3" style="text-align:center;color:#2e7d32;padding:14px">✅ Koi accessory kam stock me nahi hai</td></tr>`;
   const ovRows=overdue.slice(0,10).map(p=>`<tr><td><b>${esc(p.poNo)}</b></td><td>${esc(p.dc)}</td><td style="text-align:right">${esc(fmtDate(p.deliveryDate))}</td><td style="text-align:center"><span class="badge" style="background:#b71c1c">${Math.abs(p.days)} din</span></td><td style="text-align:right">${Math.round(p.pendBox)}</td></tr>`).join("")||`<tr><td colspan="5" style="text-align:center;color:#2e7d32;padding:14px">✅ Koi overdue MT PO nahi hai</td></tr>`;
   const fgRows=fg.map(r=>`<tr><td><b>${esc(r.name)}</b></td><td style="text-align:center;font-weight:800;color:${r.cts===0?"#c62828":"#e65100"}">${r.cts===0?"Nill":"1 Cts"}</td><td style="text-align:right;font-weight:700;color:${r.pend>0?"#1565c0":"#999"}">${r.pend>0?r.pend+" Cts":"—"}</td></tr>`).join("")||`<tr><td colspan="3" style="text-align:center;color:#999;padding:14px">Koi item nahi mila</td></tr>`;
-  return`<div style="font-size:12px;color:#666;margin-bottom:10px">📅 ${esc(fmtDate(today))} ka summary</div>
+  return`<div style="display:flex;justify-content:space-between;align-items:center;flex-wrap:wrap;gap:8px;margin-bottom:10px"><div style="font-size:12px;color:#666">📅 ${esc(fmtDate(today))} ka summary</div><div style="display:flex;gap:6px;align-items:center"><input type="date" id="drDate" class="inp" style="margin:0;width:150px" value="${esc(today)}"><button class="btn btn-primary" onclick="App.dailyReport()">📤 Daily Report</button></div></div>
   <div style="display:grid;grid-template-columns:repeat(auto-fit,minmax(170px,1fr));gap:14px;margin-bottom:20px">
     ${card("#e8f5e9","#2e7d32","📦 Aaj ki Packing",tpCtn+" Ctn",tp.length+" entries","packing")}
     ${card("#e3f2fd","#1565c0","🚚 Aaj ka Dispatch",td.length+tdMt.length,"General "+td.length+" + MT "+tdMt.length+" challan","dispatchRegister")}
