@@ -1116,12 +1116,9 @@ function shellHtml(){
         <span style="font-size:11px;background:rgba(0,200,0,.2);padding:2px 8px;border-radius:20px;">💾 Offline</span><input id="globalSearchInput" class="inp" placeholder="🔍 PO / Carton / Challan search" style="width:210px;margin:0;padding:5px 12px;font-size:12px;border-radius:20px" onkeydown="if(event.key==='Enter'){App.globalSearch(this.value)}"><button class="btn btn-sm" style="background:rgba(255,255,255,.2)" onclick="App.globalSearch(document.getElementById('globalSearchInput').value)">Search</button><span id="liveClock" style="font-size:12px;font-weight:700;background:rgba(255,255,255,.15);padding:3px 10px;border-radius:20px;white-space:nowrap"></span>
       </div>
       <div style="display:flex;align-items:center;gap:8px">
-        <button class="btn" style="background:rgba(46,125,50,.85);border:1px solid rgba(255,255,255,.4);padding:4px 10px;font-size:11px" onclick="App.downloadBackup()" title="Poora data ek .json backup file mein save karo">⬇️ Backup</button>
-        ${state.currentUser.role==="admin"?`<button class="btn" style="background:rgba(230,81,0,.9);border:1px solid rgba(255,255,255,.4);padding:4px 10px;font-size:11px" onclick="App.openImportModal()" title="Excel se bulk data import karo">📥 Import Excel</button>`:""}
-        ${state.currentUser.role==="admin"?`<button class="btn" style="background:rgba(21,101,192,.85);border:1px solid rgba(255,255,255,.4);padding:4px 10px;font-size:11px" onclick="document.getElementById('restoreFileInput').click()" title="Backup file se poora data wapas laao">⬆️ Restore</button><input type="file" id="restoreFileInput" style="display:none" onchange="App.restoreBackup(event)">`:""}
-        ${state.currentUser.role==="admin"?`<button class="btn" style="background:rgba(198,40,40,.85);border:1px solid rgba(255,255,255,.4);padding:4px 10px;font-size:11px" onclick="App.clearAllEntries()" title="Packing, PO, MT PO, MT Packing ki saari entries fresh kar do">🗑️ Clear All Entries</button>`:""}
-        ${fyBadgeHtml()}
-        <span style="font-size:13px">👤 ${esc(state.currentUser.name)}</span>
+        ${state.currentUser.role==="admin"
+          ?`<input type="file" id="restoreFileInput" style="display:none" onchange="App.restoreBackup(event)"><button id="userMenuBtn" class="btn" style="background:rgba(255,255,255,.15);border:1px solid rgba(255,255,255,.4);padding:5px 12px;font-size:13px" onclick="App.toggleUserMenu(this)" title="Backup, Import, Restore, FY, Clear All">👤 ${esc(state.currentUser.name)} ▾</button>`
+          :`<button class="btn" style="background:rgba(46,125,50,.85);border:1px solid rgba(255,255,255,.4);padding:4px 10px;font-size:11px" onclick="App.downloadBackup()" title="Poora data ek .json backup file mein save karo">⬇️ Backup</button>${fyBadgeHtml()}<span style="font-size:13px">👤 ${esc(state.currentUser.name)}</span>`}
         <button class="btn" style="background:rgba(255,255,255,.2);border:1px solid rgba(255,255,255,.4);padding:5px 14px" onclick="App.logout()">Logout</button>
       </div>
     </div>
@@ -4875,8 +4872,8 @@ function drBuild(date){
   const az=(a,b)=>String(a).localeCompare(String(b),undefined,{sensitivity:"base"});
   // 1) Packing (date)
   const pk={};
-  state.packings.filter(p=>p.date===date).forEach(p=>{const k=p.productName;if(!pk[k])pk[k]={name:k,cartons:0};pk[k].cartons+=Number(p.cartons)||0;});
-  const packing=Object.values(pk).sort((a,b)=>az(a.name,b.name));
+  state.packings.filter(p=>p.date===date).forEach(p=>{const t=p.qtyType||"";const k=p.productName+"||"+t;if(!pk[k])pk[k]={name:p.productName,qtyType:t,cartons:0,qty:0};pk[k].cartons+=Number(p.cartons)||0;pk[k].qty+=Number(p.totalQty)||0;});
+  const packing=Object.values(pk).sort((a,b)=>az(a.name,b.name)||az(a.qtyType,b.qtyType));
   // 2) Despatch — us din ke Gate Pass se (GP no. nahi, sirf summary)
   const despatch=[];
   (state.gatePasses||[]).filter(g=>g.date===date).forEach(g=>(g.rows||[]).forEach(r=>despatch.push({party:r.party||"",marka:r.marka||"",cartons:Number(r.cartons)||0,transport:r.transport||""})));
@@ -4903,6 +4900,10 @@ function drBuild(date){
   const mtDesp=Object.keys(byDiv2).sort(divSort).map(dv=>({division:dv,items:byDiv2[dv].sort((a,b)=>az(a.name,b.name))}));
   return {date,packing,despatch,shortCats,stockCats,mtDivs,mtDesp};
 }
+function drQtyTotals(rows){
+  const m={};rows.forEach(r=>{const t=r.qtyType||"";m[t]=(m[t]||0)+(Number(r.qty)||0);});
+  return Object.keys(m).sort().map(t=>drRound(m[t])+" "+t).join(" + ");
+}
 function drGroup(rows,az){
   const m={};rows.forEach(r=>{(m[r.category]=m[r.category]||[]).push(r);});
   return Object.keys(m).sort((a,b)=>a==="Uncategorised"?1:b==="Uncategorised"?-1:az(a,b)).map(c=>({category:c,items:m[c].sort((a,b)=>az(a.name,b.name))}));
@@ -4912,7 +4913,8 @@ function drHtml(d){
   const empty=(msg,cols)=>`<tr><td colspan="${cols}" style="text-align:center;color:#888;padding:10px">${msg}</td></tr>`;
   // 1
   const pkTot=d.packing.reduce((s,r)=>s+r.cartons,0);
-  const s1=sec(1,"📦 Aaj ki Packing",`<table><thead><tr><th style="width:36px">#</th><th>Item</th><th class="r">Cts</th></tr></thead><tbody>${d.packing.map((r,i)=>`<tr><td>${i+1}</td><td><b>${esc(r.name)}</b></td><td class="r">${drRound(r.cartons)}</td></tr>`).join("")||empty("Aaj koi packing nahi hui",3)}</tbody><tfoot><tr><td colspan="2" class="r">TOTAL</td><td class="r">${drRound(pkTot)} Cts</td></tr></tfoot></table>`);
+  const pkQ=drQtyTotals(d.packing);
+  const s1=sec(1,"📦 Aaj ki Packing",`<table><thead><tr><th style="width:36px">#</th><th>Item</th><th class="r">Cts</th><th class="r">Qty (Set / Pcs)</th></tr></thead><tbody>${d.packing.map((r,i)=>`<tr><td>${i+1}</td><td><b>${esc(r.name)}</b></td><td class="r">${drRound(r.cartons)}</td><td class="r"><b>${drRound(r.qty)} ${esc(r.qtyType)}</b></td></tr>`).join("")||empty("Aaj koi packing nahi hui",4)}</tbody><tfoot><tr><td colspan="2" class="r">TOTAL</td><td class="r">${drRound(pkTot)} Cts</td><td class="r">${esc(pkQ||"—")}</td></tr></tfoot></table>`);
   // 2
   const dsTot=d.despatch.reduce((s,r)=>s+r.cartons,0);
   const s2=sec(2,"🚚 Aaj ka Despatch",`<table><thead><tr><th style="width:36px">#</th><th>Party</th><th>Marka / Cartons</th><th>Transport</th></tr></thead><tbody>${d.despatch.map((r,i)=>`<tr><td>${i+1}</td><td><b>${esc(r.party)}</b></td><td>${r.marka?esc(r.marka)+" / ":""}${drRound(r.cartons)} Ctn</td><td>${esc(r.transport||"—")}</td></tr>`).join("")||empty("Aaj ka koi Gate Pass nahi bana",4)}</tbody><tfoot><tr><td colspan="2" class="r">TOTAL</td><td colspan="2">${drRound(dsTot)} Ctn</td></tr></tfoot></table>`);
@@ -4938,8 +4940,9 @@ function drWhatsappText(d){
   const cap=(arr,n,f)=>{const a=arr.slice(0,n).map(f);if(arr.length>n)a.push("…aur "+(arr.length-n)+" aur (poori list PDF me)");return a;};
   const L=[`*Jimit Pet LLP — Daily Report*`,`📅 ${fmtDate(d.date)}`,""];
   const pkTot=d.packing.reduce((s,r)=>s+r.cartons,0);
-  L.push(`*📦 Aaj ki Packing* — ${drRound(pkTot)} Cts`);
-  L.push(...(d.packing.length?cap(d.packing,40,r=>`• ${r.name} — ${drRound(r.cartons)} Cts`):["• Aaj koi packing nahi"]));
+  const pkQ=drQtyTotals(d.packing);
+  L.push(`*📦 Aaj ki Packing* — ${drRound(pkTot)} Cts${pkQ?" ("+pkQ+")":""}`);
+  L.push(...(d.packing.length?cap(d.packing,40,r=>`• ${r.name} — ${drRound(r.cartons)} Cts (${drRound(r.qty)} ${r.qtyType})`):["• Aaj koi packing nahi"]));
   const dsTot=d.despatch.reduce((s,r)=>s+r.cartons,0);
   L.push("",`*🚚 Aaj ka Despatch* — ${drRound(dsTot)} Ctn`);
   L.push(...(d.despatch.length?cap(d.despatch,40,r=>`• ${r.party} | ${r.marka?r.marka+" / ":""}${drRound(r.cartons)} Ctn | ${r.transport||"—"}`):["• Aaj koi Gate Pass nahi"]));
@@ -4981,9 +4984,39 @@ const DailyReportApp={
   }
 };
 
+// ── 👤 USER MENU (admin) — Backup / Import / Restore / FY / Clear All ek dropdown me ──
+const UserMenuApp={
+  closeUserMenu(){const m=document.getElementById("userMenuDrop");if(m)m.remove();},
+  toggleUserMenu(el){
+    const old=document.getElementById("userMenuDrop");
+    if(old){old.remove();return;}
+    if(!state.currentUser||state.currentUser.role!=="admin")return;
+    const multi=FY.years.length>1,latest=FY.label===fyLatest();
+    const it=(icon,label,act,extra)=>`<button class="tab-menu-item" style="${extra||""}" onclick="App.closeUserMenu();${act}">${icon} ${label}</button>`;
+    const m=document.createElement("div");
+    m.id="userMenuDrop";m.className="tab-menu";m.style.minWidth="230px";m.style.borderRadius="8px";
+    m.innerHTML=
+      it("⬇️","Backup (data download)","App.downloadBackup()")+
+      it("📥","Import Excel","App.openImportModal()")+
+      it("⬆️","Restore (backup file se)","document.getElementById('restoreFileInput').click()")+
+      (multi?it("📅","FY "+esc(FY.label)+(latest?"":" (purana)")+" — badlo","App.fySwitch()"):`<div style="padding:9px 16px;font-size:13px;color:#555">📅 FY ${esc(FY.label)}</div>`)+
+      `<div style="border-top:1px solid #e0e0e0;margin:4px 0"></div>`+
+      it("🗑️","Clear All Entries","App.clearAllEntries()","color:#c62828;font-weight:700");
+    document.body.appendChild(m);
+    const r=el.getBoundingClientRect(),w=m.offsetWidth||230;
+    m.style.top=(r.bottom+4)+"px";
+    m.style.left=Math.max(4,Math.min(r.right-w,window.innerWidth-w-4))+"px";
+    if(!window.__userMenuBound){
+      window.__userMenuBound=true;
+      document.addEventListener("click",e=>{const mm=document.getElementById("userMenuDrop");if(mm&&!e.target.closest("#userMenuBtn")&&!e.target.closest("#userMenuDrop"))mm.remove();});
+      window.addEventListener("resize",()=>{const mm=document.getElementById("userMenuDrop");if(mm)mm.remove();});
+    }
+  }
+};
+
 const App=Object.assign({},PackingApp,PendingStockApp,StockSummaryApp,DispatchApp,DispatchRegisterApp,
   POApp,PendingOrderApp,OrderVsAvailableApp,ItemMasterApp,MtItemModalApp,MTPoApp,MTDispatchApp,MTPendingApp,MTPackingApp,MtVehReqApp,PlannerApp,ImportApp,StoreApp,StoreItemApp,InventoryStockApp,MtPlannerApp,RecycleBinApp,LotReportApp,
-  UserManagementApp,AuthApp,MouldApp,DailyReportApp);
+  UserManagementApp,AuthApp,MouldApp,DailyReportApp,UserMenuApp);
 // ── PROGRAM STOCK CHECK (General Planner programs vs Inventory Stock) ──
 function getProgramStockCheck(p){
   const wastage=(p.result&&p.result.wastage)||{};
