@@ -4013,7 +4013,7 @@ function getMtItemStats(dateFrom,dateTo,chainFilter){
       tDB:toBox(tDPreal),tDP:tDPreal,
       tPrB:toBox(tPrP),tPrP,
       remB:toBox(remP),remP,
-      pendB:toBox(pendP),
+      pendB:toBox(pendP),pendP,
       stockB:toBox(stockP),stockP
     };
   });
@@ -4895,8 +4895,13 @@ function drBuild(date){
   // 5) MT pending production — division-wise
   const stats=getMtItemStats("","","");const byDiv={};
   state.mtItems.forEach(it=>{const s=stats[it.id]||{};const rb=s.remB||0,rp=s.remP||0;if(rb>0||rp>0){const d=it.division||"No Division";(byDiv[d]=byDiv[d]||[]).push({name:it.itemDesc,ean:it.eanNo||"",remB:drRound(rb),remP:drRound(rp)});}});
-  const mtDivs=Object.keys(byDiv).sort((a,b)=>a==="No Division"?1:b==="No Division"?-1:az(a,b)).map(d=>({division:d,items:byDiv[d].sort((a,b)=>az(a.name,b.name))}));
-  return {date,packing,despatch,shortCats,stockCats,mtDivs};
+  const divSort=(a,b)=>a==="No Division"?1:b==="No Division"?-1:az(a,b);
+  const mtDivs=Object.keys(byDiv).sort(divSort).map(d=>({division:d,items:byDiv[d].sort((a,b)=>az(a.name,b.name))}));
+  // 6) MT pending despatch — division-wise (item ka PO − despatch)
+  const byDiv2={};
+  state.mtItems.forEach(it=>{const s=stats[it.id]||{};const pb=s.pendB||0,pp=s.pendP||0;if(pb>0||pp>0){const dv=it.division||"No Division";(byDiv2[dv]=byDiv2[dv]||[]).push({name:it.itemDesc,ean:it.eanNo||"",pendB:drRound(pb),pendP:drRound(pp)});}});
+  const mtDesp=Object.keys(byDiv2).sort(divSort).map(dv=>({division:dv,items:byDiv2[dv].sort((a,b)=>az(a.name,b.name))}));
+  return {date,packing,despatch,shortCats,stockCats,mtDivs,mtDesp};
 }
 function drGroup(rows,az){
   const m={};rows.forEach(r=>{(m[r.category]=m[r.category]||[]).push(r);});
@@ -4923,7 +4928,11 @@ function drHtml(d){
   let mbT=0,mpT=0;
   const s5rows=d.mtDivs.map(dv=>{const b=dv.items.reduce((s,r)=>s+r.remB,0),p=dv.items.reduce((s,r)=>s+r.remP,0);mbT+=b;mpT+=p;return `<tr class="cat"><td colspan="4">${esc(dv.division)} <span style="font-weight:400">— ${drRound(b)} Box / ${drRound(p)} Pcs</span></td></tr>`+dv.items.map(r=>`<tr><td><b>${esc(r.name)}</b></td><td>${esc(r.ean||"—")}</td><td class="r short">${r.remB}</td><td class="r short">${r.remP}</td></tr>`).join("");}).join("");
   const s5=sec(5,"🏪 MT Pending Production (Division-wise)",`<table><thead><tr><th>Item</th><th>EAN</th><th class="r">Rem Prod Box</th><th class="r">Rem Prod Pcs</th></tr></thead><tbody>${s5rows||empty("✅ Koi remaining production nahi hai",4)}</tbody><tfoot><tr><td colspan="2" class="r">TOTAL</td><td class="r">${drRound(mbT)}</td><td class="r">${drRound(mpT)}</td></tr></tfoot></table>`);
-  return `<h2>Jimit Pet LLP — Daily Report</h2><div class="sub">Packing / Despatch: <b>${esc(fmtDate(d.date))}</b> &nbsp;|&nbsp; Pending, Stock, MT: abhi tak (${esc(nowStr())})</div>${s1}${s2}${s3}${s4}${s5}<div class="ft">Auto-generated — Jimit Pet LLP Packing Management</div>`;
+  // 6
+  let pbT=0,ppT=0;
+  const s6rows=(d.mtDesp||[]).map(dv=>{const b=dv.items.reduce((s,r)=>s+r.pendB,0),p=dv.items.reduce((s,r)=>s+r.pendP,0);pbT+=b;ppT+=p;return `<tr class="cat"><td colspan="4">${esc(dv.division)} <span style="font-weight:400">— ${drRound(b)} Box / ${drRound(p)} Pcs</span></td></tr>`+dv.items.map(r=>`<tr><td><b>${esc(r.name)}</b></td><td>${esc(r.ean||"—")}</td><td class="r short">${r.pendB}</td><td class="r short">${r.pendP}</td></tr>`).join("");}).join("");
+  const s6=sec(6,"🚚 MT Pending Despatch (Division-wise)",`<table><thead><tr><th>Item</th><th>EAN</th><th class="r">Pend Disp Box</th><th class="r">Pend Disp Pcs</th></tr></thead><tbody>${s6rows||empty("✅ Koi pending despatch nahi hai",4)}</tbody><tfoot><tr><td colspan="2" class="r">TOTAL</td><td class="r">${drRound(pbT)}</td><td class="r">${drRound(ppT)}</td></tr></tfoot></table>`);
+  return `<h2>Jimit Pet LLP — Daily Report</h2><div class="sub">Packing / Despatch: <b>${esc(fmtDate(d.date))}</b> &nbsp;|&nbsp; Pending, Stock, MT: abhi tak (${esc(nowStr())})</div>${s1}${s2}${s3}${s4}${s5}${s6}<div class="ft">Auto-generated — Jimit Pet LLP Packing Management</div>`;
 }
 function drWhatsappText(d){
   const cap=(arr,n,f)=>{const a=arr.slice(0,n).map(f);if(arr.length>n)a.push("…aur "+(arr.length-n)+" aur (poori list PDF me)");return a;};
@@ -4937,7 +4946,7 @@ function drWhatsappText(d){
   const sh=d.shortCats.flatMap(c=>c.items);
   L.push("",`*⏳ Pending Order — Shortfall* (${sh.length} item)`);
   L.push(...(sh.length?cap(sh,40,r=>`• ${r.name} — short ${r.short} Cts`):["• ✅ Koi shortfall nahi"]));
-  L.push("","📎 Poori report (Stock Summary, MT Pending Production, Party list) PDF me attach hai.");
+  L.push("","📎 Poori report (Stock Summary, MT Pending Production, MT Pending Despatch, Party list) PDF me attach hai.");
   return L.join("\n");
 }
 const DailyReportApp={
