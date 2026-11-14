@@ -4916,8 +4916,7 @@ function drHtml(d){
   const pkQ=drQtyTotals(d.packing);
   const s1=sec(1,"📦 Aaj ki Packing",`<table><thead><tr><th style="width:36px">#</th><th>Item</th><th class="r">Cts</th><th class="r">Qty (Set / Pcs)</th></tr></thead><tbody>${d.packing.map((r,i)=>`<tr><td>${i+1}</td><td><b>${esc(r.name)}</b></td><td class="r">${drRound(r.cartons)}</td><td class="r"><b>${drRound(r.qty)} ${esc(r.qtyType)}</b></td></tr>`).join("")||empty("Aaj koi packing nahi hui",4)}</tbody><tfoot><tr><td colspan="2" class="r">TOTAL</td><td class="r">${drRound(pkTot)} Cts</td><td class="r">${esc(pkQ||"—")}</td></tr></tfoot></table>`);
   // 2
-  const dsTot=d.despatch.reduce((s,r)=>s+r.cartons,0);
-  const s2=sec(2,"🚚 Aaj ka Despatch",`<table><thead><tr><th style="width:36px">#</th><th>Party</th><th>Marka / Cartons</th><th>Transport</th></tr></thead><tbody>${d.despatch.map((r,i)=>`<tr><td>${i+1}</td><td><b>${esc(r.party)}</b></td><td>${r.marka?esc(r.marka)+" / ":""}${drRound(r.cartons)} Ctn</td><td>${esc(r.transport||"—")}</td></tr>`).join("")||empty("Aaj ka koi Gate Pass nahi bana",4)}</tbody><tfoot><tr><td colspan="2" class="r">TOTAL</td><td colspan="2">${drRound(dsTot)} Ctn</td></tr></tfoot></table>`);
+  const s2=sec(2,"🚚 Aaj ka Despatch",`<table><thead><tr><th style="width:36px">#</th><th>Party</th><th>Marka</th><th>Transport</th></tr></thead><tbody>${d.despatch.map((r,i)=>`<tr><td>${i+1}</td><td><b>${esc(r.party)}</b></td><td>${esc(r.marka||"—")}</td><td>${esc(r.transport||"—")}</td></tr>`).join("")||empty("Aaj ka koi Gate Pass nahi bana",4)}</tbody><tfoot><tr><td colspan="4" class="r">TOTAL ${d.despatch.length} Despatch</td></tr></tfoot></table>`);
   // 3
   let shTot=0;
   const s3rows=d.shortCats.map(c=>{const sub=c.items.reduce((s,r)=>s+r.short,0);shTot+=sub;return `<tr class="cat"><td colspan="5">${esc(c.category)} <span style="font-weight:400">— short ${drRound(sub)} Cts</span></td></tr>`+c.items.map(r=>`<tr><td><b>${esc(r.name)}</b></td><td class="r">${r.pending}</td><td class="r">${r.avail}</td><td class="r short">${r.short}</td><td class="pl">${esc(r.parties.join(", "))}</td></tr>`).join("");}).join("");
@@ -4943,9 +4942,8 @@ function drWhatsappText(d){
   const pkQ=drQtyTotals(d.packing);
   L.push(`*📦 Aaj ki Packing* — ${drRound(pkTot)} Cts${pkQ?" ("+pkQ+")":""}`);
   L.push(...(d.packing.length?cap(d.packing,40,r=>`• ${r.name} — ${drRound(r.cartons)} Cts (${drRound(r.qty)} ${r.qtyType})`):["• Aaj koi packing nahi"]));
-  const dsTot=d.despatch.reduce((s,r)=>s+r.cartons,0);
-  L.push("",`*🚚 Aaj ka Despatch* — ${drRound(dsTot)} Ctn`);
-  L.push(...(d.despatch.length?cap(d.despatch,40,r=>`• ${r.party} | ${r.marka?r.marka+" / ":""}${drRound(r.cartons)} Ctn | ${r.transport||"—"}`):["• Aaj koi Gate Pass nahi"]));
+  L.push("",`*🚚 Aaj ka Despatch* — ${d.despatch.length}`);
+  L.push(...(d.despatch.length?cap(d.despatch,40,r=>`• ${r.party} | ${r.marka||"—"} | ${r.transport||"—"}`):["• Aaj koi Gate Pass nahi"]));
   const sh=d.shortCats.flatMap(c=>c.items);
   L.push("",`*⏳ Pending Order — Shortfall* (${sh.length} item)`);
   L.push(...(sh.length?cap(sh,40,r=>`• ${r.name} — short ${r.short} Cts`):["• ✅ Koi shortfall nahi"]));
