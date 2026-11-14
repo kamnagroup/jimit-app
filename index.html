@@ -3977,10 +3977,13 @@ function mtDivisionSelectorHtml(onchangeFn){
 function getMtItemStats(dateFrom,dateTo,chainFilter){
   const cf=chainFilter?chainFilter.trim().toLowerCase():"";
   const stats={};
+  const nm=s=>String(s||"").trim().toLowerCase();   // naam ke extra space / capital ka farak ignore
   state.mtItems.forEach(item=>{
     const ppb=Number(item.pcsPerBox)||0;
     const toPcs=(box,pcs)=>{ const p=Number(pcs)||0; if(p>0)return p; return ppb>0?Number(box||0)*ppb:0; };
     const toBox=(pcs)=>ppb>0?Math.floor(Number(pcs||0)/ppb):0;
+    const lineIds=new Set();   // is item ki saari PO lines (dispatch inhi se jud kar bhi ginti ho)
+    state.mtPos.forEach(po=>(po.items||[]).forEach(pi=>{if(pi.mtItemId==item.id||nm(pi.itemDesc)===nm(item.itemDesc))lineIds.add(String(pi.id));}));
 
     let tPP=0;
     state.mtPos.forEach(po=>{
@@ -3988,7 +3991,7 @@ function getMtItemStats(dateFrom,dateTo,chainFilter){
       if(dateTo&&po.poDate>dateTo)return;
       if(cf&&getDcChainName(po.dc).toLowerCase()!==cf)return;
       (po.items||[]).forEach(pi=>{
-        if(pi.mtItemId==item.id||pi.itemDesc===item.itemDesc){
+        if(pi.mtItemId==item.id||nm(pi.itemDesc)===nm(item.itemDesc)){
           const gross=toPcs(pi.qtyBox,pi.qtyPcs);
           const canc=toPcs(pi.cancelledBox,pi.cancelledPcs);
           tPP+=Math.max(0,gross-canc);
@@ -4000,7 +4003,7 @@ function getMtItemStats(dateFrom,dateTo,chainFilter){
     const dispByPo={};
     state.mtDispatches.forEach(d=>{
       (d.items||[]).forEach(di=>{
-        if(di.itemDesc===item.itemDesc){
+        if(nm(di.itemDesc)===nm(item.itemDesc)||lineIds.has(String(di.poItemId))){
           const p=toPcs(di.qtyBox,di.qtyPcs);
           tDPreal+=p;
           dispByPo[d.poId]=(dispByPo[d.poId]||0)+p;
@@ -4012,7 +4015,7 @@ function getMtItemStats(dateFrom,dateTo,chainFilter){
     state.mtPos.forEach(po=>{
       if(!po.manualFullDispatch)return;
       (po.items||[]).forEach(pi=>{
-        if(pi.mtItemId==item.id||pi.itemDesc===item.itemDesc){
+        if(pi.mtItemId==item.id||nm(pi.itemDesc)===nm(item.itemDesc)){
           const gross=toPcs(pi.qtyBox,pi.qtyPcs);
           const canc=toPcs(pi.cancelledBox,pi.cancelledPcs);
           const net=Math.max(0,gross-canc);
@@ -4057,7 +4060,7 @@ function renderMTPackingTab(){
   return`${roBanner()}<div style="display:flex;justify-content:flex-end;margin-bottom:12px"><button class="btn btn-primary" onclick="App.openMtItemModal()">📦 MT Item Master (${state.mtItems.length})</button></div>${mtDivisionSelectorHtml("App.onMtDivisionChange()")}<div class="card"><div class="card-title" style="display:flex;justify-content:space-between;align-items:center;flex-wrap:wrap;gap:8px"><span>📊 MT Item-wise Production Summary${temp.mtDivision?` — ${esc(temp.mtDivision)}`:""}</span><div style="display:flex;gap:8px;align-items:center;flex-wrap:wrap"><span style="font-size:12px;color:#fff;font-weight:400">Retailer:</span><select class="inp" id="mtSumChain" style="margin-bottom:0;width:180px" onchange="App.filterMtSummaryByChain()"><option value="">All Retailers</option>${allChains.map(c=>`<option value="${esc(c)}" ${chainFilter===c?"selected":""}>${esc(c)}</option>`).join("")}</select><span style="font-size:12px;color:#fff;font-weight:400">PO Date:</span><input type="date" class="inp" id="mtSumDateFrom" value="${esc(dFrom)}" style="margin-bottom:0;width:140px" onchange="App.filterMtSummaryByDate()"><span style="color:#fff;font-size:12px">to</span><input type="date" class="inp" id="mtSumDateTo" value="${esc(dTo)}" style="margin-bottom:0;width:140px" onchange="App.filterMtSummaryByDate()">${dFrom||dTo||chainFilter?`<button class="btn btn-sm btn-secondary" onclick="App.clearMtSummaryDate()">Clear</button>`:""}${mtItemsFiltered.length>0?`<button class="btn btn-success" style="padding:4px 12px;font-size:12px" onclick="App.exportMtProductionSummary()">📥 Export</button><button class="btn" style="padding:4px 12px;font-size:12px;background:#00838f;color:#fff" onclick="App.printMtProductionSummary()">🖨️ Print</button>`:""}</div></div><div class="card-body" style="overflow-x:auto">${(dFrom||dTo||chainFilter)?`<div style="background:#fff3e0;border:1px solid #ffcc80;border-radius:8px;padding:8px 14px;font-size:12px;color:#e65100;margin-bottom:12px">ℹ️ 'PO Box', 'PO Pcs' aur 'Rem Prod' columns ${chainFilter?`sirf <b>${esc(chainFilter)}</b> retailer ki`:""} ${dFrom||dTo?`${dFrom?fmtDate(dFrom):"shuru"} se ${dTo?fmtDate(dTo):"aaj"} tak ki`:""} POs ke hisaab se hain. Baaki columns (Prod, Disp, Stock) hamesha total hain.</div>`:""}${mtItemsFiltered.length===0?`<div style="color:#999;text-align:center;padding:20px">${temp.mtDivision?`'${esc(temp.mtDivision)}' division mein koi item nahi hai`:"MT Item Master mein items add karo"}</div>`:(()=>{
     const tot={tPB:0,tPP:0,tPrB:0,tPrP:0,tDB:0,tDP:0,remB:0,remP:0,pendB:0,stockB:0,stockP:0};
     mtItemsFiltered.forEach(item=>{const s=stats[item.id]||{};tot.tPB+=s.tPB||0;tot.tPP+=s.tPP||0;tot.tPrB+=s.tPrB||0;tot.tPrP+=s.tPrP||0;tot.tDB+=s.tDB||0;tot.tDP+=s.tDP||0;tot.remB+=s.remB||0;tot.remP+=s.remP||0;tot.pendB+=s.pendB||0;tot.stockB+=s.stockB||0;tot.stockP+=s.stockP||0;});
-    return`<table class="tbl"><thead><tr style="background:#1a237e;color:#fff">${["Item","EAN","Pcs/Box","PO Box","PO Pcs","Prod Box","Prod Pcs","Disp Box","Disp Pcs"].map(h=>`<th>${h}</th>`).join("")}${["Rem Prod B","Rem Prod P"].map(h=>`<th style="background:#ef6c00">${h}</th>`).join("")}${["Pend Disp B","Stock (Godown) B","Stock (Godown) P"].map(h=>`<th style="background:#f9a825">${h}</th>`).join("")}</tr></thead><tbody>${mtItemsFiltered.map(item=>{const s=stats[item.id]||{};return`<tr><td><b>${esc(item.itemDesc)}</b></td><td>${esc(item.eanNo)}</td><td>${esc(item.pcsPerBox)}</td><td>${s.tPB||0}</td><td>${s.tPP||0}</td><td style="color:#2e7d32;font-weight:700">${s.tPrB||0}</td><td style="color:#2e7d32;font-weight:700">${s.tPrP||0}</td><td>${s.tDB||0}</td><td>${s.tDP||0}</td><td style="background:#ffe0b2;font-weight:700;color:${(s.remB||0)>0?"#e65100":"#2e7d32"}">${s.remB||0}</td><td style="background:#ffe0b2;font-weight:700;color:${(s.remP||0)>0?"#e65100":"#2e7d32"}">${s.remP||0}</td><td style="background:#fff9c4;font-weight:700;color:${(s.pendB||0)>0?"#1565c0":"#555"}">${s.pendB||0}</td><td style="background:#fff9c4;font-weight:700;color:${(s.stockB||0)>0?"#6a1b9a":"#555"}">${s.stockB||0}</td><td style="background:#fff9c4;font-weight:700;color:${(s.stockP||0)>0?"#6a1b9a":"#555"}">${s.stockP||0}</td></tr>`;}).join("")}</tbody><tfoot><tr style="background:#37474f;color:#fff;font-weight:800"><td colspan="3" style="text-align:right">TOTAL${(dFrom||dTo||chainFilter||temp.mtDivision)?" (Filtered)":""}</td><td>${tot.tPB}</td><td>${tot.tPP}</td><td style="color:#a5d6a7">${tot.tPrB}</td><td style="color:#a5d6a7">${tot.tPrP}</td><td>${tot.tDB}</td><td>${tot.tDP}</td><td style="background:#e65100">${tot.remB}</td><td style="background:#e65100">${tot.remP}</td><td style="background:#1565c0">${tot.pendB}</td><td style="background:#6a1b9a">${tot.stockB}</td><td style="background:#6a1b9a">${tot.stockP}</td></tr></tfoot></table>`;
+    return`<table class="tbl"><thead><tr style="background:#1a237e;color:#fff">${["Item","EAN","Pcs/Box","PO Box","PO Pcs","Prod Box","Prod Pcs","Disp Box","Disp Pcs"].map(h=>`<th>${h}</th>`).join("")}${["Rem Prod B","Rem Prod P"].map(h=>`<th style="background:#ef6c00">${h}</th>`).join("")}${["Pend Disp B","Stock (Godown) B","Stock (Godown) P"].map(h=>`<th style="background:#f9a825">${h}</th>`).join("")}</tr></thead><tbody>${mtItemsFiltered.map(item=>{const s=stats[item.id]||{};return`<tr><td><b>${esc(item.itemDesc)}</b> <button class="btn btn-sm" style="background:#6a1b9a;padding:1px 7px" title="Ye numbers kaise bane dekho" onclick="App.mtWhy('${item.id}')">🔍</button></td><td>${esc(item.eanNo)}</td><td>${esc(item.pcsPerBox)}</td><td>${s.tPB||0}</td><td>${s.tPP||0}</td><td style="color:#2e7d32;font-weight:700">${s.tPrB||0}</td><td style="color:#2e7d32;font-weight:700">${s.tPrP||0}</td><td>${s.tDB||0}</td><td>${s.tDP||0}</td><td style="background:#ffe0b2;font-weight:700;color:${(s.remB||0)>0?"#e65100":"#2e7d32"}">${s.remB||0}</td><td style="background:#ffe0b2;font-weight:700;color:${(s.remP||0)>0?"#e65100":"#2e7d32"}">${s.remP||0}</td><td style="background:#fff9c4;font-weight:700;color:${(s.pendB||0)>0?"#1565c0":"#555"}">${s.pendB||0}</td><td style="background:#fff9c4;font-weight:700;color:${(s.stockB||0)>0?"#6a1b9a":"#555"}">${s.stockB||0}</td><td style="background:#fff9c4;font-weight:700;color:${(s.stockP||0)>0?"#6a1b9a":"#555"}">${s.stockP||0}</td></tr>`;}).join("")}</tbody><tfoot><tr style="background:#37474f;color:#fff;font-weight:800"><td colspan="3" style="text-align:right">TOTAL${(dFrom||dTo||chainFilter||temp.mtDivision)?" (Filtered)":""}</td><td>${tot.tPB}</td><td>${tot.tPP}</td><td style="color:#a5d6a7">${tot.tPrB}</td><td style="color:#a5d6a7">${tot.tPrP}</td><td>${tot.tDB}</td><td>${tot.tDP}</td><td style="background:#e65100">${tot.remB}</td><td style="background:#e65100">${tot.remP}</td><td style="background:#1565c0">${tot.pendB}</td><td style="background:#6a1b9a">${tot.stockB}</td><td style="background:#6a1b9a">${tot.stockP}</td></tr></tfoot></table>`;
   })()}</div></div><div class="card"><div class="card-title">${ed?"✏️ Edit Production Entry":"🏭 Add MT Production"}</div><div class="card-body"><div class="grid2"><div><label class="lbl">Date *</label><input class="inp" type="date" id="mtpkDate" value="${ed?ed.date:todayStr()}"></div><div><label class="lbl">Item Select *</label><select class="inp" id="mtpkItem"><option value="">-- Select --</option>${mtItemsFiltered.map(i=>`<option value="${i.id}" ${ed&&ed.mtItemId==i.id?"selected":""}>${esc(i.itemDesc)}${i.eanNo?" (EAN: "+esc(i.eanNo)+")":""}</option>`).join("")}</select></div><div><label class="lbl">Production Qty *</label><input class="inp" type="number" id="mtpkQty" value="${ed?esc(ed.productionQty):""}" placeholder="0"></div><div><label class="lbl">Unit</label><select class="inp" id="mtpkUnit">${["Box","Pcs","Set"].map(u=>`<option ${ed&&ed.productionUnit===u?"selected":""}>${u}</option>`).join("")}</select></div><div><label class="lbl">Batch No</label><input class="inp" id="mtpkBatch" value="${ed?esc(ed.batchNo):""}"></div><div><label class="lbl">Remark</label><input class="inp" id="mtpkRemark" value="${ed?esc(ed.remark):""}"></div></div><div style="display:flex;gap:10px;margin-top:16px">${!isRO()?`<button class="btn btn-primary" onclick="App.saveMtPacking()">${ed?"Update":"💾 Save Production"}</button>`:""} ${!isRO()&&ed?`<button class="btn btn-secondary" onclick="App.cancelEditMtPacking()">Cancel</button>`:""}</div></div></div><div class="card"><div class="card-title">📋 Production History</div><div class="card-body" style="overflow-x:auto"><div style="max-height:600px;overflow-y:auto;border:1px solid #e0e0e0;border-radius:6px"><table class="tbl" style="margin:0"><thead><tr style="background:#1a237e;color:#fff;position:sticky;top:0;z-index:10">${["Date","Item","EAN","Pcs/Box","Qty","Unit","=Box","=Pcs","Batch","Remark","By","Actions"].map(h=>`<th>${h}</th>`).join("")}</tr></thead><tbody id="mtPackingHistoryBody">${mtPackingHistoryRows()}</tbody></table></div></div></div>`;
 }
 const MTPackingApp={
@@ -5068,9 +5071,52 @@ function ownerSanitize(){
   root.querySelectorAll("[onclick]").forEach(b=>{const o=b.getAttribute("onclick")||"";if(OWNER_WRITE_RE.test(o)){b.style.display="none";b.disabled=true;}});
 }
 
+// ── 🔍 MT "ye number kaise bana" (Rem Prod / Pending ka hisaab dikhata hai) ──
+const MtWhyApp={
+  mtWhy(id){
+    const item=state.mtItems.find(i=>String(i.id)===String(id));if(!item)return;
+    const ppb=Number(item.pcsPerBox)||0;
+    const toPcs=(b,p)=>{const x=Number(p)||0;if(x>0)return x;return ppb>0?Number(b||0)*ppb:0;};
+    const nm=s=>String(s||"").trim().toLowerCase();
+    const st=getMtItemStats("","","")[item.id]||{};
+    const same=pi=>pi.mtItemId==item.id||nm(pi.itemDesc)===nm(item.itemDesc);
+    const poLines=[];
+    state.mtPos.forEach(po=>(po.items||[]).forEach(pi=>{if(same(pi)){const g=toPcs(pi.qtyBox,pi.qtyPcs),c=toPcs(pi.cancelledBox,pi.cancelledPcs);poLines.push({po,pi,g,c,net:Math.max(0,g-c)});}}));
+    const lineIds=new Set(poLines.map(x=>String(x.pi.id)));
+    const dRows=[];
+    state.mtDispatches.forEach(d=>(d.items||[]).forEach(di=>{
+      const byName=nm(di.itemDesc)===nm(item.itemDesc),linked=lineIds.has(String(di.poItemId));
+      if(byName||linked)dRows.push({d,di,p:toPcs(di.qtyBox,di.qtyPcs),byName,linked});
+    }));
+    const prods=state.mtPackings.filter(p=>p.mtItemId==item.id);
+    const pendRows=getMtPendingRows().filter(r=>lineIds.has(String(r.itemId)));
+    const pendTabP=pendRows.reduce((s,r)=>s+toPcs(r.pendBox,r.pendPcs),0);
+    // ── problems
+    const issues=[];
+    dRows.filter(r=>r.di.itemDesc!==item.itemDesc).forEach(r=>issues.push(`Dispatch (${esc(r.d.challanNo||"")}) me item ka naam <b>"${esc(r.di.itemDesc)}"</b> hai, master me <b>"${esc(item.itemDesc)}"</b> — thoda alag (extra space / spelling). Ab ye ginti me aa jata hai, par naam ek jaisa kar lena behtar.`));
+    dRows.filter(r=>r.byName&&!r.linked).forEach(r=>issues.push(`Dispatch (${esc(r.d.challanNo||"")}) ${r.p} pcs kisi PO line se linked nahi hai — hisaab me ginti hua par MT Pending me nahi dikhta.`));
+    state.mtItems.filter(o=>o.id!=item.id&&(nm(o.itemDesc)===nm(item.itemDesc)||(item.eanNo&&o.eanNo===item.eanNo))).forEach(o=>issues.push(`MT Item Master me <b>duplicate</b> item hai: "${esc(o.itemDesc)}" (EAN ${esc(o.eanNo||"—")}). Production alag-alag item par chadhi ho sakti hai, jabki PO/Dispatch naam se dono me ginti hota hai.`));
+    poLines.filter(x=>x.pi.itemDesc===item.itemDesc&&x.pi.mtItemId&&x.pi.mtItemId!=item.id).forEach(x=>issues.push(`PO ${esc(x.po.poNo)} ki line is naam ki hai par kisi aur MT item (id) se judi hai.`));
+    poLines.filter(x=>x.po.manualFullDispatch).forEach(x=>issues.push(`PO ${esc(x.po.poNo)} par "Manual Full Dispatch" laga hai — MT Pending me ye PO nahi dikhta.`));
+    if((st.pendP||0)>0&&(st.tPrP||0)<(st.tDP||0))issues.push(`Dispatch (${st.tDP||0} pcs) Production (${st.tPrP||0} pcs) se zyada hai — purana stock bina MT Production entry ke gaya hoga, isliye Godown Stock 0 maana gaya aur Rem Prod badh jata hai.`);
+    const diff=(st.pendP||0)-pendTabP;
+    if(diff!==0)issues.push(`Hisaab me Pending <b>${st.pendP||0} pcs</b> hai par MT Pending tab me is item ka total <b>${pendTabP} pcs</b> — farak <b>${diff} pcs</b>. Upar ke kaaranon me se koi ek hai.`);
+    const T='style="border:1px solid #ccc;padding:4px 8px;font-size:12px;text-align:center"',H='style="border:1px solid #ccc;padding:4px 8px;font-size:12px;background:#e8eaf6"';
+    const tbl=(heads,rows)=>`<div style="overflow-x:auto;margin-bottom:12px"><table style="border-collapse:collapse;width:100%"><thead><tr>${heads.map(h=>`<th ${H}>${h}</th>`).join("")}</tr></thead><tbody>${rows||`<tr><td ${T} colspan="${heads.length}">—</td></tr>`}</tbody></table></div>`;
+    const sum=[["PO total (cancel hata kar)",st.tPP||0],["− Dispatched (naam ya PO line se)",st.tDP||0],["− Manual full dispatch gap",Math.max(0,(st.tPP||0)-(st.tDP||0)-(st.pendP||0))],["= Pending (hisaab)",st.pendP||0],["Production (MT Packing)",st.tPrP||0],["Godown Stock = Production − Dispatched (kam se kam 0)",st.stockP||0],["Rem Prod = Pending − Stock (kam se kam 0)",st.remP||0],["MT Pending tab me is item ka total",pendTabP]];
+    const body=`<div style="font-size:13px;margin-bottom:8px"><b>${esc(item.itemDesc)}</b> · EAN ${esc(item.eanNo||"—")} · ${ppb} pcs/box</div>
+      ${issues.length?`<div style="background:#fff3e0;border:1px solid #ffb74d;border-radius:8px;padding:10px 14px;margin-bottom:12px;font-size:13px"><b>⚠️ Ye mil sakta hai kaaran:</b><ul style="margin:6px 0 0 18px;padding:0">${issues.map(i=>`<li style="margin-bottom:4px">${i}</li>`).join("")}</ul></div>`:`<div style="background:#e8f5e9;border:1px solid #a5d6a7;border-radius:8px;padding:10px 14px;margin-bottom:12px;font-size:13px">✅ Koi gadbad nahi mili — hisaab aur MT Pending dono barabar hain.</div>`}
+      ${tbl(["Hisaab","Pcs","Box"],sum.map(([l,v])=>`<tr><td ${T} style="text-align:left">${l}</td><td ${T}><b>${v}</b></td><td ${T}>${ppb>0?Math.floor(v/ppb):"—"}</td></tr>`).join(""))}
+      <b style="font-size:13px">PO lines</b>${tbl(["PO No","DC","Ordered pcs","Cancelled","Net","Manual Full"],poLines.map(x=>`<tr><td ${T}>${esc(x.po.poNo)}</td><td ${T}>${esc(x.po.dc||"")}</td><td ${T}>${x.g}</td><td ${T}>${x.c}</td><td ${T}><b>${x.net}</b></td><td ${T}>${x.po.manualFullDispatch?"Haan":""}</td></tr>`).join(""))}
+      <b style="font-size:13px">Dispatch lines</b>${tbl(["Date","Challan","Naam (dispatch me)","Pcs","Naam same","PO line se linked"],dRows.map(r=>`<tr><td ${T}>${esc(fmtDate(r.d.date||r.d.dispatchDate||""))}</td><td ${T}>${esc(r.d.challanNo||"")}</td><td ${T}>${esc(r.di.itemDesc)}</td><td ${T}><b>${r.p}</b></td><td ${T} style="text-align:center;color:${r.byName?"#2e7d32":"#c62828"}">${r.byName?"✔":"✘ nahi"}</td><td ${T} style="text-align:center;color:${r.linked?"#2e7d32":"#c62828"}">${r.linked?"✔":"✘ nahi"}</td></tr>`).join(""))}
+      <b style="font-size:13px">MT Production (Packing)</b>${tbl(["Date","Qty","Unit"],prods.map(p=>`<tr><td ${T}>${esc(fmtDate(p.date))}</td><td ${T}>${esc(p.productionQty)}</td><td ${T}>${esc(p.productionUnit||"Pcs")}</td></tr>`).join(""))}`;
+    mouldShowModal("🔍 Hisaab kaise bana — "+esc(item.itemDesc),body);
+  }
+};
+
 const App=Object.assign({},PackingApp,PendingStockApp,StockSummaryApp,DispatchApp,DispatchRegisterApp,
   POApp,PendingOrderApp,OrderVsAvailableApp,ItemMasterApp,MtItemModalApp,MTPoApp,MTDispatchApp,MTPendingApp,MTPackingApp,MtVehReqApp,PlannerApp,ImportApp,StoreApp,StoreItemApp,InventoryStockApp,MtPlannerApp,RecycleBinApp,LotReportApp,
-  UserManagementApp,AuthApp,MouldApp,DailyReportApp,UserMenuApp);
+  UserManagementApp,AuthApp,MouldApp,DailyReportApp,UserMenuApp,MtWhyApp);
 // ── PROGRAM STOCK CHECK (General Planner programs vs Inventory Stock) ──
 function getProgramStockCheck(p){
   const wastage=(p.result&&p.result.wastage)||{};
