@@ -77,6 +77,29 @@ table.tbl tbody tr:nth-child(even) { background:#f5f5f5; }
 .sync-ok     { background:#2e7d32; }
 .sync-err    { background:#b71c1c; }
 .sync-loading{ background:#1565c0; }
+
+/* ── 📱 MOBILE (chhoti screen) ── */
+@media (max-width:768px){
+  .content{padding:10px 8px}
+  .topbar{padding:0 8px}
+  .topbar-row{height:auto;min-height:48px;padding:4px 0}
+  .tab-btn{padding:9px 11px}
+  .card{border-radius:10px;margin-bottom:12px}
+  .card-title{padding:10px 12px;font-size:14px}
+  .card-body{padding:12px}
+  .grid2{grid-template-columns:1fr!important}
+  .filters{gap:6px}
+  .filters .inp{flex:1 1 45%;min-width:120px}
+  .inp{font-size:16px}
+  .btn{padding:10px 14px}
+  .btn-sm{padding:6px 10px}
+  .modal-box{width:98vw;max-height:94vh;border-radius:10px}
+  .modal-head{padding:12px 14px}
+  table.tbl{display:block;max-width:100%;overflow-x:auto;-webkit-overflow-scrolling:touch}
+  table.tbl th,table.tbl td{white-space:nowrap}
+  .stat-card{padding:10px 12px}
+  .tab-menu{max-width:96vw}
+}
 </style>
 </head>
 <body>
@@ -195,10 +218,12 @@ async function buildFullBackup(){
 const DB = {
   async get(key){ try{ return await IDB.get("jpl_"+yk(key)); }catch(e){ console.error(e); return null; } },
   async saveRaw(key,data){
+    if(ownerBlocked())return;
     try{ await IDB.set("jpl_"+key,data); }
     catch(e){ console.error(e); alert("⚠️ SAVE FAILED!\n\nError: "+(e&&e.message?e.message:e)); }
   },
   async save(key,data){
+    if(ownerBlocked())return;
     try{ await IDB.set("jpl_"+yk(key),data); }
     catch(e){ console.error(e); alert("⚠️ SAVE FAILED! Ye entry save NAHI hui hai.\n\nError: "+(e&&e.message?e.message:e)); }
   }
@@ -533,8 +558,8 @@ function alertBadge(days){
   return`<span class="badge" style="background:#2e7d32;">✅ ${days}d</span>`;
 }
 function canAcc(){const u=state.currentUser;return !!u&&(u.role==="admin"||!!(u.permissions&&u.permissions.accounts));}
-function can(p){const u=state.currentUser;if(!u)return false;return u.role==="admin"||!!(u.permissions&&u.permissions[p])||!!u.readOnly||(p==="mouldPlanner"&&!!(u.permissions&&u.permissions.planner));}
-function isRO(){const u=state.currentUser;return!!u&&u.role!=="admin"&&!!u.readOnly;}
+function can(p){const u=state.currentUser;if(!u)return false;if(u.role==="owner")return ["stockSummary","pendingOrder","mtPending","mtPacking"].includes(p);return u.role==="admin"||!!(u.permissions&&u.permissions[p])||!!u.readOnly||(p==="mouldPlanner"&&!!(u.permissions&&u.permissions.planner));}
+function isRO(){const u=state.currentUser;return!!u&&u.role!=="admin"&&(!!u.readOnly||u.role==="owner");}
 function roBanner(){return isRO()?`<div class="ro-banner">👁️ <b>Read Only Mode</b></div>`:"";}
 function buildDispMap(){
   const m={};
@@ -1118,6 +1143,8 @@ function shellHtml(){
       <div style="display:flex;align-items:center;gap:8px">
         ${state.currentUser.role==="admin"
           ?`<input type="file" id="restoreFileInput" style="display:none" onchange="App.restoreBackup(event)"><button id="userMenuBtn" class="btn" style="background:rgba(255,255,255,.15);border:1px solid rgba(255,255,255,.4);padding:5px 12px;font-size:13px" onclick="App.toggleUserMenu(this)" title="Backup, Import, Restore, FY, Clear All">👤 ${esc(state.currentUser.name)} ▾</button>`
+          :state.currentUser.role==="owner"
+          ?`<button class="btn" style="background:#2e7d32;border:1px solid rgba(255,255,255,.4);padding:5px 12px;font-size:12px" onclick="App.dailyReport()">📤 Daily Report</button><span style="font-size:13px">👁 ${esc(state.currentUser.name)}</span>`
           :`<button class="btn" style="background:rgba(46,125,50,.85);border:1px solid rgba(255,255,255,.4);padding:4px 10px;font-size:11px" onclick="App.downloadBackup()" title="Poora data ek .json backup file mein save karo">⬇️ Backup</button>${fyBadgeHtml()}<span style="font-size:13px">👤 ${esc(state.currentUser.name)}</span>`}
         <button class="btn" style="background:rgba(255,255,255,.2);border:1px solid rgba(255,255,255,.4);padding:5px 14px" onclick="App.logout()">Logout</button>
       </div>
@@ -1130,11 +1157,13 @@ function shellHtml(){
 
 function renderTabContent(){
   const el=document.getElementById("tabContent");if(!el)return;
+  if(ownerBlocked()&&!OWNER_TABS.includes(state.activeTab))state.activeTab="stockSummary";
   const fns={packing:renderPackingTab,pendingStock:renderPendingStockTab,stockSummary:renderStockSummaryTab,
     dispatch:renderDispatchTab,dispatchRegister:renderDispatchRegisterTab,gatePass:renderGatePassTab,po:renderPOTab,
     pendingOrder:renderPendingOrderTab,orderVsAvailable:renderOrderVsAvailableTab,mtPo:renderMTPoTab,mtDispatch:renderMTDispatchTab,
     mtPending:renderMTPendingTab,mtPacking:renderMTPackingTab,mtVehReq:renderMtVehReqTab,planner:renderPlannerTab,mouldPlanner:renderMouldPlannerTab,store:renderStoreTab,inventoryStock:renderInventoryStockTab,canMake:renderCanMakeTab,yearEnd:renderYearEndTab,accParty:renderAccPartyTab,accBills:renderAccBillsTab,accPay:renderAccPayTab,accOut:renderAccOutTab,accRates:renderAccRatesTab,invoice:renderInvoiceTab,creditNote:renderCreditNoteTab,debitNote:renderDebitNoteTab,productionReport:renderProductionReportTab,home:renderHomeTab,minStock:renderMinStockTab,mtReport:renderMtReportTab,programStock:renderProgramStockTabV2,mtPlanner:renderMtPlannerTab,mtSalesDashboard:renderMtSalesDashboardTab,userManagement:renderUserManagementTab,recycleBin:renderRecycleBinTab};
   el.innerHTML=(fns[state.activeTab]||(() =>""))();
+  ownerSanitize();
   const mr=document.getElementById("modalRoot");if(mr)mr.innerHTML=renderItemMasterModal()+renderMtItemModal();
   setTimeout(registerAC,0);
   if(state.activeTab==="mtSalesDashboard")setTimeout(renderMtSalesCharts,50);
@@ -4085,7 +4114,7 @@ const MTPackingApp={
 function renderUserManagementTab(){
   if(state.currentUser.role!=="admin")return"";
   const ed=temp.editUserId?state.users.find(u=>u.id===temp.editUserId):null;const am=ed?(ed.accessMode||"custom"):"custom";
-  return`${challanSettingsCardHtml()}${partyEmailCardHtml()}<div class="card"><div class="card-title">${ed?"✏️ Edit User":"👥 Add New User"}</div><div class="card-body"><div class="grid2"><div><label class="lbl">Full Name *</label><input class="inp" id="umName" value="${ed?esc(ed.name):""}"></div><div><label class="lbl">Username *</label><input class="inp" id="umUsername" value="${ed?esc(ed.username):""}" ${ed?"disabled":""}></div><div><label class="lbl">Password ${ed?"(blank=keep)":""} *</label><input class="inp" type="password" id="umPassword"></div><div><label class="lbl">Role</label><select class="inp" id="umRole" onchange="App.renderUserAccessSection()"><option value="user" ${ed&&ed.role==="user"?"selected":""}>User</option><option value="admin" ${ed&&ed.role==="admin"?"selected":""}>Admin</option></select></div></div><div id="umAccessSection">${userAccessSectionHtml(ed,am)}</div><div style="display:flex;gap:10px;margin-top:14px"><button class="btn btn-primary" onclick="App.saveUser()">${ed?"Update":"Add User"}</button>${ed?`<button class="btn btn-secondary" onclick="App.cancelEditUser()">Cancel</button>`:""}</div></div></div><div class="card"><div class="card-title">👥 All Users</div><div class="card-body" style="overflow-x:auto"><div style="max-height:600px;overflow-y:auto;border:1px solid #e0e0e0;border-radius:6px"><table class="tbl" style="margin:0"><thead><tr style="background:#1a237e;color:#fff;position:sticky;top:0;z-index:10">${["Name","Username","Role","Access","Actions"].map(h=>`<th>${h}</th>`).join("")}</tr></thead><tbody id="userListBody">${userListRows()}</tbody></table></div></div></div>${emailSettingsCardHtml()}`;
+  return`${challanSettingsCardHtml()}${partyEmailCardHtml()}<div class="card"><div class="card-title">${ed?"✏️ Edit User":"👥 Add New User"}</div><div class="card-body"><div class="grid2"><div><label class="lbl">Full Name *</label><input class="inp" id="umName" value="${ed?esc(ed.name):""}"></div><div><label class="lbl">Username *</label><input class="inp" id="umUsername" value="${ed?esc(ed.username):""}" ${ed?"disabled":""}></div><div><label class="lbl">Password ${ed?"(blank=keep)":""} *</label><input class="inp" type="password" id="umPassword"></div><div><label class="lbl">Role</label><select class="inp" id="umRole" onchange="App.renderUserAccessSection()"><option value="user" ${ed&&ed.role==="user"?"selected":""}>User</option><option value="admin" ${ed&&ed.role==="admin"?"selected":""}>Admin</option><option value="owner" ${ed&&ed.role==="owner"?"selected":""}>Owner (View Only)</option></select></div></div><div id="umAccessSection">${userAccessSectionHtml(ed,am)}</div><div style="display:flex;gap:10px;margin-top:14px"><button class="btn btn-primary" onclick="App.saveUser()">${ed?"Update":"Add User"}</button>${ed?`<button class="btn btn-secondary" onclick="App.cancelEditUser()">Cancel</button>`:""}</div></div></div><div class="card"><div class="card-title">👥 All Users</div><div class="card-body" style="overflow-x:auto"><div style="max-height:600px;overflow-y:auto;border:1px solid #e0e0e0;border-radius:6px"><table class="tbl" style="margin:0"><thead><tr style="background:#1a237e;color:#fff;position:sticky;top:0;z-index:10">${["Name","Username","Role","Access","Actions"].map(h=>`<th>${h}</th>`).join("")}</tr></thead><tbody id="userListBody">${userListRows()}</tbody></table></div></div></div>${emailSettingsCardHtml()}`;
 }
 function partyEmailCardHtml(){
   const list=state.partyEmails||[];
@@ -4135,7 +4164,7 @@ function emailSettingsCardHtml(){
     </div>
   </div></div>`;
 }
-function userAccessSectionHtml(ed,am){const role=ed?ed.role:"user";if(role==="admin")return"";const perms=ed?(ed.permissions||{}):{};return`<div style="margin-top:14px"><label class="lbl">Access Mode</label><div style="display:flex;gap:10px;margin-bottom:14px">${[{val:"custom",label:"🔧 Custom"},{val:"readonly",label:"👁 Read Only"},{val:"full",label:"✅ Full Access"}].map(m=>`<label style="flex:1;border:2px solid ${am===m.val?"#1a237e":"#ddd"};border-radius:10px;padding:10px 14px;cursor:pointer;text-align:center;background:${am===m.val?"#e8eaf6":"#fafafa"}"><input type="radio" name="umAccessMode" value="${m.val}" ${am===m.val?"checked":""} onchange="App.renderUserAccessSection()" style="display:none"><div style="font-weight:700;font-size:13px">${m.label}</div></label>`).join("")}</div>${am==="custom"?`<div><label class="lbl">Tab Permissions</label><div style="display:flex;flex-wrap:wrap;gap:8px">${PERMS.map(p=>`<label style="display:flex;align-items:center;gap:5px;cursor:pointer;font-size:13px;background:${perms[p]?"#e3f2fd":"#f5f5f5"};padding:7px 13px;border-radius:20px;border:1px solid ${perms[p]?"#1565c0":"#ddd"}"><input type="checkbox" id="umPerm_${p}" ${perms[p]?"checked":""}>${PERM_LABELS[p]}</label>`).join("")}</div></div>`:""}</div>`;}
+function userAccessSectionHtml(ed,am){const role=ed?ed.role:"user";if(role==="admin")return"";if(role==="owner")return`<div class="ro-banner" style="margin-top:14px">👁️ <b>Owner (View Only)</b> — sirf Stock Summary, Pending Orders (Party A–Z), MT Pending, MT Packing aur Daily Report dekh sakta hai. Koi entry / edit / delete nahi kar sakta.</div>`;const perms=ed?(ed.permissions||{}):{};return`<div style="margin-top:14px"><label class="lbl">Access Mode</label><div style="display:flex;gap:10px;margin-bottom:14px">${[{val:"custom",label:"🔧 Custom"},{val:"readonly",label:"👁 Read Only"},{val:"full",label:"✅ Full Access"}].map(m=>`<label style="flex:1;border:2px solid ${am===m.val?"#1a237e":"#ddd"};border-radius:10px;padding:10px 14px;cursor:pointer;text-align:center;background:${am===m.val?"#e8eaf6":"#fafafa"}"><input type="radio" name="umAccessMode" value="${m.val}" ${am===m.val?"checked":""} onchange="App.renderUserAccessSection()" style="display:none"><div style="font-weight:700;font-size:13px">${m.label}</div></label>`).join("")}</div>${am==="custom"?`<div><label class="lbl">Tab Permissions</label><div style="display:flex;flex-wrap:wrap;gap:8px">${PERMS.map(p=>`<label style="display:flex;align-items:center;gap:5px;cursor:pointer;font-size:13px;background:${perms[p]?"#e3f2fd":"#f5f5f5"};padding:7px 13px;border-radius:20px;border:1px solid ${perms[p]?"#1565c0":"#ddd"}"><input type="checkbox" id="umPerm_${p}" ${perms[p]?"checked":""}>${PERM_LABELS[p]}</label>`).join("")}</div></div>`:""}</div>`;}
 function renderRecycleBinTab(){
   const bin=state.recycleBin||[];
   const rows=bin.map(e=>`<tr><td><span class="badge" style="background:#607d8b">${esc(RECYCLE_MODULE_LABELS[e.module]||e.module)}</span></td><td>${esc(recycleBinItemLabel(e.module,e.item))}</td><td>${esc(e.deletedAt)}</td><td>${esc(e.deletedBy)}</td><td><button class="btn btn-sm btn-success" onclick="App.restoreFromRecycleBin('${e.id}')">♻️ Restore</button> <button class="btn btn-sm btn-danger" onclick="App.permanentlyDeleteFromRecycleBin('${e.id}')">🗑️ Permanent Delete</button></td></tr>`).join("")||`<tr><td colspan="5" style="text-align:center;color:#999;padding:24px">Recycle Bin khaali hai</td></tr>`;
@@ -4174,7 +4203,7 @@ const RecycleBinApp={
     renderTabContent();
   }
 };
-function userListRows(){return state.users.map(u=>`<tr><td><b>${esc(u.name)}</b></td><td>${esc(u.username)}</td><td><span class="badge" style="background:${u.role==="admin"?"#1a237e":"#37474f"}">${esc(u.role)}</span></td><td>${u.role==="admin"?"All":u.readOnly?"👁 Read Only":u.accessMode==="full"?"✅ Full":PERMS.filter(p=>u.permissions&&u.permissions[p]).map(p=>PERM_LABELS[p]).join(", ")||"None"}</td><td><button class="btn btn-sm btn-primary" onclick="App.editUser(${u.id})">Edit</button> ${u.id!==state.currentUser.id?`<button class="btn btn-sm btn-danger" onclick="App.deleteUser(${u.id})">Del</button>`:""}</td></tr>`).join("");}
+function userListRows(){return state.users.map(u=>`<tr><td><b>${esc(u.name)}</b></td><td>${esc(u.username)}</td><td><span class="badge" style="background:${u.role==="admin"?"#1a237e":u.role==="owner"?"#6a1b9a":"#37474f"}">${esc(u.role)}</span></td><td>${u.role==="admin"?"All":u.role==="owner"?"👁 Owner: Stock Summary, Pending Orders, MT Pending, MT Packing (View Only)":u.readOnly?"👁 Read Only":u.accessMode==="full"?"✅ Full":PERMS.filter(p=>u.permissions&&u.permissions[p]).map(p=>PERM_LABELS[p]).join(", ")||"None"}</td><td><button class="btn btn-sm btn-primary" onclick="App.editUser(${u.id})">Edit</button> ${u.id!==state.currentUser.id?`<button class="btn btn-sm btn-danger" onclick="App.deleteUser(${u.id})">Del</button>`:""}</td></tr>`).join("");}
 const UserManagementApp={
   renderUserAccessSection(){const role=document.getElementById("umRole").value;const mode=document.querySelector('input[name="umAccessMode"]:checked')?.value||"custom";const ed=temp.editUserId?state.users.find(u=>u.id===temp.editUserId):null;document.getElementById("umAccessSection").innerHTML=role==="admin"?"":userAccessSectionHtml({...ed,role,accessMode:mode},mode);},
   saveChallanOverride(){
@@ -4247,8 +4276,8 @@ const AuthApp={
     saveEmailConfig(cfg);
     openMail("✅ Test Mail — Jimit Pet LLP","Ye ek test mail hai. Agar ye aapko mil gaya hai, matlab Email Auto-Send sahi se set ho gaya hai.");
   },
-  async login(){const u=document.getElementById("loginUser").value,p=document.getElementById("loginPass").value;const found=state.users.find(x=>x.username===u);const el=document.getElementById("loginErr");if(found&&found.passwordHash){const hash=await hashPassword(p,found.salt);if(hash===found.passwordHash){state.currentUser=found;render();return;}}else if(found&&found.password&&found.password===p){state.currentUser=found;render();return;}el.style.display="block";el.textContent="⚠️ Invalid username or password";},
-  logout(){state.currentUser=null;render();},
+  async login(){const u=document.getElementById("loginUser").value,p=document.getElementById("loginPass").value;const found=state.users.find(x=>x.username===u);const el=document.getElementById("loginErr");if(found&&found.passwordHash){const hash=await hashPassword(p,found.salt);if(hash===found.passwordHash){state.currentUser=found;afterLoginSetup(found);render();return;}}else if(found&&found.password&&found.password===p){state.currentUser=found;afterLoginSetup(found);render();return;}el.style.display="block";el.textContent="⚠️ Invalid username or password";},
+  logout(){try{localStorage.removeItem("jpl_owner_remember");}catch(e){}state.currentUser=null;render();},
   fySwitch(){if(confirm("Year badalne ke liye logout hoga aur year select screen aayegi. Continue?"))fyChangeYear();},
   closeTabMenu(){const m=document.getElementById("tabGroupMenu");if(m)m.remove();},
   toggleTabGroup(gk,el){
@@ -4989,17 +5018,17 @@ const UserMenuApp={
     const old=document.getElementById("userMenuDrop");
     if(old){old.remove();return;}
     if(!state.currentUser||state.currentUser.role!=="admin")return;
-    const multi=FY.years.length>1,latest=FY.label===fyLatest();
+    const multi=FY.years.length>1,latest=FY.label===fyLatest(),mob=isMobileDevice();
     const it=(icon,label,act,extra)=>`<button class="tab-menu-item" style="${extra||""}" onclick="App.closeUserMenu();${act}">${icon} ${label}</button>`;
     const m=document.createElement("div");
     m.id="userMenuDrop";m.className="tab-menu";m.style.minWidth="230px";m.style.borderRadius="8px";
     m.innerHTML=
       it("⬇️","Backup (data download)","App.downloadBackup()")+
       it("📥","Import Excel","App.openImportModal()")+
-      it("⬆️","Restore (backup file se)","document.getElementById('restoreFileInput').click()")+
+      (mob?"":it("⬆️","Restore (backup file se)","document.getElementById('restoreFileInput').click()"))+
       (multi?it("📅","FY "+esc(FY.label)+(latest?"":" (purana)")+" — badlo","App.fySwitch()"):`<div style="padding:9px 16px;font-size:13px;color:#555">📅 FY ${esc(FY.label)}</div>`)+
       `<div style="border-top:1px solid #e0e0e0;margin:4px 0"></div>`+
-      it("🗑️","Clear All Entries","App.clearAllEntries()","color:#c62828;font-weight:700");
+      (mob?`<div style="padding:8px 16px;font-size:11px;color:#888">🔒 Restore / Clear All Entries sirf PC par</div>`:it("🗑️","Clear All Entries","App.clearAllEntries()","color:#c62828;font-weight:700"));
     document.body.appendChild(m);
     const r=el.getBoundingClientRect(),w=m.offsetWidth||230;
     m.style.top=(r.bottom+4)+"px";
@@ -5011,6 +5040,33 @@ const UserMenuApp={
     }
   }
 };
+
+// ══════════════════════════════════════════════════════════════════════════
+// 👁 OWNER ROLE (sirf dekhna) + MOBILE HELPERS
+// Owner: Stock Summary, Pending Orders (Party A-Z), MT Pending, MT Packing + 📤 Daily Report. Koi entry/edit nahi.
+// ══════════════════════════════════════════════════════════════════════════
+const OWNER_TABS=["stockSummary","pendingOrder","mtPending","mtPacking"];
+function isMobileDevice(){try{return /Android|iPhone|iPad|iPod|Mobile/i.test(navigator.userAgent||"")||window.matchMedia("(max-width: 820px)").matches;}catch(e){return false;}}
+function ownerBlocked(){try{const u=state.currentUser;return !!u&&u.role==="owner";}catch(e){return false;}}
+function autoJobsAllowed(){try{if(ownerBlocked())return false;return localStorage.getItem("jpl_owner_device")!=="1";}catch(e){return true;}}
+function afterLoginSetup(u){
+  try{
+    if(u&&u.role==="owner"){
+      state.activeTab="stockSummary";temp.poSortPartyAZ=true;
+      localStorage.setItem("jpl_owner_remember",u.username);   // owner ka phone login yaad rakhega
+      localStorage.setItem("jpl_owner_device","1");            // is phone par auto-backup / auto-email nahi chalenge
+    }else{
+      localStorage.removeItem("jpl_owner_remember");localStorage.removeItem("jpl_owner_device");
+    }
+  }catch(e){}
+}
+const OWNER_WRITE_RE=/App\.(save\w*|delete\w*|del[A-Z]\w*|edit\w*|cancel\w*|add\w*|update\w*|remove\w*|openMtItemModal|openItemMaster|openManualStockAdjust|emailPendingOrders|send\w*Email\w*|import\w*|restore\w*|clearAll\w*|close\w*Pending\w*)\(/;
+function ownerSanitize(){
+  if(!ownerBlocked())return;
+  const root=document.getElementById("tabContent");if(!root)return;
+  root.querySelectorAll(".card").forEach(c=>{const t=(c.querySelector(".card-title")||{}).textContent||"";if(/\b(Add|New|Edit)\b/i.test(t))c.style.display="none";});
+  root.querySelectorAll("[onclick]").forEach(b=>{const o=b.getAttribute("onclick")||"";if(OWNER_WRITE_RE.test(o)){b.style.display="none";b.disabled=true;}});
+}
 
 const App=Object.assign({},PackingApp,PendingStockApp,StockSummaryApp,DispatchApp,DispatchRegisterApp,
   POApp,PendingOrderApp,OrderVsAvailableApp,ItemMasterApp,MtItemModalApp,MTPoApp,MTDispatchApp,MTPendingApp,MTPackingApp,MtVehReqApp,PlannerApp,ImportApp,StoreApp,StoreItemApp,InventoryStockApp,MtPlannerApp,RecycleBinApp,LotReportApp,
@@ -6905,14 +6961,15 @@ window.App=App; window.AC=AC;
   await migratePlaintextPasswords();
   backfillDispatchBatches();
   backfillDispatchItemBatches();
+  try{const ru=localStorage.getItem("jpl_owner_remember");if(ru){const f=state.users.find(x=>x.username===ru&&x.role==="owner");if(f){state.currentUser=f;afterLoginSetup(f);}}}catch(e){}
   render();
   setupEnterNav();
-  setTimeout(checkAutoBackup,3000);
-  setTimeout(checkDailyAutoEmails,6000);
-  setTimeout(checkMtDispatchAlertAutoEmail,9000);
-  setTimeout(checkGeneralPlannerAutoTrigger,12000);
-  setTimeout(checkPendingStockCategoryAutoEmails,15000);
-  setTimeout(checkProductionReminderEmail,18000);
+  setTimeout(()=>{if(autoJobsAllowed())(checkAutoBackup)();},3000);
+  setTimeout(()=>{if(autoJobsAllowed())(checkDailyAutoEmails)();},6000);
+  setTimeout(()=>{if(autoJobsAllowed())(checkMtDispatchAlertAutoEmail)();},9000);
+  setTimeout(()=>{if(autoJobsAllowed())(checkGeneralPlannerAutoTrigger)();},12000);
+  setTimeout(()=>{if(autoJobsAllowed())(checkPendingStockCategoryAutoEmails)();},15000);
+  setTimeout(()=>{if(autoJobsAllowed())(checkProductionReminderEmail)();},18000);
   setInterval(checkAutoBackup,5*60*1000);setInterval(function(){const el=document.getElementById("liveClock");if(el){const d=new Date();el.textContent="📅 "+d.toLocaleDateString("en-IN")+"   🕒 "+d.toLocaleTimeString("en-IN");}},1000);
   setInterval(checkDailyAutoEmails,5*60*1000);
   setInterval(checkMtDispatchAlertAutoEmail,5*60*1000);
