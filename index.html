@@ -5184,7 +5184,7 @@ async function cloudFetch(url,opts,ms){
 const Cloud={
   sleep(ms){return new Promise(r=>setTimeout(r,ms));},
   session:null,role:null,status:"off",base:{},outbox:{},cursor:{},suspect:{},conflicts:[],
-  lastSync:null,busy:false,timer:null,saveTimer:null,lastErr:"",firstPullDone:false,authLost:false,_refreshing:null,_bound:false,
+  skips:[],lastReconcile:null,lastSync:null,busy:false,timer:null,saveTimer:null,lastErr:"",firstPullDone:false,authLost:false,_refreshing:null,_bound:false,
   // ── load / session
   async load(){
     try{
@@ -5316,6 +5316,7 @@ const Cloud={
     if(maxTs&&maxTs!==this.cursor[fy]){this.cursor[fy]=maxTs;this.persistCursor();}
     return changed;
   },
+  skip(ks,rid,why){this.skips.push({ks,rid,why,at:Date.now()});if(this.skips.length>30)this.skips.shift();},
   async getLocal(fy,store){
     const prop=CLOUD_PROP_OF[store];
     if(prop&&(fy==="all"||fy===FY.label))return state[prop];
@@ -5332,13 +5333,13 @@ const Cloud={
     let changed=false;
     for(const ks of Object.keys(groups)){
       const rs=groups[ks];const sep=ks.indexOf("|");const fy=ks.slice(0,sep),store=ks.slice(sep+1);
-      if(cloudPrefixOf(fy)===null)continue;
+      if(cloudPrefixOf(fy)===null){this.skip(ks,"*","fy pehchana nahi");continue;}
       const b=this.base[ks]||(this.base[ks]={mode:null,h:{}});
       const valMode=rs.some(r=>r.rid==="_");
       if(store==="fy_registry"||valMode){
         const r=rs.filter(x=>x.rid==="_").sort((a,c)=>a.updated_at<c.updated_at?-1:1).pop();
         const k=ks+"|_";
-        if(this.outbox[k]){this.conflicts.push({ks,rid:"_",at:Date.now()});continue;}
+        if(this.outbox[k]){this.conflicts.push({ks,rid:"_",at:Date.now()});this.skip(ks,"_","device par bheji jaani baaki thi");continue;}
         if(!r||r.deleted||!r.data)continue;
         const h=cloudHash(cloudStable(r.data));
         if(b.h["_"]===h)continue;
@@ -5352,13 +5353,13 @@ const Cloud={
       let ch=false;
       for(const r of rs){
         const k=ks+"|"+r.rid;
-        if(this.outbox[k]){this.conflicts.push({ks,rid:r.rid,at:Date.now()});continue;}
+        if(this.outbox[k]){this.conflicts.push({ks,rid:r.rid,at:Date.now()});this.skip(ks,r.rid,"device par bheji jaani baaki thi");continue;}
         if(r.deleted){
           if(idx.has(r.rid)){arr[idx.get(r.rid)]=null;idx.delete(r.rid);ch=true;}
           if(r.rid in b.h){delete b.h[r.rid];ch=true;}
           continue;
         }
-        if(!r.data)continue;
+        if(!r.data){this.skip(ks,r.rid,"record khali aaya");continue;}
         const h=cloudHash(cloudStable(r.data));
         if(b.h[r.rid]===h&&idx.has(r.rid))continue;
         if(idx.has(r.rid))arr[idx.get(r.rid)]=r.data;else{arr.push(r.data);idx.set(r.rid,arr.length-1);}
@@ -5373,6 +5374,46 @@ const Cloud={
     for(const fy of ["all",FY.label]){if(fy&&await this.pullFy(fy))changed=true;}
     this.lastPull={rows:this._pulled,changed,at:Date.now()};
     if(changed)this.notifyChanged();
+  },
+  // cloud ki id-list se milana: device par jo record nahi aaye wo laana, jo delete ho chuke wo hatana, jo sirf device par hain wo cloud bhejna
+  async reconcile(manual){
+    if(!this.session)return;
+    let fetched=0,removed=0,queued=0;const enc=encodeURIComponent;
+    for(const fy of ["all",FY.label]){
+      if(!fy)continue;
+      const ids=[];
+      for(let off=0;;off+=1000){
+        const rows=await this.rest("GET","jpl_records?select=store,rid,deleted&fy=eq."+enc(fy)+"&order=store.asc,rid.asc&limit=1000&offset="+off);
+        if(!rows||!rows.length)break;ids.push(...rows);if(rows.length<1000)break;
+      }
+      const byStore={};ids.forEach(r=>{(byStore[r.store]=byStore[r.store]||[]).push(r);});
+      for(const store of Object.keys(byStore)){
+        const prop=CLOUD_PROP_OF[store];if(!prop||store==="fy_registry")continue;
+        const rs=byStore[store];if(rs.some(r=>r.rid==="_"))continue;
+        const local=await this.getLocal(fy,store);const arr=Array.isArray(local)?local:[];
+        const have=new Set(arr.filter(x=>x&&x.id!=null).map(x=>String(x.id)));
+        const ks=fy+"|"+store;
+        const cloudAll=new Set(rs.map(r=>r.rid));
+        const missing=rs.filter(r=>!r.deleted&&!have.has(r.rid)&&!this.outbox[ks+"|"+r.rid]).map(r=>r.rid);
+        const gone=rs.filter(r=>r.deleted&&have.has(r.rid)&&!this.outbox[ks+"|"+r.rid]).map(r=>r.rid);
+        for(let i=0;i<missing.length;i+=100){
+          const part=missing.slice(i,i+100);const b=this.base[ks];if(b)part.forEach(rid=>{delete b.h[rid];});
+          const rows=await this.rest("GET","jpl_records?select=fy,store,rid,data,deleted,updated_at&fy=eq."+enc(fy)+"&store=eq."+enc(store)+"&rid=in."+enc("("+part.map(x=>'"'+x+'"').join(",")+")"));
+          if(rows&&rows.length){await this.applyRows(rows);fetched+=rows.length;}
+        }
+        if(gone.length){await this.applyRows(gone.map(rid=>({fy,store,rid,data:null,deleted:true,updated_at:""})));removed+=gone.length;}
+        if(this.role==="admin"){
+          for(const x of arr){
+            if(!x||x.id==null)continue;const rid=String(x.id);const k=ks+"|"+rid;
+            if(!cloudAll.has(rid)&&!this.outbox[k]){this.outbox[k]={fy,store,rid,data:x,deleted:false,h:cloudHash(cloudStable(x))};queued++;}
+          }
+        }
+      }
+    }
+    if(queued){this.persistOutbox();this.schedule();}
+    this.lastReconcile={at:Date.now(),fetched,removed,queued,manual:!!manual};
+    if(fetched||removed)this.notifyChanged();
+    return this.lastReconcile;
   },
   notifyChanged(){
     try{
@@ -5413,6 +5454,7 @@ const Cloud={
     try{
       if(this.role==="admin")await this.flush();
       await this.pull();
+      if(!this.lastReconcile||Date.now()-this.lastReconcile.at>20*60*1000)await this.reconcile();
       this.firstPullDone=true;this.lastSync=Date.now();this.lastErr="";
       this.setStatus(Object.keys(this.suspect).length?"warn":"ok");
     }catch(e){
@@ -5538,7 +5580,7 @@ function cloudConnectedView(){
     <tr><td>Takrav (conflict)</td><td>${Cloud.conflicts.length}</td></tr></tbody></table>${susHtml}
     <div style="display:flex;gap:8px;flex-wrap:wrap;margin-top:12px"><button class="btn btn-primary" onclick="App.cloudSyncNow()">🔄 Abhi Sync karo</button><button class="btn btn-danger btn-sm" onclick="App.cloudDisconnect()">Disconnect</button></div>
     ${Cloud.role==="admin"?`<details style="margin-top:12px"><summary style="cursor:pointer;font-size:12px;color:#555">Upload / Download (agar pehla upload beech me ruk gaya)</summary><div style="margin-top:8px;display:flex;gap:8px;flex-wrap:wrap"><button class="btn btn-sm btn-success" onclick="App.cloudUploadAgain()">⬆️ Is device ka poora data cloud par (dobara) daalo</button></div><div style="font-size:11px;color:#777;margin-top:4px">Ye safe hai: jo cloud me pehle se hai wo sirf update hota hai, kuch double nahi hota. Is device ka data nahi badalta.</div><div id="cdMsg" style="margin-top:8px;font-size:13px"></div></details>`:""}
-    <div style="margin-top:12px"><button class="btn btn-sm btn-secondary" onclick="App.cloudDiag()">🔍 Jaanch (numbers dekho)</button><div id="cdDiag" style="margin-top:8px;font-size:12px"></div></div>
+    <div style="margin-top:12px"><button class="btn btn-sm btn-secondary" onclick="App.cloudDiag()">🔍 Jaanch (numbers dekho)</button> <button class="btn btn-sm btn-success" onclick="App.cloudReconcile()">🔄 Poora check + kami poori karo</button><div id="cdDiag" style="margin-top:8px;font-size:12px"></div></div>
     <div style="font-size:12px;color:#777;margin-top:12px">Entry pehle isi device par save hoti hai, phir cloud me jati hai. Internet na ho to bhi kaam chalta rahega.</div>`);
 }
 const CloudApp={
@@ -5568,6 +5610,11 @@ const CloudApp={
     try{const n=await Cloud.uploadAll((a,b)=>cloudMsg("⏳ Upload "+a+" / "+b));Cloud.start();cloudMsg("✅ "+n+" records cloud par chale gaye","#2e7d32");setTimeout(()=>cloudConnectedView(),900);}
     catch(e){cloudMsg("❌ "+esc(e.message||e)+'<br><button class="btn btn-sm btn-success" style="margin-top:6px" onclick="App.cloudUpload()">🔁 Dobara koshish</button>',"#c62828");}
   },
+  async cloudReconcile(){
+    const box=document.getElementById("cdDiag");if(box)box.innerHTML="⏳ Cloud se milaya ja raha hai...";
+    try{const r=await Cloud.reconcile(true);if(box)box.innerHTML=`✅ Check poora. Cloud se laaye gaye: <b>${r.fetched}</b>, hataye gaye: <b>${r.removed}</b>, cloud ko bheje jaane wale: <b>${r.queued}</b>.`;setTimeout(()=>App.cloudDiag(),1500);}
+    catch(e){if(box)box.innerHTML='<span style="color:#c62828">❌ '+esc(e.message||e)+'</span>';}
+  },
   async cloudDiag(){
     const box=document.getElementById("cdDiag");if(!box)return;
     box.innerHTML="⏳ Jaanch ho rahi hai...";
@@ -5576,13 +5623,15 @@ const CloudApp={
       const rc=await Cloud.rest("GET","jpl_records?select=rid&fy=eq."+enc(fy)+"&store=eq.packings&deleted=eq.false&limit=1",undefined,{Prefer:"count=exact"},true);
       const m=/\/(\d+)$/.exec(rc.headers.get("content-range")||"");const cloudPk=m?parseInt(m[1],10):0;
       const top=await Cloud.rest("GET","jpl_records?select=store,rid,updated_at,deleted&fy=eq."+enc(fy)+"&order=updated_at.desc&limit=5");
-      const rows=(top||[]).map(r=>{const prop=CLOUD_PROP_OF[r.store];const arr=prop?state[prop]:null;const has=Array.isArray(arr)&&arr.some(x=>x&&String(x.id)===String(r.rid));return `<tr><td>${esc(r.store)}</td><td>${esc(r.rid)}</td><td>${esc(String(r.updated_at).slice(11,19))}</td><td>${r.deleted?"deleted":(has?"✅ is device me hai":"❌ is device me NAHI")}</td></tr>`;}).join("");
+      const rows=(top||[]).map(r=>{const prop=CLOUD_PROP_OF[r.store];const arr=prop?state[prop]:null;const has=Array.isArray(arr)&&arr.some(x=>x&&String(x.id)===String(r.rid));return `<tr><td>${esc(r.store)}</td><td>…${esc(String(r.rid).slice(-5))}</td><td>${esc(String(r.updated_at).slice(11,19))}</td><td>${r.deleted?"deleted":(has?"✅ hai":"❌ NAHI")}</td></tr>`;}).join("");
       const lp=Cloud.lastPull?`${Cloud.lastPull.rows} rows aayin, badlav: ${Cloud.lastPull.changed?"haan":"nahi"}`:"abhi tak pull nahi hua";
       box.innerHTML=`<table class="tbl"><tbody>
         <tr><td>Is device ka FY</td><td><b>${esc(fy)}</b></td></tr>
         <tr><td>Packings: is device me</td><td><b>${(state.packings||[]).length}</b></td></tr>
         <tr><td>Packings: cloud me (is FY ki)</td><td><b>${cloudPk}</b></td></tr>
-        <tr><td>Aakhri pull</td><td>${esc(lp)}</td></tr></tbody></table>
+        <tr><td>Aakhri pull</td><td>${esc(lp)}</td></tr>
+        <tr><td>Aakhri poora-check</td><td>${Cloud.lastReconcile?`laaye ${Cloud.lastReconcile.fetched}, hataye ${Cloud.lastReconcile.removed}, bheje ${Cloud.lastReconcile.queued}`:"abhi tak nahi"}</td></tr>
+        <tr><td>Chhoote hue (skip)</td><td>${Cloud.skips.length?esc(Cloud.skips.slice(-3).map(s=>s.ks+": "+s.why).join(" | ")):"koi nahi"}</td></tr></tbody></table>
         <div style="margin:6px 0 2px"><b>Cloud ki sabse nayi 5 entries (is FY ki):</b></div>
         <table class="tbl"><thead><tr><th>Store</th><th>ID</th><th>Time (UTC)</th><th>Is device me?</th></tr></thead><tbody>${rows||'<tr><td colspan="4">—</td></tr>'}</tbody></table>`;
     }catch(e){box.innerHTML='<span style="color:#c62828">❌ '+esc(e.message||e)+'</span>';}
