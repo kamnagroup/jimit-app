@@ -5161,7 +5161,14 @@ function cloudRecords(value,mode){
   }
   return {mode:m,map};
 }
+async function cloudFetch(url,opts,ms){
+  if(typeof AbortController==="undefined")return fetch(url,opts);
+  const ac=new AbortController();const t=setTimeout(()=>ac.abort(),ms||45000);
+  try{return await fetch(url,Object.assign({},opts,{signal:ac.signal}));}
+  finally{clearTimeout(t);}
+}
 const Cloud={
+  sleep(ms){return new Promise(r=>setTimeout(r,ms));},
   session:null,role:null,status:"off",base:{},outbox:{},cursor:{},suspect:{},conflicts:[],
   lastSync:null,busy:false,timer:null,saveTimer:null,lastErr:"",firstPullDone:false,authLost:false,_refreshing:null,_bound:false,
   // ── load / session
@@ -5188,7 +5195,7 @@ const Cloud={
   async signIn(userOrEmail,password){
     const email=String(userOrEmail||"").trim().toLowerCase();
     const em=email.includes("@")?email:email+"@jimitpet.app";
-    const res=await fetch(CLOUD_URL+"/auth/v1/token?grant_type=password",{method:"POST",headers:{apikey:CLOUD_KEY,"Content-Type":"application/json"},body:JSON.stringify({email:em,password})});
+    const res=await cloudFetch(CLOUD_URL+"/auth/v1/token?grant_type=password",{method:"POST",headers:{apikey:CLOUD_KEY,"Content-Type":"application/json"},body:JSON.stringify({email:em,password})});
     const txt=await res.text();let j=null;try{j=JSON.parse(txt);}catch(e){}
     if(!res.ok)throw new Error((j&&(j.error_description||j.msg||j.message))||("Login fail ("+res.status+")"));
     const role=((j.user||{}).app_metadata||{}).jpl_role;
@@ -5200,7 +5207,7 @@ const Cloud={
     if(this._refreshing)return this._refreshing;
     this._refreshing=(async()=>{
       try{
-        const res=await fetch(CLOUD_URL+"/auth/v1/token?grant_type=refresh_token",{method:"POST",headers:{apikey:CLOUD_KEY,"Content-Type":"application/json"},body:JSON.stringify({refresh_token:this.session.refresh_token})});
+        const res=await cloudFetch(CLOUD_URL+"/auth/v1/token?grant_type=refresh_token",{method:"POST",headers:{apikey:CLOUD_KEY,"Content-Type":"application/json"},body:JSON.stringify({refresh_token:this.session.refresh_token})});
         if(!res.ok){if(res.status>=400&&res.status<500)this.authLost=true;throw new Error("auth "+res.status);}
         this.saveSession(await res.json());
       }finally{this._refreshing=null;}
@@ -5215,7 +5222,7 @@ const Cloud={
   async rest(method,path,body,extra,wantHeaders){
     for(let attempt=0;attempt<2;attempt++){
       const tok=await this.token();
-      const res=await fetch(CLOUD_URL+"/rest/v1/"+path,{method,headers:Object.assign({apikey:CLOUD_KEY,Authorization:"Bearer "+tok,"Content-Type":"application/json"},extra||{}),body:body!==undefined?JSON.stringify(body):undefined});
+      const res=await cloudFetch(CLOUD_URL+"/rest/v1/"+path,{method,headers:Object.assign({apikey:CLOUD_KEY,Authorization:"Bearer "+tok,"Content-Type":"application/json"},extra||{}),body:body!==undefined?JSON.stringify(body):undefined});
       if(res.status===401&&attempt===0){try{await this.refresh();}catch(e){throw e;}continue;}
       if(!res.ok){const t=await res.text();const e=new Error(t||("HTTP "+res.status));e.status=res.status;throw e;}
       const txt=res.status===204?"":await res.text();
@@ -5392,7 +5399,7 @@ const Cloud={
       this.setStatus(Object.keys(this.suspect).length?"warn":"ok");
     }catch(e){
       this.lastErr=String(e&&e.message||e).slice(0,200);
-      const net=(typeof navigator!=="undefined"&&navigator.onLine===false)||/fetch|network|Failed|Load failed/i.test(this.lastErr);
+      const net=(typeof navigator!=="undefined"&&navigator.onLine===false)||/fetch|network|Failed|Load failed|abort|timeout/i.test(this.lastErr);
       this.setStatus(net?"offline":"error");
     }finally{this.busy=false;}
   },
@@ -5415,9 +5422,15 @@ const Cloud={
       else add("all",store,await IDB.get("jpl_"+store));
     }
     add("all","fy_registry",await IDB.get("jpl_fy_registry"));
-    for(let i=0;i<rows.length;i+=400){
-      await this.rest("POST","jpl_records?on_conflict=fy,store,rid",rows.slice(i,i+400),{Prefer:"resolution=merge-duplicates,return=minimal"});
-      if(progress)progress(Math.min(i+400,rows.length),rows.length);
+    const BATCH=100;
+    for(let i=0;i<rows.length;i+=BATCH){
+      let done=false,lastE=null;
+      for(let a=0;a<4&&!done;a++){
+        try{await this.rest("POST","jpl_records?on_conflict=fy,store,rid",rows.slice(i,i+BATCH),{Prefer:"resolution=merge-duplicates,return=minimal"});done=true;}
+        catch(err){lastE=err;if(err&&(err.status===401||err.status===403))break;await this.sleep(1500*(a+1));}
+      }
+      if(!done)throw new Error("Upload "+i+" / "+rows.length+" par ruk gaya: "+String((lastE&&lastE.message)||lastE).slice(0,160));
+      if(progress)progress(Math.min(i+BATCH,rows.length),rows.length);
     }
     this.base=newBase;this.outbox={};this.cursor={};this.persistOutbox();this.persistCursor();
     for(const ks of Object.keys(newBase))this.persistBase(ks);
@@ -5506,6 +5519,7 @@ function cloudConnectedView(){
     <tr><td>Bheji jaani baaki</td><td>${n} entry</td></tr>
     <tr><td>Takrav (conflict)</td><td>${Cloud.conflicts.length}</td></tr></tbody></table>${susHtml}
     <div style="display:flex;gap:8px;flex-wrap:wrap;margin-top:12px"><button class="btn btn-primary" onclick="App.cloudSyncNow()">🔄 Abhi Sync karo</button><button class="btn btn-danger btn-sm" onclick="App.cloudDisconnect()">Disconnect</button></div>
+    ${Cloud.role==="admin"?`<details style="margin-top:12px"><summary style="cursor:pointer;font-size:12px;color:#555">Upload / Download (agar pehla upload beech me ruk gaya)</summary><div style="margin-top:8px;display:flex;gap:8px;flex-wrap:wrap"><button class="btn btn-sm btn-success" onclick="App.cloudUploadAgain()">⬆️ Is device ka poora data cloud par (dobara) daalo</button></div><div style="font-size:11px;color:#777;margin-top:4px">Ye safe hai: jo cloud me pehle se hai wo sirf update hota hai, kuch double nahi hota. Is device ka data nahi badalta.</div><div id="cdMsg" style="margin-top:8px;font-size:13px"></div></details>`:""}
     <div style="font-size:12px;color:#777;margin-top:12px">Entry pehle isi device par save hoti hai, phir cloud me jati hai. Internet na ho to bhi kaam chalta rahega.</div>`);
 }
 const CloudApp={
@@ -5526,15 +5540,16 @@ const CloudApp={
       if(cnt===0){
         cloudShowModal("☁️ Pehla device",`<div style="font-size:13px;line-height:1.6">Cloud abhi <b>khali</b> hai. Is device ka poora data cloud par daal dein?<br><br><b>Sirf wahi device chuno jiske paas sabse naya data hai.</b></div><div style="display:flex;gap:8px;margin-top:14px;flex-wrap:wrap"><button class="btn btn-success" onclick="App.cloudUpload()">⬆️ Haan, upload karo</button><button class="btn btn-secondary" onclick="App.cloudDisconnect()">Cancel</button></div><div id="cdMsg" style="margin-top:10px;font-size:13px"></div>`);
       }else{
-        cloudShowModal("☁️ Cloud me data hai",`<div style="font-size:13px;line-height:1.6">Cloud me <b>${cnt} records</b> hain. Ab cloud ka data is device par laaya jayega.<br><br>⚠️ Is device ka purana data <b>hat jayega</b> (pehle ek <b>Backup file download</b> hogi, use sambhal kar rakhna).</div><div style="display:flex;gap:8px;margin-top:14px;flex-wrap:wrap"><button class="btn btn-success" onclick="App.cloudDownload()">⬇️ Haan, cloud se lo</button><button class="btn btn-secondary" onclick="App.cloudDisconnect()">Cancel</button></div><div id="cdMsg" style="margin-top:10px;font-size:13px"></div>`);
+        cloudShowModal("☁️ Cloud me data hai",`<div style="font-size:13px;line-height:1.6">Cloud me <b>${cnt} records</b> hain. Ab cloud ka data is device par laaya jayega.<br><br>⚠️ Is device ka purana data <b>hat jayega</b> (pehle ek <b>Backup file download</b> hogi, use sambhal kar rakhna).</div><div style="display:flex;gap:8px;margin-top:14px;flex-wrap:wrap"><button class="btn btn-success" onclick="App.cloudDownload()">⬇️ Haan, cloud se lo</button><button class="btn btn-secondary" onclick="App.cloudDisconnect()">Cancel</button></div><div style="margin-top:14px;padding:10px 12px;background:#fff3e0;border:1px solid #ffb74d;border-radius:8px;font-size:12px;line-height:1.5">⚠️ <b>Agar pehle upload beech me ruk gaya tha</b> aur ye usi device ka data hai jisse upload kiya tha, to <b>"cloud se lo" mat dabana</b>. Iski jagah niche wala button dabao.<br><button class="btn btn-sm btn-success" style="margin-top:6px" onclick="App.cloudUploadAgain()">⬆️ Is device se dobara upload karo</button></div><div id="cdMsg" style="margin-top:10px;font-size:13px"></div>`);
       }
     }catch(e){cloudMsg("❌ "+esc(e.message||e),"#c62828");}
   },
   async cloudUpload(){
     cloudMsg("⏳ Upload ho raha hai...");
     try{const n=await Cloud.uploadAll((a,b)=>cloudMsg("⏳ Upload "+a+" / "+b));Cloud.start();cloudMsg("✅ "+n+" records cloud par chale gaye","#2e7d32");setTimeout(()=>cloudConnectedView(),900);}
-    catch(e){cloudMsg("❌ "+esc(e.message||e),"#c62828");}
+    catch(e){cloudMsg("❌ "+esc(e.message||e)+'<br><button class="btn btn-sm btn-success" style="margin-top:6px" onclick="App.cloudUpload()">🔁 Dobara koshish</button>',"#c62828");}
   },
+  cloudUploadAgain(){if(!confirm("Is device ka poora data cloud par dobara daalu? (Cloud me jo hai wo sirf update hoga)"))return;App.cloudUpload();},
   async cloudDownload(){
     try{
       cloudMsg("⏳ Pehle backup file ban rahi hai...");
