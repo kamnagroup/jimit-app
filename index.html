@@ -5161,6 +5161,20 @@ function cloudRecords(value,mode){
   }
   return {mode:m,map};
 }
+function cloudUiIdleClean(){
+  try{
+    if(document.getElementById("mouldModal")||document.getElementById("cloudModal"))return false;
+    const mr=document.getElementById("modalRoot");if(mr&&String(mr.innerHTML||"").trim())return false;
+    if(Date.now()-(window.__jplLastAct||0)<10000)return false;
+    const root=document.getElementById("tabContent");if(!root)return false;
+    for(const el of root.querySelectorAll("input,textarea,select")){
+      if(el.type==="checkbox"||el.type==="radio"){if(el.checked!==el.defaultChecked)return false;}
+      else if(el.tagName==="SELECT"){const o=el.querySelector("option[selected]")||(el.options&&el.options[0]);if(o&&el.value!==o.value)return false;}
+      else if(el.value!==el.defaultValue)return false;
+    }
+    return true;
+  }catch(e){return false;}
+}
 async function cloudFetch(url,opts,ms){
   if(typeof AbortController==="undefined")return fetch(url,opts);
   const ac=new AbortController();const t=setTimeout(()=>ac.abort(),ms||45000);
@@ -5293,6 +5307,7 @@ const Cloud={
     for(;;){
       const rows=await this.rest("GET","jpl_records?select=fy,store,rid,data,deleted,updated_at&fy=eq."+encodeURIComponent(fy)+(q?"&updated_at=gt."+encodeURIComponent(q):"")+"&order=updated_at.asc&limit=1000");
       if(!rows||!rows.length)break;
+      this._pulled=(this._pulled||0)+rows.length;
       if(await this.applyRows(rows))changed=true;
       q=rows[rows.length-1].updated_at;
       if(!maxTs||q>maxTs)maxTs=q;
@@ -5354,14 +5369,16 @@ const Cloud={
     return changed;
   },
   async pull(){
-    let changed=false;
+    let changed=false;this._pulled=0;
     for(const fy of ["all",FY.label]){if(fy&&await this.pullFy(fy))changed=true;}
+    this.lastPull={rows:this._pulled,changed,at:Date.now()};
     if(changed)this.notifyChanged();
   },
   notifyChanged(){
     try{
       if(!state.currentUser){render();return;}
       if(!this.firstPullDone&&this.role==="owner"){renderTabContent();return;}
+      if(cloudUiIdleClean()){renderTabContent();return;}   // user kuch nahi kar raha aur koi adhura form nahi: screen apne aap naya
       this.showBanner();
     }catch(e){}
   },
@@ -5384,6 +5401,7 @@ const Cloud={
       this._bound=true;
       try{
         window.addEventListener("online",()=>this.tick());
+        ["keydown","mousedown","touchstart","wheel"].forEach(ev=>document.addEventListener(ev,()=>{window.__jplLastAct=Date.now();},{passive:true}));
         document.addEventListener("visibilitychange",()=>{if(document.visibilityState==="visible")this.tick();});
       }catch(e){}
     }
@@ -5520,6 +5538,7 @@ function cloudConnectedView(){
     <tr><td>Takrav (conflict)</td><td>${Cloud.conflicts.length}</td></tr></tbody></table>${susHtml}
     <div style="display:flex;gap:8px;flex-wrap:wrap;margin-top:12px"><button class="btn btn-primary" onclick="App.cloudSyncNow()">🔄 Abhi Sync karo</button><button class="btn btn-danger btn-sm" onclick="App.cloudDisconnect()">Disconnect</button></div>
     ${Cloud.role==="admin"?`<details style="margin-top:12px"><summary style="cursor:pointer;font-size:12px;color:#555">Upload / Download (agar pehla upload beech me ruk gaya)</summary><div style="margin-top:8px;display:flex;gap:8px;flex-wrap:wrap"><button class="btn btn-sm btn-success" onclick="App.cloudUploadAgain()">⬆️ Is device ka poora data cloud par (dobara) daalo</button></div><div style="font-size:11px;color:#777;margin-top:4px">Ye safe hai: jo cloud me pehle se hai wo sirf update hota hai, kuch double nahi hota. Is device ka data nahi badalta.</div><div id="cdMsg" style="margin-top:8px;font-size:13px"></div></details>`:""}
+    <div style="margin-top:12px"><button class="btn btn-sm btn-secondary" onclick="App.cloudDiag()">🔍 Jaanch (numbers dekho)</button><div id="cdDiag" style="margin-top:8px;font-size:12px"></div></div>
     <div style="font-size:12px;color:#777;margin-top:12px">Entry pehle isi device par save hoti hai, phir cloud me jati hai. Internet na ho to bhi kaam chalta rahega.</div>`);
 }
 const CloudApp={
@@ -5548,6 +5567,25 @@ const CloudApp={
     cloudMsg("⏳ Upload ho raha hai...");
     try{const n=await Cloud.uploadAll((a,b)=>cloudMsg("⏳ Upload "+a+" / "+b));Cloud.start();cloudMsg("✅ "+n+" records cloud par chale gaye","#2e7d32");setTimeout(()=>cloudConnectedView(),900);}
     catch(e){cloudMsg("❌ "+esc(e.message||e)+'<br><button class="btn btn-sm btn-success" style="margin-top:6px" onclick="App.cloudUpload()">🔁 Dobara koshish</button>',"#c62828");}
+  },
+  async cloudDiag(){
+    const box=document.getElementById("cdDiag");if(!box)return;
+    box.innerHTML="⏳ Jaanch ho rahi hai...";
+    try{
+      const enc=encodeURIComponent,fy=FY.label;
+      const rc=await Cloud.rest("GET","jpl_records?select=rid&fy=eq."+enc(fy)+"&store=eq.packings&deleted=eq.false&limit=1",undefined,{Prefer:"count=exact"},true);
+      const m=/\/(\d+)$/.exec(rc.headers.get("content-range")||"");const cloudPk=m?parseInt(m[1],10):0;
+      const top=await Cloud.rest("GET","jpl_records?select=store,rid,updated_at,deleted&fy=eq."+enc(fy)+"&order=updated_at.desc&limit=5");
+      const rows=(top||[]).map(r=>{const prop=CLOUD_PROP_OF[r.store];const arr=prop?state[prop]:null;const has=Array.isArray(arr)&&arr.some(x=>x&&String(x.id)===String(r.rid));return `<tr><td>${esc(r.store)}</td><td>${esc(r.rid)}</td><td>${esc(String(r.updated_at).slice(11,19))}</td><td>${r.deleted?"deleted":(has?"✅ is device me hai":"❌ is device me NAHI")}</td></tr>`;}).join("");
+      const lp=Cloud.lastPull?`${Cloud.lastPull.rows} rows aayin, badlav: ${Cloud.lastPull.changed?"haan":"nahi"}`:"abhi tak pull nahi hua";
+      box.innerHTML=`<table class="tbl"><tbody>
+        <tr><td>Is device ka FY</td><td><b>${esc(fy)}</b></td></tr>
+        <tr><td>Packings: is device me</td><td><b>${(state.packings||[]).length}</b></td></tr>
+        <tr><td>Packings: cloud me (is FY ki)</td><td><b>${cloudPk}</b></td></tr>
+        <tr><td>Aakhri pull</td><td>${esc(lp)}</td></tr></tbody></table>
+        <div style="margin:6px 0 2px"><b>Cloud ki sabse nayi 5 entries (is FY ki):</b></div>
+        <table class="tbl"><thead><tr><th>Store</th><th>ID</th><th>Time (UTC)</th><th>Is device me?</th></tr></thead><tbody>${rows||'<tr><td colspan="4">—</td></tr>'}</tbody></table>`;
+    }catch(e){box.innerHTML='<span style="color:#c62828">❌ '+esc(e.message||e)+'</span>';}
   },
   cloudUploadAgain(){if(!confirm("Is device ka poora data cloud par dobara daalu? (Cloud me jo hai wo sirf update hoga)"))return;App.cloudUpload();},
   async cloudDownload(){
