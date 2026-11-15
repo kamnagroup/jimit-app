@@ -1,8 +1,9 @@
 // Jimit Pet LLP — Service Worker
 // 👉 Har naye update par sirf neeche VERSION badlo (e.g. v1.0.1), phir GitHub par upload karo.
 // Sab phones/PC par apne aap naya version aa jayega aur "🔄 Naya version aaya hai — Reload" dikhega.
-const VERSION = "v1.5.3-cloud-reconcile";
+const VERSION = "v1.5.4-sw-supabase-nocache";
 const CACHE = "jpl-" + VERSION;
+const CDN_OK = ["cdnjs.cloudflare.com", "cdn.jsdelivr.net"];
 const CORE = ["./", "./index.html", "./manifest.json", "./icon-192.png", "./icon-180.png"];
 
 self.addEventListener("install", e => {
@@ -21,6 +22,9 @@ self.addEventListener("fetch", e => {
   const r = e.request;
   if (r.method !== "GET") return;
   const u = new URL(r.url);
+  // ⚠️ Supabase (live data) aur baaki bahari sites ko KABHI cache mat karo — seedha internet se.
+  // Sirf same-origin files aur 2 library CDN cache hote hain.
+  if (u.origin !== location.origin && !CDN_OK.includes(u.hostname)) return;
   const isPage = r.mode === "navigate" || u.pathname.endsWith("/index.html") || u.pathname.endsWith("/");
   if (isPage && u.origin === location.origin) {
     // App page: pehle internet se (naya version), net na ho to cache se (offline chalega)

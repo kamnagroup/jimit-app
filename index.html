@@ -5176,9 +5176,9 @@ function cloudUiIdleClean(){
   }catch(e){return false;}
 }
 async function cloudFetch(url,opts,ms){
-  if(typeof AbortController==="undefined")return fetch(url,opts);
+  if(typeof AbortController==="undefined")return fetch(url,Object.assign({cache:"no-store"},opts));
   const ac=new AbortController();const t=setTimeout(()=>ac.abort(),ms||45000);
-  try{return await fetch(url,Object.assign({},opts,{signal:ac.signal}));}
+  try{return await fetch(url,Object.assign({cache:"no-store"},opts,{signal:ac.signal}));}
   finally{clearTimeout(t);}
 }
 const Cloud={
