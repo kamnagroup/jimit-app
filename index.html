@@ -280,7 +280,7 @@ let state = {
   lastProductionReminderDate:"",
   itemMaster:[], dispatches:[], purchaseOrders:[], gatePasses:[],
   mtItems:[], mtPos:[], mtDispatches:[], mtPackings:[], bomMaster:[], productionPlans:[], storeLedger:[], grns:[], mtBomMaster:[], mtProductionPlans:[], mtDivisions:["AVENUE","STYLE","VISHAL MEGA MART"], storeItems:[], storeQtyTypes:["Box","Pcs","Kgs"], storeBatches:[],
-  mouldItems:[], mouldMats:[], mouldColours:[], mouldPrograms:[], mouldProducts:[], mouldGroups:[],
+  mouldItems:[], mouldMats:[], mouldColours:[], mouldPrograms:[], mouldProducts:[], mouldGroups:[], appSettings:{},
   activeTab:"packing"
 };
 let temp = {
@@ -558,7 +558,7 @@ function alertBadge(days){
   return`<span class="badge" style="background:#2e7d32;">✅ ${days}d</span>`;
 }
 function canAcc(){const u=state.currentUser;return !!u&&(u.role==="admin"||!!(u.permissions&&u.permissions.accounts));}
-function can(p){const u=state.currentUser;if(!u)return false;if(u.role==="owner")return ["stockSummary","pendingOrder","mtPending","mtPacking"].includes(p);return u.role==="admin"||!!(u.permissions&&u.permissions[p])||!!u.readOnly||(p==="mouldPlanner"&&!!(u.permissions&&u.permissions.planner));}
+function can(p){const u=state.currentUser;if(!u)return false;if(u.role==="owner")return ["stockSummary","pendingOrder","mtPending","mtPacking","inventoryStock","canMake"].includes(p);return u.role==="admin"||!!(u.permissions&&u.permissions[p])||!!u.readOnly||(p==="mouldPlanner"&&!!(u.permissions&&u.permissions.planner));}
 function isRO(){const u=state.currentUser;return!!u&&u.role!=="admin"&&(!!u.readOnly||u.role==="owner");}
 function roBanner(){return isRO()?`<div class="ro-banner">👁️ <b>Read Only Mode</b></div>`:"";}
 function buildDispMap(){
@@ -757,7 +757,7 @@ function buildPendingStockEmailBody(categoryFilter){
   const totCartons=rows.reduce((s,r)=>s+(Number(r.pendingCartons)||0),0);
   return`Jimit Pet LLP — Stock Summary${titleSuffix}\nPrinted: ${nowStr()}\nTotal Products: ${rows.length}  |  Total Pending Cartons: ${totCartons}\n\n${"=".repeat(40)}\n\n`+lines.join("\n")+`\n\n${"=".repeat(40)}\n\nTOTAL PENDING CARTONS: ${totCartons} Ctn`;
 }
-function checkPendingStockCategoryAutoEmails(){
+function checkPendingStockCategoryAutoEmails(){if(!autoJobsAllowed())return;
   try{
     const now=new Date();
     const todayKey=now.toISOString().slice(0,10);
@@ -845,7 +845,7 @@ function getPendingQtyInCartonsByProduct(){
   });
   return byProduct;
 }
-function checkProductionReminderEmail(){
+function checkProductionReminderEmail(){if(!autoJobsAllowed())return;
   try{
     if(!state.currentUser)return;
     const todayKey=todayStr();
@@ -865,7 +865,7 @@ function checkProductionReminderEmail(){
     openMail(`🏭 Production Reminder — ${shortlist.length} items 5+ Cts Pending — ${todayLabel}`,lines.join("\n"));
   }catch(e){ console.error("Production reminder auto-email error",e); }
 }
-const AUTO_PLANNING_ENABLED=false;function checkGeneralPlannerAutoTrigger(){if(!AUTO_PLANNING_ENABLED)return;
+const AUTO_PLANNING_ENABLED=false;function checkGeneralPlannerAutoTrigger(){if(!autoJobsAllowed())return;if(!AUTO_PLANNING_ENABLED)return;
   try{
     if(!state.currentUser)return;
     const pendMap=getPendingQtyInCartonsByProduct();
@@ -905,7 +905,7 @@ const AUTO_PLANNING_ENABLED=false;function checkGeneralPlannerAutoTrigger(){if(!
     if(changed)persist("auto_triggered_products",state.autoTriggeredProducts);
   }catch(e){ console.error("General Planner auto-trigger error",e); }
 }
-function checkMtDispatchAlertAutoEmail(){
+function checkMtDispatchAlertAutoEmail(){if(!autoJobsAllowed())return;
   try{
     if(!state.currentUser)return;
     const todayKey=todayStr();
@@ -929,7 +929,7 @@ function checkMtDispatchAlertAutoEmail(){
     openMail(`⏰ URGENT: ${alerts.length} MT PO Dispatch Due in 2 Days`,lines.join("\n"));
   }catch(e){ console.error("MT Dispatch alert auto-email error",e); }
 }
-function checkDailyAutoEmails(){
+function checkDailyAutoEmails(){if(!autoJobsAllowed())return;
   try{
     const now=new Date();
     const todayKey=now.toISOString().slice(0,10);
@@ -1050,13 +1050,13 @@ function backfillDispatchItemBatches(){
 function buildBackupData(){
   const map={users:"users",packings:"packings",categories:"categories",dispatches:"dispatches",
     purchaseOrders:"pos",mtPos:"mt_pos",mtDispatches:"mt_dispatches",batchOptions:"batch_options",
-    mtItems:"mt_items",mtPackings:"mt_packings",itemMaster:"item_master",bomMaster:"bom_master",productionPlans:"production_plans",storeLedger:"store_ledger",grns:"grns",mtBomMaster:"mt_bom_master",mouldItems:"mould_items",mouldMats:"mould_mats",mouldColours:"mould_colours",mouldPrograms:"mould_programs",mouldProducts:"mould_products",mouldGroups:"mould_groups",mtProductionPlans:"mt_production_plans",mtDivisions:"mt_divisions",storeItems:"store_items",storeQtyTypes:"store_qty_types",storeBatches:"store_batches",recycleBin:"recycle_bin",nextChallanOverride:"next_challan_override",partyEmails:"party_emails",autoTriggeredProducts:"auto_triggered_products",lastAutoBackupDate:"last_auto_backup_date",lastAutoEmailDate:"last_auto_email_date",lastMtAlertEmailDate:"last_mt_alert_email_date",lastPendingCategoryEmailDate:"last_pending_category_email_date",lastProductionReminderDate:"last_production_reminder_date",gatePasses:"gate_passes",parties:"parties",accBills:"acc_bills",accReceipts:"acc_receipts",invoices:"invoices",creditNotes:"credit_notes",debitNotes:"debit_notes",itemRates:"item_rates",company:"company"};
+    mtItems:"mt_items",mtPackings:"mt_packings",itemMaster:"item_master",bomMaster:"bom_master",productionPlans:"production_plans",storeLedger:"store_ledger",grns:"grns",mtBomMaster:"mt_bom_master",mouldItems:"mould_items",mouldMats:"mould_mats",mouldColours:"mould_colours",mouldPrograms:"mould_programs",mouldProducts:"mould_products",mouldGroups:"mould_groups",appSettings:"app_settings",mtProductionPlans:"mt_production_plans",mtDivisions:"mt_divisions",storeItems:"store_items",storeQtyTypes:"store_qty_types",storeBatches:"store_batches",recycleBin:"recycle_bin",nextChallanOverride:"next_challan_override",partyEmails:"party_emails",autoTriggeredProducts:"auto_triggered_products",lastAutoBackupDate:"last_auto_backup_date",lastAutoEmailDate:"last_auto_email_date",lastMtAlertEmailDate:"last_mt_alert_email_date",lastPendingCategoryEmailDate:"last_pending_category_email_date",lastProductionReminderDate:"last_production_reminder_date",gatePasses:"gate_passes",parties:"parties",accBills:"acc_bills",accReceipts:"acc_receipts",invoices:"invoices",creditNotes:"credit_notes",debitNotes:"debit_notes",itemRates:"item_rates",company:"company"};
   const backup={ _meta:{app:"JimitPetLLP",exportedAt:new Date().toISOString(),version:1}, data:{} };
   Object.entries(map).forEach(([sk,dbk])=>{ backup.data[dbk]=state[sk]; });
   backup.data.tombstones=Tombstone.get();
   return backup;
 }
-async function checkAutoBackup(){
+async function checkAutoBackup(){if(!autoJobsAllowed())return;
   try{
     const now=new Date();
     const todayKey=now.toISOString().slice(0,10);
@@ -1145,7 +1145,7 @@ function shellHtml(){
           ?`<input type="file" id="restoreFileInput" style="display:none" onchange="App.restoreBackup(event)"><button id="userMenuBtn" class="btn" style="background:rgba(255,255,255,.15);border:1px solid rgba(255,255,255,.4);padding:5px 12px;font-size:13px" onclick="App.toggleUserMenu(this)" title="Backup, Import, Restore, FY, Clear All">👤 ${esc(state.currentUser.name)} ▾</button>${cloudDotHtml()}`
           :state.currentUser.role==="owner"
           ?`<button class="btn" style="background:#2e7d32;border:1px solid rgba(255,255,255,.4);padding:5px 12px;font-size:12px" onclick="App.dailyReport()">📤 Daily Report</button><span style="font-size:13px">👁 ${esc(state.currentUser.name)}</span>${cloudDotHtml()}`
-          :`<button class="btn" style="background:rgba(46,125,50,.85);border:1px solid rgba(255,255,255,.4);padding:4px 10px;font-size:11px" onclick="App.downloadBackup()" title="Poora data ek .json backup file mein save karo">⬇️ Backup</button>${fyBadgeHtml()}<span style="font-size:13px">👤 ${esc(state.currentUser.name)}</span>`}
+          :`${fyBadgeHtml()}<span style="font-size:13px">👤 ${esc(state.currentUser.name)}</span>`}
         <button class="btn" style="background:rgba(255,255,255,.2);border:1px solid rgba(255,255,255,.4);padding:5px 14px" onclick="App.logout()">Logout</button>
       </div>
     </div>
@@ -4167,7 +4167,7 @@ function emailSettingsCardHtml(){
     </div>
   </div></div>`;
 }
-function userAccessSectionHtml(ed,am){const role=ed?ed.role:"user";if(role==="admin")return"";if(role==="owner")return`<div class="ro-banner" style="margin-top:14px">👁️ <b>Owner (View Only)</b> — sirf Stock Summary, Pending Orders (Party A–Z), MT Pending, MT Packing aur Daily Report dekh sakta hai. Koi entry / edit / delete nahi kar sakta.</div>`;const perms=ed?(ed.permissions||{}):{};return`<div style="margin-top:14px"><label class="lbl">Access Mode</label><div style="display:flex;gap:10px;margin-bottom:14px">${[{val:"custom",label:"🔧 Custom"},{val:"readonly",label:"👁 Read Only"},{val:"full",label:"✅ Full Access"}].map(m=>`<label style="flex:1;border:2px solid ${am===m.val?"#1a237e":"#ddd"};border-radius:10px;padding:10px 14px;cursor:pointer;text-align:center;background:${am===m.val?"#e8eaf6":"#fafafa"}"><input type="radio" name="umAccessMode" value="${m.val}" ${am===m.val?"checked":""} onchange="App.renderUserAccessSection()" style="display:none"><div style="font-weight:700;font-size:13px">${m.label}</div></label>`).join("")}</div>${am==="custom"?`<div><label class="lbl">Tab Permissions</label><div style="display:flex;flex-wrap:wrap;gap:8px">${PERMS.map(p=>`<label style="display:flex;align-items:center;gap:5px;cursor:pointer;font-size:13px;background:${perms[p]?"#e3f2fd":"#f5f5f5"};padding:7px 13px;border-radius:20px;border:1px solid ${perms[p]?"#1565c0":"#ddd"}"><input type="checkbox" id="umPerm_${p}" ${perms[p]?"checked":""}>${PERM_LABELS[p]}</label>`).join("")}</div></div>`:""}</div>`;}
+function userAccessSectionHtml(ed,am){const role=ed?ed.role:"user";if(role==="admin")return"";if(role==="owner")return`<div class="ro-banner" style="margin-top:14px">👁️ <b>Owner (View Only)</b> — sirf Stock Summary, Pending Orders (Party A–Z), MT Pending, MT Packing, Inventory Stock, Can Make Report aur Daily Report dekh sakta hai. Koi entry / edit / delete nahi kar sakta.</div>`;const perms=ed?(ed.permissions||{}):{};return`<div style="margin-top:14px"><label class="lbl">Access Mode</label><div style="display:flex;gap:10px;margin-bottom:14px">${[{val:"custom",label:"🔧 Custom"},{val:"readonly",label:"👁 Read Only"},{val:"full",label:"✅ Full Access"}].map(m=>`<label style="flex:1;border:2px solid ${am===m.val?"#1a237e":"#ddd"};border-radius:10px;padding:10px 14px;cursor:pointer;text-align:center;background:${am===m.val?"#e8eaf6":"#fafafa"}"><input type="radio" name="umAccessMode" value="${m.val}" ${am===m.val?"checked":""} onchange="App.renderUserAccessSection()" style="display:none"><div style="font-weight:700;font-size:13px">${m.label}</div></label>`).join("")}</div>${am==="custom"?`<div><label class="lbl">Tab Permissions</label><div style="display:flex;flex-wrap:wrap;gap:8px">${PERMS.map(p=>`<label style="display:flex;align-items:center;gap:5px;cursor:pointer;font-size:13px;background:${perms[p]?"#e3f2fd":"#f5f5f5"};padding:7px 13px;border-radius:20px;border:1px solid ${perms[p]?"#1565c0":"#ddd"}"><input type="checkbox" id="umPerm_${p}" ${perms[p]?"checked":""}>${PERM_LABELS[p]}</label>`).join("")}</div></div>`:""}</div>`;}
 function renderRecycleBinTab(){
   const bin=state.recycleBin||[];
   const rows=bin.map(e=>`<tr><td><span class="badge" style="background:#607d8b">${esc(RECYCLE_MODULE_LABELS[e.module]||e.module)}</span></td><td>${esc(recycleBinItemLabel(e.module,e.item))}</td><td>${esc(e.deletedAt)}</td><td>${esc(e.deletedBy)}</td><td><button class="btn btn-sm btn-success" onclick="App.restoreFromRecycleBin('${e.id}')">♻️ Restore</button> <button class="btn btn-sm btn-danger" onclick="App.permanentlyDeleteFromRecycleBin('${e.id}')">🗑️ Permanent Delete</button></td></tr>`).join("")||`<tr><td colspan="5" style="text-align:center;color:#999;padding:24px">Recycle Bin khaali hai</td></tr>`;
@@ -4206,7 +4206,7 @@ const RecycleBinApp={
     renderTabContent();
   }
 };
-function userListRows(){return state.users.map(u=>`<tr><td><b>${esc(u.name)}</b></td><td>${esc(u.username)}</td><td><span class="badge" style="background:${u.role==="admin"?"#1a237e":u.role==="owner"?"#6a1b9a":"#37474f"}">${esc(u.role)}</span></td><td>${u.role==="admin"?"All":u.role==="owner"?"👁 Owner: Stock Summary, Pending Orders, MT Pending, MT Packing (View Only)":u.readOnly?"👁 Read Only":u.accessMode==="full"?"✅ Full":PERMS.filter(p=>u.permissions&&u.permissions[p]).map(p=>PERM_LABELS[p]).join(", ")||"None"}</td><td><button class="btn btn-sm btn-primary" onclick="App.editUser(${u.id})">Edit</button> ${u.id!==state.currentUser.id?`<button class="btn btn-sm btn-danger" onclick="App.deleteUser(${u.id})">Del</button>`:""}</td></tr>`).join("");}
+function userListRows(){return state.users.map(u=>`<tr><td><b>${esc(u.name)}</b></td><td>${esc(u.username)}</td><td><span class="badge" style="background:${u.role==="admin"?"#1a237e":u.role==="owner"?"#6a1b9a":"#37474f"}">${esc(u.role)}</span></td><td>${u.role==="admin"?"All":u.role==="owner"?"👁 Owner: Stock Summary, Pending Orders, MT Pending, MT Packing, Inventory Stock, Can Make (View Only)":u.readOnly?"👁 Read Only":u.accessMode==="full"?"✅ Full":PERMS.filter(p=>u.permissions&&u.permissions[p]).map(p=>PERM_LABELS[p]).join(", ")||"None"}</td><td><button class="btn btn-sm btn-primary" onclick="App.editUser(${u.id})">Edit</button> ${u.id!==state.currentUser.id?`<button class="btn btn-sm btn-danger" onclick="App.deleteUser(${u.id})">Del</button>`:""}</td></tr>`).join("");}
 const UserManagementApp={
   renderUserAccessSection(){const role=document.getElementById("umRole").value;const mode=document.querySelector('input[name="umAccessMode"]:checked')?.value||"custom";const ed=temp.editUserId?state.users.find(u=>u.id===temp.editUserId):null;document.getElementById("umAccessSection").innerHTML=role==="admin"?"":userAccessSectionHtml({...ed,role,accessMode:mode},mode);},
   saveChallanOverride(){
@@ -5026,11 +5026,12 @@ const UserMenuApp={
     const m=document.createElement("div");
     m.id="userMenuDrop";m.className="tab-menu";m.style.minWidth="230px";m.style.borderRadius="8px";
     m.innerHTML=
-      it("⬇️","Backup (data download)","App.downloadBackup()")+
+      (isMainDevice()?it("⬇️","Backup (data download)","App.downloadBackup()"):`<div style="padding:8px 16px;font-size:11px;color:#888">🔒 Backup sirf main device par</div>`)+
       it("📥","Import Excel","App.openImportModal()")+
       (mob?"":it("⬆️","Restore (backup file se)","document.getElementById('restoreFileInput').click()"))+
       (multi?it("📅","FY "+esc(FY.label)+(latest?"":" (purana)")+" — badlo","App.fySwitch()"):`<div style="padding:9px 16px;font-size:13px;color:#555">📅 FY ${esc(FY.label)}</div>`)+
       it("☁️","Cloud Sync"+(Cloud.session?" ✓":""),"App.cloudOpen()")+
+      it("🖥️",mainDeviceLabel(),"App.setMainDevice()")+
       `<div style="border-top:1px solid #e0e0e0;margin:4px 0"></div>`+
       (mob?`<div style="padding:8px 16px;font-size:11px;color:#888">🔒 Restore / Clear All Entries sirf PC par</div>`:it("🗑️","Clear All Entries","App.clearAllEntries()","color:#c62828;font-weight:700"));
     document.body.appendChild(m);
@@ -5049,10 +5050,10 @@ const UserMenuApp={
 // 👁 OWNER ROLE (sirf dekhna) + MOBILE HELPERS
 // Owner: Stock Summary, Pending Orders (Party A-Z), MT Pending, MT Packing + 📤 Daily Report. Koi entry/edit nahi.
 // ══════════════════════════════════════════════════════════════════════════
-const OWNER_TABS=["stockSummary","pendingOrder","mtPending","mtPacking"];
+const OWNER_TABS=["stockSummary","pendingOrder","mtPending","mtPacking","inventoryStock","canMake"];
 function isMobileDevice(){try{return /Android|iPhone|iPad|iPod|Mobile/i.test(navigator.userAgent||"")||window.matchMedia("(max-width: 820px)").matches;}catch(e){return false;}}
 function ownerBlocked(){try{const u=state.currentUser;return (!!u&&u.role==="owner")||Cloud.role==="owner";}catch(e){return false;}}
-function autoJobsAllowed(){try{if(ownerBlocked())return false;return localStorage.getItem("jpl_owner_device")!=="1";}catch(e){return true;}}
+function autoJobsAllowed(){try{if(ownerBlocked())return false;if(localStorage.getItem("jpl_owner_device")==="1")return false;if(Cloud.session&&!Cloud.firstPullDone&&Cloud.status!=="offline"&&Cloud.status!=="error")return false;return isMainDevice();}catch(e){return true;}}
 function afterLoginSetup(u){
   try{
     if(u&&u.role==="owner"){
@@ -5122,7 +5123,7 @@ const MtWhyApp={
 // ══════════════════════════════════════════════════════════════════════════
 const CLOUD_URL="https://hawuifhzjwvdaieowpkj.supabase.co";
 const CLOUD_KEY="sb_publishable_hnfEhQ7HBPEFLjYoXpQiMw_JePcUjuB";
-const CLOUD_PROP_OF={users:"users",packings:"packings",categories:"categories",dispatches:"dispatches",pos:"purchaseOrders",mt_pos:"mtPos",mt_dispatches:"mtDispatches",batch_options:"batchOptions",mt_items:"mtItems",mt_packings:"mtPackings",item_master:"itemMaster",bom_master:"bomMaster",production_plans:"productionPlans",store_ledger:"storeLedger",grns:"grns",mt_bom_master:"mtBomMaster",mould_items:"mouldItems",mould_mats:"mouldMats",mould_colours:"mouldColours",mould_programs:"mouldPrograms",mould_products:"mouldProducts",mould_groups:"mouldGroups",mt_production_plans:"mtProductionPlans",mt_divisions:"mtDivisions",store_items:"storeItems",store_qty_types:"storeQtyTypes",store_batches:"storeBatches",recycle_bin:"recycleBin",next_challan_override:"nextChallanOverride",party_emails:"partyEmails",auto_triggered_products:"autoTriggeredProducts",gate_passes:"gatePasses",parties:"parties",acc_bills:"accBills",acc_receipts:"accReceipts",invoices:"invoices",credit_notes:"creditNotes",debit_notes:"debitNotes",item_rates:"itemRates",company:"company"};
+const CLOUD_PROP_OF={users:"users",packings:"packings",categories:"categories",dispatches:"dispatches",pos:"purchaseOrders",mt_pos:"mtPos",mt_dispatches:"mtDispatches",batch_options:"batchOptions",mt_items:"mtItems",mt_packings:"mtPackings",item_master:"itemMaster",bom_master:"bomMaster",production_plans:"productionPlans",store_ledger:"storeLedger",grns:"grns",mt_bom_master:"mtBomMaster",mould_items:"mouldItems",mould_mats:"mouldMats",mould_colours:"mouldColours",mould_programs:"mouldPrograms",mould_products:"mouldProducts",mould_groups:"mouldGroups",app_settings:"appSettings",mt_production_plans:"mtProductionPlans",mt_divisions:"mtDivisions",store_items:"storeItems",store_qty_types:"storeQtyTypes",store_batches:"storeBatches",recycle_bin:"recycleBin",next_challan_override:"nextChallanOverride",party_emails:"partyEmails",auto_triggered_products:"autoTriggeredProducts",gate_passes:"gatePasses",parties:"parties",acc_bills:"accBills",acc_receipts:"accReceipts",invoices:"invoices",credit_notes:"creditNotes",debit_notes:"debitNotes",item_rates:"itemRates",company:"company"};
 function cloudStable(v){
   if(v===undefined||v===null)return "null";
   if(typeof v!=="object")return JSON.stringify(v);
@@ -5654,9 +5655,41 @@ const CloudApp={
 };
 function mouldSyncHeadSafe(){try{mouldSyncHead();}catch(e){}}
 
+// ══════════════════════════════════════════════════════════════════════════
+// 🖥️ MAIN DEVICE — auto backup + auto email + manual backup sirf ek chune hue device par
+// Chunav cloud me sync hota hai (appSettings). Jab tak koi main nahi chuna, pehle jaisa chalta hai.
+// ══════════════════════════════════════════════════════════════════════════
+function jplDeviceId(){try{let d=localStorage.getItem("jpl_device_id");if(!d){d="d"+Date.now().toString(36)+Math.random().toString(36).slice(2,7);localStorage.setItem("jpl_device_id",d);}return d;}catch(e){return "dx";}}
+function mainDeviceInfo(){const s=state.appSettings||{};return s.mainDeviceId?s:null;}
+function isMainDevice(){const m=mainDeviceInfo();if(!m)return true;return m.mainDeviceId===jplDeviceId();}
+function mainDeviceLabel(){
+  const m=mainDeviceInfo();
+  if(!m)return "Main device chuno (backup/mail ke liye) ⚠️";
+  if(m.mainDeviceId===jplDeviceId())return "✅ Ye main device hai (hatane ke liye dabao)";
+  if(m.mainDeviceId==="none")return "Koi main device nahi — ise main banao ⚠️";
+  return "Main: "+esc(m.mainDeviceName||"doosra device")+" — ise main banao";
+}
+const MainDeviceApp={
+  async setMainDevice(){
+    if(!state.currentUser||state.currentUser.role!=="admin")return;
+    const m=mainDeviceInfo();
+    if(m&&m.mainDeviceId===jplDeviceId()){
+      if(!confirm("Is device se 'Main device' hata du?\n\nPhir jab tak koi doosra device main na chuno, kahin bhi (is device par bhi) auto/manual backup aur auto email nahi chalenge."))return;
+      state.appSettings={mainDeviceId:"none",mainDeviceName:"",at:Date.now()};
+    }else{
+      const name=prompt("Is device ko 'Main device' banana hai.\nAuto backup, auto email aur manual backup sirf yahin rahenge, baaki sab device par band ho jayenge.\n\nIs device ka naam (jaise Factory PC 1):",(m&&m.mainDeviceName)||"");
+      if(name===null)return;
+      state.appSettings={mainDeviceId:jplDeviceId(),mainDeviceName:(name||"").trim()||"Main PC",at:Date.now()};
+    }
+    await persist("app_settings",state.appSettings);
+    showSyncPill("ok","🖥️ Main device set ho gaya",2500);
+    render();
+  }
+};
+
 const App=Object.assign({},PackingApp,PendingStockApp,StockSummaryApp,DispatchApp,DispatchRegisterApp,
   POApp,PendingOrderApp,OrderVsAvailableApp,ItemMasterApp,MtItemModalApp,MTPoApp,MTDispatchApp,MTPendingApp,MTPackingApp,MtVehReqApp,PlannerApp,ImportApp,StoreApp,StoreItemApp,InventoryStockApp,MtPlannerApp,RecycleBinApp,LotReportApp,
-  UserManagementApp,AuthApp,MouldApp,DailyReportApp,UserMenuApp,MtWhyApp,CloudApp);
+  UserManagementApp,AuthApp,MouldApp,DailyReportApp,UserMenuApp,MtWhyApp,CloudApp,MainDeviceApp);
 // ── PROGRAM STOCK CHECK (General Planner programs vs Inventory Stock) ──
 function getProgramStockCheck(p){
   const wastage=(p.result&&p.result.wastage)||{};
@@ -7543,7 +7576,7 @@ window.App=App; window.AC=AC;
   try{sessionStorage.setItem("jpl_fy",FY.label);}catch(e){}
   const map={users:"users",packings:"packings",categories:"categories",dispatches:"dispatches",
     purchaseOrders:"pos",mtPos:"mt_pos",mtDispatches:"mt_dispatches",batchOptions:"batch_options",
-    mtItems:"mt_items",mtPackings:"mt_packings",itemMaster:"item_master",bomMaster:"bom_master",productionPlans:"production_plans",storeLedger:"store_ledger",grns:"grns",mtBomMaster:"mt_bom_master",mouldItems:"mould_items",mouldMats:"mould_mats",mouldColours:"mould_colours",mouldPrograms:"mould_programs",mouldProducts:"mould_products",mouldGroups:"mould_groups",mtProductionPlans:"mt_production_plans",mtDivisions:"mt_divisions",storeItems:"store_items",storeQtyTypes:"store_qty_types",storeBatches:"store_batches",recycleBin:"recycle_bin",nextChallanOverride:"next_challan_override",partyEmails:"party_emails",autoTriggeredProducts:"auto_triggered_products",lastAutoBackupDate:"last_auto_backup_date",lastAutoEmailDate:"last_auto_email_date",lastMtAlertEmailDate:"last_mt_alert_email_date",lastPendingCategoryEmailDate:"last_pending_category_email_date",lastProductionReminderDate:"last_production_reminder_date",gatePasses:"gate_passes",parties:"parties",accBills:"acc_bills",accReceipts:"acc_receipts",invoices:"invoices",creditNotes:"credit_notes",debitNotes:"debit_notes",itemRates:"item_rates",company:"company"};
+    mtItems:"mt_items",mtPackings:"mt_packings",itemMaster:"item_master",bomMaster:"bom_master",productionPlans:"production_plans",storeLedger:"store_ledger",grns:"grns",mtBomMaster:"mt_bom_master",mouldItems:"mould_items",mouldMats:"mould_mats",mouldColours:"mould_colours",mouldPrograms:"mould_programs",mouldProducts:"mould_products",mouldGroups:"mould_groups",appSettings:"app_settings",mtProductionPlans:"mt_production_plans",mtDivisions:"mt_divisions",storeItems:"store_items",storeQtyTypes:"store_qty_types",storeBatches:"store_batches",recycleBin:"recycle_bin",nextChallanOverride:"next_challan_override",partyEmails:"party_emails",autoTriggeredProducts:"auto_triggered_products",lastAutoBackupDate:"last_auto_backup_date",lastAutoEmailDate:"last_auto_email_date",lastMtAlertEmailDate:"last_mt_alert_email_date",lastPendingCategoryEmailDate:"last_pending_category_email_date",lastProductionReminderDate:"last_production_reminder_date",gatePasses:"gate_passes",parties:"parties",accBills:"acc_bills",accReceipts:"acc_receipts",invoices:"invoices",creditNotes:"credit_notes",debitNotes:"debit_notes",itemRates:"item_rates",company:"company"};
   for(const [sk,dbk] of Object.entries(map)){ const d=await DB.get(dbk); if(d)state[sk]=d; }
   await migratePlaintextPasswords();
   backfillDispatchBatches();
