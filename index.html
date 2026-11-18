@@ -3167,7 +3167,7 @@ function renderMTPoTab(){
           <input class="inp" id="mtpoDc" value="${ed?esc(ed.dc):""}" placeholder="DC name" autocomplete="off"
             oninput="App.filterMtDcAc()" onfocus="App.filterMtDcAc()" onblur="setTimeout(()=>{const d=document.getElementById('mtpoDc_drop');if(d)d.classList.remove('open')},200)">
           <div class="ac-drop" id="mtpoDc_drop">${[...new Set(state.mtPos.map(p=>p.dc).filter(Boolean))].map(d=>`<div class="ac-item" onmousedown="document.getElementById('mtpoDc').value='${esc(d)}';document.getElementById('mtpoDc_drop').classList.remove('open')">${esc(d)}</div>`).join("")}</div>
-        </div></div><div><label class="lbl">Delivery Date</label><input class="inp" type="date" id="mtpoDelivery" value="${ed?ed.deliveryDate||"":""}"></div><div><label class="lbl">Dispatch Date</label><input class="inp" type="date" id="mtpoDispatch" value="${ed?ed.dispatchDate||"":""}"></div>${attachRowHtml("poCopy","📄 Original PO Copy")}${attachRowHtml("apptSlip","🎫 Appointment Slip Copy")}</div><div style="margin-top:16px;padding-top:14px;border-top:1px solid #e0e0e0"><b style="font-size:13px;color:#1a237e">📋 Items</b>${state.mtItems.length===0?`<div style="background:#fff3e0;padding:10px;border-radius:8px;font-size:13px;color:#e65100;margin-top:8px">⚠️ Pehle MT Item Master mein items add karo</div>`:mtItemsForSelect.length===0?`<div style="background:#fff3e0;padding:10px;border-radius:8px;font-size:13px;color:#e65100;margin-top:8px">⚠️ '${esc(temp.mtDivision)}' division mein koi item nahi hai</div>`:`<div style="display:flex;gap:8px;flex-wrap:wrap;margin-top:10px;align-items:flex-end"><select class="inp" id="mtpoSelItem" style="min-width:240px;margin-bottom:0" onchange="App.onMtPoItemSelect()"><option value="">-- Select Item --</option>${mtItemsForSelect.map(i=>`<option value="${i.id}">${esc(i.itemDesc)}${i.eanNo?" ("+esc(i.eanNo)+")":""}</option>`).join("")}</select><input class="inp" type="number" id="mtpoSelBox" placeholder="Qty Box" style="width:90px;margin-bottom:0" oninput="App.recalcMtPoPcs()"><input class="inp" type="number" id="mtpoSelPcs" placeholder="Qty Pcs" style="width:90px;margin-bottom:0"><button class="btn btn-primary" onclick="App.addMtPoItem()">+ Add</button></div>`}<div id="mtpoItemsTable" style="margin-top:12px">${mtPoItemsHtml()}</div></div><div style="display:flex;gap:10px;margin-top:16px">${!isRO()?`<button class="btn btn-primary" onclick="App.saveMtPo()">${ed?"Update PO":"💾 Save PO"}</button>`:""} ${!isRO()&&ed?`<button class="btn btn-secondary" onclick="App.cancelEditMtPo()">Cancel</button>`:""}</div></div></div><div class="card"><div class="card-title" style="display:flex;justify-content:space-between;align-items:center;flex-wrap:wrap;gap:8px"><span>📋 MT PO List${temp.mtDivision?` — ${esc(temp.mtDivision)}`:""}</span><div style="display:flex;gap:8px;flex-wrap:wrap;align-items:center"><button class="btn" style="background:#2e7d32;color:#fff" onclick="App.openMtPoUpcomingModal()">📅 Upcoming Delivery</button><select class="inp" style="width:190px;margin-bottom:0" onchange="App.onMtPoStatusFilter(this.value)"><option value="pending" ${(!temp.mtPoStatusFilter||temp.mtPoStatusFilter==="pending")?"selected":""}>⏳ Pending Only</option><option value="dispatched" ${temp.mtPoStatusFilter==="dispatched"?"selected":""}>✅ Dispatched</option><option value="fulldisp" ${temp.mtPoStatusFilter==="fulldisp"?"selected":""}>☑️ Full Disp. (Manual)</option><option value="cancelled" ${temp.mtPoStatusFilter==="cancelled"?"selected":""}>❌ Cancelled</option><option value="all" ${temp.mtPoStatusFilter==="all"?"selected":""}>📋 All</option></select><button class="btn" style="background:${temp.mtPoSortBy==="deliveryDate"?"#4527a0":"#5e35b1"};color:#fff" onclick="App.toggleMtPoSort('deliveryDate')">🔤 Delivery Date ${temp.mtPoSortBy==="deliveryDate"?(temp.mtPoSortDir==="asc"?"↑":"↓"):""}</button><button class="btn" style="background:${temp.mtPoSortBy==="dispatchDate"?"#4527a0":"#5e35b1"};color:#fff" onclick="App.toggleMtPoSort('dispatchDate')">🔤 Dispatch Date ${temp.mtPoSortBy==="dispatchDate"?(temp.mtPoSortDir==="asc"?"↑":"↓"):""}</button></div></div><div class="card-body" style="overflow-x:auto"><div style="display:flex;gap:8px;align-items:flex-end;flex-wrap:wrap;margin-bottom:14px;padding:10px;background:#f3f4ff;border-radius:8px"><div><label class="lbl">Date Field</label><select class="inp" id="mtPoSummaryDateField" style="width:150px;margin-bottom:0"><option value="dispatchDate">Dispatch Date</option><option value="deliveryDate">Delivery Date</option></select></div><div><label class="lbl">Is Date Tak</label><input class="inp" type="date" id="mtPoSummaryDate" style="width:170px;margin-bottom:0"></div><button class="btn" style="background:#00838f;color:#fff" onclick="App.printMtPoItemSummaryTillDate()">🖨️ Item Summary Print (Box)</button></div><div style="max-height:600px;overflow-y:auto;border:1px solid #e0e0e0;border-radius:6px"><table class="tbl" style="margin:0"><thead><tr style="background:#1a237e;color:#fff;position:sticky;top:0;z-index:10">${["PO Date","PO No.",`DC`,`<span style="color:#4dd0e1">📅 Delivery Date</span>`,`<span style="color:#ff8a80">🚚 Dispatch Date</span>`,"Alert","Items","By","Actions"].map(h=>`<th>${h}</th>`).join("")}</tr></thead><tbody id="mtPoListBody">${mtPoListRows()}</tbody></table></div></div></div>`;
+        </div></div><div><label class="lbl">Delivery Date</label><input class="inp" type="date" id="mtpoDelivery" value="${ed?ed.deliveryDate||"":""}"></div><div><label class="lbl">Dispatch Date</label><input class="inp" type="date" id="mtpoDispatch" value="${ed?ed.dispatchDate||"":""}"></div>${attachRowHtml("poCopy","📄 Original PO Copy")}${attachRowHtml("apptSlip","🎫 Appointment Slip Copy")}</div><div style="margin-top:16px;padding-top:14px;border-top:1px solid #e0e0e0"><b style="font-size:13px;color:#1a237e">📋 Items</b>${state.mtItems.length===0?`<div style="background:#fff3e0;padding:10px;border-radius:8px;font-size:13px;color:#e65100;margin-top:8px">⚠️ Pehle MT Item Master mein items add karo</div>`:mtItemsForSelect.length===0?`<div style="background:#fff3e0;padding:10px;border-radius:8px;font-size:13px;color:#e65100;margin-top:8px">⚠️ '${esc(temp.mtDivision)}' division mein koi item nahi hai</div>`:`<div style="display:flex;gap:8px;flex-wrap:wrap;margin-top:10px;align-items:flex-end"><select class="inp" id="mtpoSelItem" style="min-width:240px;margin-bottom:0" onchange="App.onMtPoItemSelect()"><option value="">-- Select Item --</option>${mtItemsForSelect.map(i=>`<option value="${i.id}">${esc(i.itemDesc)}${i.eanNo?" ("+esc(i.eanNo)+")":""}</option>`).join("")}</select><input class="inp" type="number" id="mtpoSelBox" placeholder="Qty Box" style="width:90px;margin-bottom:0" oninput="App.recalcMtPoPcs()"><input class="inp" type="number" id="mtpoSelPcs" placeholder="Qty Pcs" style="width:90px;margin-bottom:0"><button class="btn btn-primary" onclick="App.addMtPoItem()">+ Add</button></div>`}<div id="mtpoItemsTable" style="margin-top:12px">${mtPoItemsHtml()}</div></div><div style="display:flex;gap:10px;margin-top:16px">${!isRO()?`<button class="btn btn-primary" onclick="App.saveMtPo()">${ed?"Update PO":"💾 Save PO"}</button>`:""} ${!isRO()&&ed?`<button class="btn btn-secondary" onclick="App.cancelEditMtPo()">Cancel</button>`:""}</div></div></div><div class="card"><div class="card-title" style="display:flex;justify-content:space-between;align-items:center;flex-wrap:wrap;gap:8px"><span>📋 MT PO List${temp.mtDivision?` — ${esc(temp.mtDivision)}`:""}</span><div style="display:flex;gap:8px;flex-wrap:wrap;align-items:center"><button class="btn" style="background:#2e7d32;color:#fff" onclick="App.openMtPoUpcomingModal()">📅 Upcoming Delivery</button><select class="inp" style="width:240px;margin-bottom:0" onchange="App.onMtPoLocFilter(this.value)"><option value="">📍 Sab Location (ek saath)</option>${[...new Set(state.mtPos.map(p=>p.dc).filter(Boolean))].sort((a,b)=>dcKey(a).localeCompare(dcKey(b))).map(d=>`<option value="${esc(d)}" ${temp.mtPoLocFilter===d?"selected":""}>${esc(d)}</option>`).join("")}</select><select class="inp" style="width:190px;margin-bottom:0" onchange="App.onMtPoStatusFilter(this.value)"><option value="pending" ${(!temp.mtPoStatusFilter||temp.mtPoStatusFilter==="pending")?"selected":""}>⏳ Pending Only</option><option value="dispatched" ${temp.mtPoStatusFilter==="dispatched"?"selected":""}>✅ Dispatched</option><option value="fulldisp" ${temp.mtPoStatusFilter==="fulldisp"?"selected":""}>☑️ Full Disp. (Manual)</option><option value="cancelled" ${temp.mtPoStatusFilter==="cancelled"?"selected":""}>❌ Cancelled</option><option value="all" ${temp.mtPoStatusFilter==="all"?"selected":""}>📋 All</option></select><button class="btn" style="background:${temp.mtPoSortBy==="deliveryDate"?"#4527a0":"#5e35b1"};color:#fff" onclick="App.toggleMtPoSort('deliveryDate')">🔤 Delivery Date ${temp.mtPoSortBy==="deliveryDate"?(temp.mtPoSortDir==="asc"?"↑":"↓"):""}</button><button class="btn" style="background:${temp.mtPoSortBy==="dispatchDate"?"#4527a0":"#5e35b1"};color:#fff" onclick="App.toggleMtPoSort('dispatchDate')">🔤 Dispatch Date ${temp.mtPoSortBy==="dispatchDate"?(temp.mtPoSortDir==="asc"?"↑":"↓"):""}</button></div></div><div class="card-body" style="overflow-x:auto"><div style="display:flex;gap:8px;align-items:flex-end;flex-wrap:wrap;margin-bottom:14px;padding:10px;background:#f3f4ff;border-radius:8px"><div><label class="lbl">Date Field</label><select class="inp" id="mtPoSummaryDateField" style="width:150px;margin-bottom:0"><option value="dispatchDate">Dispatch Date</option><option value="deliveryDate">Delivery Date</option></select></div><div><label class="lbl">Is Date Tak</label><input class="inp" type="date" id="mtPoSummaryDate" style="width:170px;margin-bottom:0"></div><button class="btn" style="background:#00838f;color:#fff" onclick="App.printMtPoItemSummaryTillDate()">🖨️ Item Summary Print (Box)</button></div><div style="max-height:600px;overflow-y:auto;border:1px solid #e0e0e0;border-radius:6px"><table class="tbl" style="margin:0"><thead><tr style="background:#1a237e;color:#fff;position:sticky;top:0;z-index:10">${["PO Date","PO No.",`DC`,`<span style="color:#4dd0e1">📅 Delivery Date</span>`,`<span style="color:#ff8a80">🚚 Dispatch Date</span>`,"Alert","Items","By","Actions"].map(h=>`<th>${h}</th>`).join("")}</tr></thead><tbody id="mtPoListBody">${mtPoListRows()}</tbody></table></div></div></div>`;
 }
 function mtPoItemsHtml(){if(!temp.mtPoItems.length)return"";const rows=temp.mtPoItems.map((it,idx)=>`<tr><td>${esc(it.itemDesc)}</td><td>${esc(it.eanNo)}</td><td>${esc(it.pcsPerBox)}</td><td>${esc(it.qtyBox)}</td><td>${esc(it.qtyPcs)}</td><td><button class="btn btn-sm btn-danger" onclick="App.removeMtPoItem(${idx})">✕</button></td></tr>`).join("");return`<table class="tbl"><thead><tr style="background:#37474f;color:#fff"><th>Item</th><th>EAN</th><th>Pcs/Box</th><th>Qty Box</th><th>Qty Pcs</th><th></th></tr></thead><tbody>${rows}</tbody></table>`;}
 function isMtPoFullyCancelled(po){
@@ -3195,11 +3195,15 @@ function mtPoListRows(){
       return true;
     });
   }
+  if(temp.mtPoLocFilter)list=list.filter(po=>po.dc===temp.mtPoLocFilter);
   if(temp.mtPoSortBy){
     const key=temp.mtPoSortBy,dir=temp.mtPoSortDir==="asc"?1:-1;
     list=[...list].sort((a,b)=>{const av=a[key]||"",bv=b[key]||"";if(!av&&!bv)return 0;if(!av)return 1;if(!bv)return -1;return av<bv?-1*dir:av>bv?1*dir:0;});
+  }else{
+    list=[...list].sort((a,b)=>dcKey(a.dc).localeCompare(dcKey(b.dc))||String(a.deliveryDate||"9999").localeCompare(String(b.deliveryDate||"9999"))||String(a.poNo).localeCompare(String(b.poNo)));
   }
-  return list.map(po=>{
+  return list.map((po,_i)=>{
+  const _sep=(!temp.mtPoSortBy&&_i>0&&dcKey(list[_i-1].dc)!==dcKey(po.dc))?";border-top:3px solid #455a64":"";
   const days=getDays(po.dispatchDate);
   const dispatched=isMtPoDispatched(po.id,dispMap);
   const cancelled=isMtPoFullyCancelled(po);
@@ -3208,7 +3212,7 @@ function mtPoListRows(){
     :dispatched
     ?`<span class="badge" style="background:#c2185b;">✅ Dispatched</span>`
     :alertBadge(days);
-  return`<tr style="${cancelled?"background:#eeeeee;opacity:0.75":dispatched?"background:#fce4ec;opacity:0.85":""}">
+  return`<tr style="${cancelled?"background:#eeeeee;opacity:0.75":dispatched?"background:#fce4ec;opacity:0.85":""}${_sep}">
     <td>${esc(fmtDate(po.poDate))}</td>
     <td><b>${esc(po.poNo)}</b></td>
     <td>${esc(po.dc)}</td>
@@ -3421,6 +3425,7 @@ function mtpoAddLineToItems(line,mi){
 
 const MTPoApp={
   onMtPoStatusFilter(v){temp.mtPoStatusFilter=v;renderTabContent();},
+  onMtPoLocFilter(v){temp.mtPoLocFilter=v;renderTabContent();},
   printMtPoItemSummaryTillDate(){
     const dateField=document.getElementById("mtPoSummaryDateField").value;
     const tillDate=document.getElementById("mtPoSummaryDate").value;
@@ -3975,7 +3980,8 @@ function computeMtPendingTrackerData(filteredRows){
     po.amount+=baseAmt*(1+gstPct/100);
   });
   let list=Object.values(poMap).map(po=>({...po,sets:Math.round(po.pieces/2),days:getDays(po.deliveryDate)}));
-  list.sort((a,b)=>(a.days??9999)-(b.days??9999));
+  if((temp.mtPendingOrder||"loc")==="loc")list.sort((a,b)=>dcKey(a.dc).localeCompare(dcKey(b.dc))||((a.days??9999)-(b.days??9999)));
+  else list.sort((a,b)=>(a.days??9999)-(b.days??9999));
   const totalPOs=list.length;
   const totalPieces=list.reduce((s,p)=>s+p.pieces,0);
   const totalBoxes=list.reduce((s,p)=>s+p.boxes,0);
@@ -3993,8 +3999,10 @@ function computeMtPendingTrackerData(filteredRows){
 function mtPendingMonthlyTrackerHtml(rows){
   const allChains=[...new Set(rows.map(r=>getDcChainName(r.dc)).filter(Boolean))].sort();
   const chainFilter=temp.mtPendingChainFilter||"";
-  const filteredRows=chainFilter?rows.filter(r=>getDcChainName(r.dc)===chainFilter):rows;
-  const chainSelectHtml=`<div style="display:flex;gap:8px;align-items:center;margin-bottom:14px;flex-wrap:wrap"><label class="lbl" style="margin:0">Chain/Party</label><select class="inp no-print" id="mtPendingChainSel" style="max-width:280px;margin-bottom:0" onchange="App.onMtPendingChainFilter(this.value)"><option value="">-- All Chains --</option>${allChains.map(c=>`<option value="${esc(c)}" ${chainFilter===c?"selected":""}>${esc(c)}</option>`).join("")}</select>${chainFilter?`<span style="font-size:11px;color:#5e35b1">✓ Sirf ${esc(chainFilter)} (sabhi DC/location) ka data dikh raha hai</span>`:""}</div>`;
+  const locFilter=temp.mtPendingLocFilter||"";
+  const allLocs=[...new Set(rows.filter(r=>!chainFilter||getDcChainName(r.dc)===chainFilter).map(r=>r.dc).filter(Boolean))].sort((a,b)=>dcKey(a).localeCompare(dcKey(b)));
+  const filteredRows=rows.filter(r=>(!chainFilter||getDcChainName(r.dc)===chainFilter)&&(!locFilter||r.dc===locFilter));
+  const chainSelectHtml=`<div style="display:flex;gap:8px;align-items:center;margin-bottom:14px;flex-wrap:wrap"><label class="lbl" style="margin:0">Chain/Party</label><select class="inp no-print" id="mtPendingChainSel" style="max-width:280px;margin-bottom:0" onchange="App.onMtPendingChainFilter(this.value)"><option value="">-- All Chains --</option>${allChains.map(c=>`<option value="${esc(c)}" ${chainFilter===c?"selected":""}>${esc(c)}</option>`).join("")}</select><label class="lbl" style="margin:0">Location</label><select class="inp no-print" style="max-width:300px;margin-bottom:0" onchange="App.onMtPendingLocFilter(this.value)"><option value="">-- Sab Location --</option>${allLocs.map(c=>`<option value="${esc(c)}" ${locFilter===c?"selected":""}>${esc(c)}</option>`).join("")}</select><label class="lbl" style="margin:0">Order</label><select class="inp no-print" style="max-width:200px;margin-bottom:0" onchange="App.onMtPendingOrder(this.value)"><option value="loc" ${(temp.mtPendingOrder||"loc")==="loc"?"selected":""}>📍 Location-wise</option><option value="date" ${temp.mtPendingOrder==="date"?"selected":""}>📅 Delivery date-wise</option></select>${chainFilter?`<span style="font-size:11px;color:#5e35b1">✓ Sirf ${esc(chainFilter)} (sabhi DC/location) ka data dikh raha hai</span>`:""}${locFilter?`<span style="font-size:11px;color:#5e35b1">📍 Sirf ${esc(locFilter)}</span>`:""}</div>`;
   const{list,months,totalPOs,totalPieces,totalBoxes,totalAmount,totalSets}=computeMtPendingTrackerData(filteredRows);
   if(!list.length)return`${chainSelectHtml}<div style="color:#2e7d32;text-align:center;padding:30px;font-weight:600">✅ ${chainFilter?esc(chainFilter)+" ke liye koi":"Koi"} Pending PO nahi hai</div>`;
   const alertColor=d=>d==null?{bg:"#eee",fg:"#666"}:d<10?{bg:"#ffcdd2",fg:"#b71c1c"}:d<20?{bg:"#ffe0b2",fg:"#e65100"}:d<40?{bg:"#fff9c4",fg:"#f57f17"}:{bg:"#c8e6c9",fg:"#2e7d32"};
@@ -4004,7 +4012,8 @@ function mtPendingMonthlyTrackerHtml(rows){
   const detailRows=list.map((p,idx)=>{
     const c=alertColor(p.days);
     const monthLabel=p.deliveryDate?new Date(p.deliveryDate).toLocaleDateString("en-IN",{month:"long"}):"—";
-    return`<tr style="background:${c.bg}"><td>${idx+1}</td><td>${esc(monthLabel)}</td><td><b>${esc(p.poNo)}</b></td><td>${esc(fmtDate(p.deliveryDate))}</td><td>${esc(p.dc)}</td><td style="text-align:right">${fmtNum(p.sets)}</td><td style="text-align:right">${fmtNum(p.pieces)}</td><td style="text-align:right">${fmtNum(p.boxes)}</td><td style="text-align:right">${fmtAmt(p.amount)}</td><td style="text-align:center;font-weight:800;color:${c.fg}">${p.days==null?"—":p.days+"d"}</td></tr>`;
+    const sep=((temp.mtPendingOrder||"loc")==="loc"&&idx>0&&dcKey(list[idx-1].dc)!==dcKey(p.dc))?";border-top:3px solid #455a64":"";
+    return`<tr style="background:${c.bg}${sep}"><td>${idx+1}</td><td>${esc(monthLabel)}</td><td><b>${esc(p.poNo)}</b></td><td>${esc(fmtDate(p.deliveryDate))}</td><td>${esc(p.dc)}</td><td style="text-align:right">${fmtNum(p.sets)}</td><td style="text-align:right">${fmtNum(p.pieces)}</td><td style="text-align:right">${fmtNum(p.boxes)}</td><td style="text-align:right">${fmtAmt(p.amount)}</td><td style="text-align:center;font-weight:800;color:${c.fg}">${p.days==null?"—":p.days+"d"}</td></tr>`;
   }).join("");
   const dates=list.map(p=>p.deliveryDate).filter(Boolean).sort();
   const minDelivery=dates[0],maxDelivery=dates[dates.length-1];
@@ -4041,7 +4050,9 @@ function mtPendingRowsHtml(rows){const sorted=[...rows].sort((a,b)=>(a.days??999
 const MTPendingApp={
   _af:"",
   onMtPendingDcFilter(v){temp.mtPendingDcFilter=v;renderTabContent();},
-  onMtPendingChainFilter(v){temp.mtPendingChainFilter=v;renderTabContent();},
+  onMtPendingChainFilter(v){temp.mtPendingChainFilter=v;temp.mtPendingLocFilter="";renderTabContent();},
+  onMtPendingLocFilter(v){temp.mtPendingLocFilter=v;renderTabContent();},
+  onMtPendingOrder(v){temp.mtPendingOrder=v;renderTabContent();},
   printMtPoTracker(){
     const el=document.getElementById("mtPoTrackerPrintArea");
     if(!el){alert("Report nahi mila");return;}
@@ -4062,7 +4073,8 @@ const MTPendingApp={
     const divItems=getMtDivisionItemNames(temp.mtDivision);
     const allRows=divItems?getMtPendingRows().filter(r=>divItems.has(r.itemDesc)):getMtPendingRows();
     const chainFilter=temp.mtPendingChainFilter||"";
-    const filteredRows=chainFilter?allRows.filter(r=>getDcChainName(r.dc)===chainFilter):allRows;
+    const _lf=temp.mtPendingLocFilter||"";
+    const filteredRows=allRows.filter(r=>(!chainFilter||getDcChainName(r.dc)===chainFilter)&&(!_lf||r.dc===_lf));
     const{list,months,totalPOs,totalPieces,totalBoxes,totalAmount,totalSets}=computeMtPendingTrackerData(filteredRows);
     if(!list.length){alert("Koi Pending PO nahi hai export karne ke liye");return;}
     const thinBorder={top:{style:"thin"},left:{style:"thin"},bottom:{style:"thin"},right:{style:"thin"}};
@@ -4141,6 +4153,7 @@ const MTPendingApp={
 
 // ── MT PACKING ────────────────────────────────────────────
 function getDcChainName(dc){return String(dc||"").split(" - ")[0].trim();}
+function dcKey(x){return String(x||"").trim().replace(/\s+/g," ").toUpperCase();}
 function getMtDivisionItemNames(division){
   if(!division)return null;
   return new Set(state.mtItems.filter(i=>i.division===division).map(i=>i.itemDesc));
