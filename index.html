@@ -505,6 +505,7 @@ function readFileAsDataURL(file){return new Promise((res,rej)=>{const r=new File
 // ── PDF Text Extract (for MT PO Date Extend → PO Value auto-fetch) ──
 if(window.pdfjsLib)pdfjsLib.GlobalWorkerOptions.workerSrc="https://cdnjs.cloudflare.com/ajax/libs/pdf.js/3.11.174/pdf.worker.min.js";
 async function extractTextFromPdfDataUrl(dataUrl){
+  if(CloudFiles.isMarker(dataUrl)){try{dataUrl=await CloudFiles.toDataUrl(dataUrl.slice(8));}catch(e){return "";}}
   if(!dataUrl||!dataUrl.startsWith("data:application/pdf")||!window.pdfjsLib)return"";
   try{
     const base64=dataUrl.split(",")[1];
@@ -542,8 +543,17 @@ function mtPoDateExtendModalHtml(po){
   return`<div class="modal-overlay" onclick="if(event.target===this)App.closeMtPoDateExtendModal()"><div class="modal-box" style="width:min(96vw,460px)"><div class="modal-head"><span>📅 Date Extend/Prepone — ${esc(po.poNo)}</span><span style="cursor:pointer" onclick="App.closeMtPoDateExtendModal()">✕</span></div><div style="padding:20px"><label class="lbl">Nayi Req Appointment Date *</label><input class="inp" type="date" id="mtpoExtNewDate" value="${po.dispatchDate||todayStr()}"><label class="lbl">P.O. Value (₹) *</label><input class="inp" type="number" step="0.01" id="mtpoExtPoValue" placeholder="${po.poCopyData?"PDF se fetch ho raha hai...":"PO Value type karo"}"><div id="mtpoExtValueNote" style="font-size:11px;color:#888;margin-top:-4px;margin-bottom:6px">${po.poCopyData?"⏳ Uploaded PO PDF se value dhoondi ja rahi hai — please verify karo.":"⚠️ Is PO ke saath koi PDF nahi hai, manually value daalo."}</div><div style="margin-top:6px;font-size:12px;color:#666">DC: <b>${esc(po.dc)}</b> &nbsp;|&nbsp; Total Box: <b>${totalBox}</b></div><div style="display:flex;gap:10px;margin-top:20px"><button class="btn btn-success" onclick="App.generateMtPoDateExtendExcel(${po.id})">📥 Excel Banao</button><button class="btn btn-secondary" onclick="App.closeMtPoDateExtendModal()">Cancel</button></div></div></div></div>`;
 }
 function viewAttachment(dataUrl,name){
+  if(CloudFiles.isMarker(dataUrl)){
+    const w=window.open("","_blank");
+    if(!w){alert("Popup blocked! Popup allow karo is site ke liye.");return;}
+    CloudFiles.toDataUrl(dataUrl.slice(8)).then(d=>viewAttachmentRaw(d,name,w)).catch(e=>{try{w.document.write("<p style='font-family:Arial;padding:20px'>❌ "+esc(e.message||e)+"<br>File dekhne ke liye Cloud se juda hona zaroori hai.</p>");}catch(x){}});
+    return;
+  }
+  viewAttachmentRaw(dataUrl,name);
+}
+function viewAttachmentRaw(dataUrl,name,w0){
   if(!dataUrl){alert("⚠️ Koi file upload nahi hai");return;}
-  const w=window.open("","_blank");
+  const w=w0||window.open("","_blank");
   if(!w){alert("Popup blocked! Popup allow karo is site ke liye.");return;}
   const isImg=dataUrl.startsWith("data:image");
   const isPdf=dataUrl.startsWith("data:application/pdf");
@@ -3379,7 +3389,7 @@ const MTPoApp={
     temp.mtPoItems=[];temp.mtPoAttach=null;renderTabContent();},
   editMtPo(id){temp.editMtPoId=id;temp.mtPoItems=[];temp.mtPoAttach=null;renderTabContent();window.scrollTo(0,0);},
   cancelEditMtPo(){temp.editMtPoId=null;temp.mtPoItems=[];temp.mtPoAttach=null;renderTabContent();},
-  onMtPoFileSelect(evt,key){const file=evt.target.files&&evt.target.files[0];if(!file)return;if(file.size>3*1024*1024){alert("⚠️ File 3MB se choti honi chahiye (localStorage limit ki wajah se)");evt.target.value="";return;}readFileAsDataURL(file).then(dataUrl=>{if(!temp.mtPoAttach)temp.mtPoAttach={};temp.mtPoAttach[key+"Data"]=dataUrl;temp.mtPoAttach[key+"Name"]=file.name;renderTabContent();}).catch(()=>alert("File read nahi ho payi"));},
+  onMtPoFileSelect(evt,key){const file=evt.target.files&&evt.target.files[0];if(!file)return;if(file.size>3*1024*1024){alert("⚠️ File 3MB se choti honi chahiye (localStorage limit ki wajah se)");evt.target.value="";return;}readFileAsDataURL(file).then(d0=>CloudFiles.maybeStore(d0,file,"mt_po")).then(dataUrl=>{if(!temp.mtPoAttach)temp.mtPoAttach={};temp.mtPoAttach[key+"Data"]=dataUrl;temp.mtPoAttach[key+"Name"]=file.name;renderTabContent();}).catch(()=>alert("File read nahi ho payi"));},
   _getMtPoAttach(key){return(temp.mtPoAttach||{})[key+"Data"];},
   viewMtPoAttach(id,key){const po=state.mtPos.find(p=>p.id===id);if(!po){alert("PO nahi mili");return;}viewAttachment(po[key+"Data"],po[key+"Name"]);},
   deleteMtPo(id){if(!confirm("Delete?"))return;const item=state.mtPos.find(p=>p.id===id);moveToRecycleBin("mt_pos",item);state.mtPos=state.mtPos.filter(p=>p.id!==id);Tombstone.add("mt_pos",id);persist("mt_pos",state.mtPos);renderTabContent();},
@@ -3640,7 +3650,7 @@ const MTDispatchApp={
   addMtDispatchItem(){const po=state.mtPos.find(p=>p.id==document.getElementById("mtdPoId").value);const itemId=document.getElementById("mtdSelItem").value;if(!itemId){alert("Item select karo");return;}const pi=po.items.find(i=>i.id==itemId);temp.mtDispatchItems.push({id:uid(),poItemId:itemId,itemDesc:pi.itemDesc,eanNo:pi.eanNo,pcsPerBox:pi.pcsPerBox,qtyBox:Number(document.getElementById("mtdSelBox").value)||0,qtyPcs:Number(document.getElementById("mtdSelPcs").value)||0});document.getElementById("mtdSelItem").value="";document.getElementById("mtdSelBox").value="";document.getElementById("mtdSelPcs").value="";document.getElementById("mtdItemsTable").innerHTML=mtDispatchItemsHtml();},
   removeMtDispatchItem(idx){temp.mtDispatchItems.splice(idx,1);document.getElementById("mtdItemsTable").innerHTML=mtDispatchItemsHtml();},
   saveMtDispatch(){const poId=document.getElementById("mtdPoId").value;if(!poId){alert("PO select karo");return;}if(!temp.mtDispatchItems.length){alert("At least one item add karo");return;}const po=state.mtPos.find(p=>p.id==poId);const ed=temp.editMtDispatchId?state.mtDispatches.find(d=>d.id===temp.editMtDispatchId):null;const chalMode=document.querySelector('input[name="mtdChalMode"]:checked')?.value;let challanNo;if(chalMode==="manual"){challanNo=document.getElementById("mtdChallanNo").value.trim();if(!challanNo){alert("Challan No required");return;}const dup=[...state.dispatches,...state.mtDispatches].find(d=>String(d.challanNo)===String(challanNo)&&d.id!==temp.editMtDispatchId);if(dup&&!confirm(`⚠️ Challan No "${challanNo}" pehle se exist karta hai (${dup.partyName?"Party: "+dup.partyName:"MT PO: "+dup.poNo}, Date: ${dup.date})!\n\nKya phir bhi save karna hai?`))return;}else{challanNo=ed?ed.challanNo:genMtChal();}if(!ed)bumpChallanCounter(challanNo);const att=temp.mtDispatchAttach||{};const entry={id:temp.editMtDispatchId||uid(),date:document.getElementById("mtdDate").value,poId,lrNo:document.getElementById("mtdLr").value,transport:document.getElementById("mtdTransport").value,vehicleNo:document.getElementById("mtdVehicle").value,items:temp.mtDispatchItems,challanNo,poNo:po.poNo,dc:po.dc,receivingData:att.receivingData||null,receivingName:att.receivingName||null,savedAt:nowStr(),savedBy:ed?ed.savedBy:state.currentUser.name,_ts:Date.now()};if(temp.editMtDispatchId){state.mtDispatches=state.mtDispatches.map(d=>d.id===entry.id?entry:d);temp.editMtDispatchId=null;}else state.mtDispatches.push(entry);persist("mt_dispatches",state.mtDispatches);document.getElementById("mtdSavedMsg").innerHTML=`<div style="margin-top:10px;background:#e8f5e9;padding:8px 14px;border-radius:6px;font-size:13px;color:#2e7d32">✅ MT Challan #${entry.challanNo} saved</div>`;temp.mtDispatchItems=[];temp.mtDispatchAttach=null;renderTabContent();},
-  onMtDispatchFileSelect(evt){const file=evt.target.files&&evt.target.files[0];if(!file)return;if(file.size>3*1024*1024){alert("⚠️ File 3MB se choti honi chahiye (localStorage limit ki wajah se)");evt.target.value="";return;}readFileAsDataURL(file).then(dataUrl=>{temp.mtDispatchAttach={receivingData:dataUrl,receivingName:file.name};renderTabContent();}).catch(()=>alert("File read nahi ho payi"));},
+  onMtDispatchFileSelect(evt){const file=evt.target.files&&evt.target.files[0];if(!file)return;if(file.size>3*1024*1024){alert("⚠️ File 3MB se choti honi chahiye (localStorage limit ki wajah se)");evt.target.value="";return;}readFileAsDataURL(file).then(d0=>CloudFiles.maybeStore(d0,file,"mt_dispatch")).then(dataUrl=>{temp.mtDispatchAttach={receivingData:dataUrl,receivingName:file.name};renderTabContent();}).catch(()=>alert("File read nahi ho payi"));},
   _getMtDispatchAttach(){return(temp.mtDispatchAttach||{}).receivingData;},
   viewMtDispatchAttach(id){const d=state.mtDispatches.find(x=>x.id===id);if(!d){alert("Dispatch nahi mila");return;}viewAttachment(d.receivingData,d.receivingName);},
   editMtDispatch(id){temp.editMtDispatchId=id;temp.mtDispatchItems=[];temp.mtDispatchAttach=null;renderTabContent();window.scrollTo(0,0);},
@@ -5581,6 +5591,7 @@ function cloudConnectedView(){
     <tr><td>Takrav (conflict)</td><td>${Cloud.conflicts.length}</td></tr></tbody></table>${susHtml}
     <div style="display:flex;gap:8px;flex-wrap:wrap;margin-top:12px"><button class="btn btn-primary" onclick="App.cloudSyncNow()">🔄 Abhi Sync karo</button><button class="btn btn-danger btn-sm" onclick="App.cloudDisconnect()">Disconnect</button></div>
     ${Cloud.role==="admin"?`<details style="margin-top:12px"><summary style="cursor:pointer;font-size:12px;color:#555">Upload / Download (agar pehla upload beech me ruk gaya)</summary><div style="margin-top:8px;display:flex;gap:8px;flex-wrap:wrap"><button class="btn btn-sm btn-success" onclick="App.cloudUploadAgain()">⬆️ Is device ka poora data cloud par (dobara) daalo</button></div><div style="font-size:11px;color:#777;margin-top:4px">Ye safe hai: jo cloud me pehle se hai wo sirf update hota hai, kuch double nahi hota. Is device ka data nahi badalta.</div><div id="cdMsg" style="margin-top:8px;font-size:13px"></div></details>`:""}
+    ${Cloud.role==="admin"?`<div style="margin-top:12px"><button class="btn btn-sm btn-secondary" onclick="App.cloudMigrateFiles()">📎 Purani attachments Storage me bhejo</button><div id="cdFiles" style="margin-top:8px;font-size:12px"></div></div>`:""}
     <div style="margin-top:12px"><button class="btn btn-sm btn-secondary" onclick="App.cloudDiag()">🔍 Jaanch (numbers dekho)</button> <button class="btn btn-sm btn-success" onclick="App.cloudReconcile()">🔄 Poora check + kami poori karo</button><div id="cdDiag" style="margin-top:8px;font-size:12px"></div></div>
     <div style="font-size:12px;color:#777;margin-top:12px">Entry pehle isi device par save hoti hai, phir cloud me jati hai. Internet na ho to bhi kaam chalta rahega.</div>`);
 }
@@ -5710,9 +5721,119 @@ const CategoryApp={
   }
 };
 
+// ══════════════════════════════════════════════════════════════════════════
+// 📎 SUPABASE STORAGE (attachments) + 📊 SPACE DASHBOARD
+// Record me ab file nahi, sirf chhota marker rehta hai:  "storage:mt_po/1700_ab12_po.pdf"
+// ══════════════════════════════════════════════════════════════════════════
+const CLOUD_BUCKET="jpl-files";
+const CLOUD_LIMITS={free:{db:500*1048576,storage:1073741824,label:"Free"},pro:{db:8*1073741824,storage:100*1073741824,label:"Pro"}};
+const CloudFiles={
+  safe(n){return String(n||"file").replace(/[^A-Za-z0-9._-]+/g,"_").slice(-60);},
+  enc(path){return String(path).split("/").map(encodeURIComponent).join("/");},
+  isMarker(v){return typeof v==="string"&&v.startsWith("storage:");},
+  ready(){return !!(Cloud.session&&Cloud.role==="admin"&&(typeof navigator==="undefined"||navigator.onLine!==false));},
+  dataUrlToBlob(dataUrl){
+    const i=dataUrl.indexOf(",");const head=dataUrl.slice(0,i),b64=dataUrl.slice(i+1);
+    const mime=(/data:([^;,]+)/.exec(head)||[])[1]||"application/octet-stream";
+    const bin=atob(b64);const arr=new Uint8Array(bin.length);for(let k=0;k<bin.length;k++)arr[k]=bin.charCodeAt(k);
+    return new Blob([arr],{type:mime});
+  },
+  async upload(folder,blob,name){
+    const path=folder+"/"+Date.now()+"_"+Math.random().toString(36).slice(2,6)+"_"+this.safe(name);
+    const tok=await Cloud.token();
+    const res=await cloudFetch(CLOUD_URL+"/storage/v1/object/"+CLOUD_BUCKET+"/"+this.enc(path),{method:"POST",headers:{apikey:CLOUD_KEY,Authorization:"Bearer "+tok,"Content-Type":(blob&&blob.type)||"application/octet-stream","x-upsert":"false"},body:blob},120000);
+    if(!res.ok){let t="";try{t=await res.text();}catch(e){}throw new Error("Storage upload "+res.status+": "+t.slice(0,140));}
+    return path;
+  },
+  async blobOf(path){
+    const tok=await Cloud.token();
+    const res=await cloudFetch(CLOUD_URL+"/storage/v1/object/authenticated/"+CLOUD_BUCKET+"/"+this.enc(path),{method:"GET",headers:{apikey:CLOUD_KEY,Authorization:"Bearer "+tok}},120000);
+    if(!res.ok)throw new Error("File nahi mili ("+res.status+")");
+    return await res.blob();
+  },
+  blobToDataUrl(blob){return new Promise((ok,bad)=>{const r=new FileReader();r.onload=()=>ok(r.result);r.onerror=bad;r.readAsDataURL(blob);});},
+  async toDataUrl(path){return this.blobToDataUrl(await this.blobOf(path));},
+  // file chunte hi: cloud se juda admin ho to Storage me, nahi to purane tareeke se (dataUrl record me)
+  async maybeStore(dataUrl,file,folder){
+    if(!this.ready())return dataUrl;
+    try{const path=await this.upload(folder,this.dataUrlToBlob(dataUrl),file.name);return "storage:"+path;}
+    catch(e){console.error("Storage upload fail",e);try{alert("⚠️ File cloud Storage me nahi ja payi ("+(e.message||e)+").\nFile abhi device ke andar rakhi gayi hai, baad me '📎 Purani attachments Storage me bhejo' se bhej sakte ho.");}catch(x){}return dataUrl;}
+  },
+  async migrate(progress){
+    const jobs=[];
+    (state.mtPos||[]).forEach(po=>["poCopy","apptSlip"].forEach(k=>{const v=po[k+"Data"];if(typeof v==="string"&&v.startsWith("data:"))jobs.push({rec:po,field:k+"Data",name:po[k+"Name"],store:"mt_pos",folder:"mt_po"});}));
+    (state.mtDispatches||[]).forEach(d=>{const v=d.receivingData;if(typeof v==="string"&&v.startsWith("data:"))jobs.push({rec:d,field:"receivingData",name:d.receivingName,store:"mt_dispatches",folder:"mt_dispatch"});});
+    let ok=0,fail=0,bytes=0,lastErr="";const touched=new Set();
+    for(let i=0;i<jobs.length;i++){
+      const j=jobs[i];
+      try{const blob=this.dataUrlToBlob(j.rec[j.field]);const path=await this.upload(j.folder,blob,j.name);j.rec[j.field]="storage:"+path;bytes+=blob.size;ok++;touched.add(j.store);}
+      catch(e){fail++;lastErr=String(e.message||e).slice(0,140);}
+      if(progress)progress(i+1,jobs.length);
+    }
+    if(touched.has("mt_pos"))await persist("mt_pos",state.mtPos);
+    if(touched.has("mt_dispatches"))await persist("mt_dispatches",state.mtDispatches);
+    return {total:jobs.length,ok,fail,bytes,lastErr};
+  }
+};
+// ── space dashboard
+Cloud.usage=null;Cloud.usageLoading=false;
+Cloud.loadUsage=async function(){
+  if(this.usageLoading||!this.session||this.role!=="admin")return;
+  this.usageLoading=true;
+  try{const r=await this.rest("POST","rpc/jpl_usage",{});this.usage=Object.assign({at:Date.now(),err:""},r);try{localStorage.setItem("jpl_cloud_usage",JSON.stringify(this.usage));}catch(e){}}
+  catch(e){this.usage=Object.assign({},this.usage||{},{at:Date.now(),err:String(e.message||e).slice(0,160)});}
+  finally{this.usageLoading=false;}
+  try{const b=document.getElementById("cloudUsageBox");if(b)b.innerHTML=cloudUsageInner();}catch(e){}
+};
+function cloudMB(b){b=Number(b)||0;return b>=1073741824?(b/1073741824).toFixed(2)+" GB":(b/1048576).toFixed(1)+" MB";}
+function cloudPlanKey(){const p=(state.appSettings||{}).cloudPlan;return CLOUD_LIMITS[p]?p:"free";}
+function cloudBarHtml(label,used,limit){
+  const pct=limit>0?Math.min(100,used/limit*100):0;
+  const col=pct>=85?"#c62828":(pct>=70?"#ef6c00":"#2e7d32");
+  const left=Math.max(0,limit-used);
+  return `<div style="margin-bottom:10px"><div style="display:flex;justify-content:space-between;font-size:12px;margin-bottom:3px"><b>${label}</b><span>${cloudMB(used)} / ${cloudMB(limit)} · <b style="color:${col}">${pct.toFixed(1)}%</b> · bacha ${cloudMB(left)}</span></div><div style="height:12px;background:#e0e0e0;border-radius:7px;overflow:hidden"><div style="width:${pct}%;height:100%;background:${col}"></div></div></div>`;
+}
+function cloudUsageInner(){
+  const u=Cloud.usage;
+  if(!u)return `<div style="color:#777;font-size:13px">⏳ Space ka hisaab aa raha hai...</div>`;
+  if(u.err&&u.db_bytes==null)return `<div style="color:#c62828;font-size:13px">❌ ${esc(u.err)}<br><span style="color:#555">Agar "function ... does not exist" likha hai to Supabase me <b>supabase_setup_2.sql</b> chalao.</span></div>`;
+  const L=CLOUD_LIMITS[cloudPlanKey()];
+  const dbPct=u.db_bytes/L.db*100,stPct=u.storage_bytes/L.storage*100,worst=Math.max(dbPct,stPct);
+  const msg=worst>=85?`<div style="background:#ffebee;border:1px solid #ef9a9a;border-radius:8px;padding:8px 12px;font-size:12px;margin-top:6px">🔴 <b>Jaldi Pro par jao.</b> Supabase 95% bharne par likhna rok deta hai (aur poora bharne par database band ho sakta hai).</div>`
+    :worst>=70?`<div style="background:#fff3e0;border:1px solid #ffcc80;border-radius:8px;padding:8px 12px;font-size:12px;margin-top:6px">⚠️ <b>Dhyan do:</b> ab Pro par jaane ki taiyari rakho (ya purani badi attachments Storage me bhejo).</div>`
+    :`<div style="background:#e8f5e9;border:1px solid #a5d6a7;border-radius:8px;padding:8px 12px;font-size:12px;margin-top:6px">✅ Abhi space kaafi hai.</div>`;
+  const top=(u.top||[]).slice(0,3).map(t=>`${esc(t.store)}: ${cloudMB(t.bytes)}`).join(" · ");
+  return `${cloudBarHtml("🗄️ Database (records)",u.db_bytes,L.db)}${cloudBarHtml("📎 File Storage (attachments)",u.storage_bytes,L.storage)}
+    <div style="font-size:12px;color:#555">Hamara data (jpl_records): <b>${cloudMB(u.data_bytes)}</b> · ${u.rows} records · ${u.files} file${top?` · Sabse bade: ${top}`:""}</div>${msg}
+    ${u.err?`<div style="color:#c62828;font-size:11px;margin-top:4px">Pichhli koshish me error: ${esc(u.err)}</div>`:""}
+    <div style="font-size:11px;color:#888;margin-top:6px">Aakhri update: ${esc(new Date(u.at).toLocaleString("en-IN"))} · Supabase ki ginti me naye project ke ~40-60 MB bhi hote hain.</div>`;
+}
+function cloudUsageCardHtml(){
+  if(!Cloud.session||Cloud.role!=="admin")return "";
+  if(!Cloud.usage){try{const c=JSON.parse(localStorage.getItem("jpl_cloud_usage")||"null");if(c)Cloud.usage=c;}catch(e){}}
+  if(!Cloud.usage||Date.now()-(Cloud.usage.at||0)>10*60*1000)setTimeout(()=>Cloud.loadUsage(),50);
+  const plan=cloudPlanKey();
+  return `<div class="card" style="margin-bottom:14px"><div class="card-title" style="display:flex;justify-content:space-between;align-items:center;flex-wrap:wrap;gap:6px"><span>☁️ Supabase Space</span><span style="display:flex;gap:6px;align-items:center"><select class="inp" style="margin:0;width:auto;padding:2px 6px;font-size:12px" onchange="App.cloudSetPlan(this.value)" title="Aapka Supabase plan"><option value="free" ${plan==="free"?"selected":""}>Free plan</option><option value="pro" ${plan==="pro"?"selected":""}>Pro plan</option></select><button class="btn btn-sm" style="background:rgba(255,255,255,.2)" onclick="App.cloudUsageRefresh()">🔄</button></span></div><div class="card-body"><div id="cloudUsageBox">${cloudUsageInner()}</div></div></div>`;
+}
+const CloudFilesApp={
+  cloudSetPlan(v){if(!CLOUD_LIMITS[v])return;state.appSettings=Object.assign({},state.appSettings||{},{cloudPlan:v});persist("app_settings",state.appSettings);const b=document.getElementById("cloudUsageBox");if(b)b.innerHTML=cloudUsageInner();},
+  cloudUsageRefresh(){Cloud.usage&&(Cloud.usage.at=0);const b=document.getElementById("cloudUsageBox");if(b)b.innerHTML=cloudUsageInner();Cloud.loadUsage();},
+  async cloudMigrateFiles(){
+    const box=document.getElementById("cdFiles");const say=t=>{if(box)box.innerHTML=t;};
+    if(!CloudFiles.ready()){say('<span style="color:#c62828">Pehle internet aur admin cloud login chahiye.</span>');return;}
+    if(!confirm("Purani attachments (MT PO copy, appointment slip, receiving copy) Cloud Storage me bheji jayengi aur record me sirf link rahega.\\n\\nPehle Main device ka ek Backup le lena (backup me sirf link rahega, file nahi).\\n\\nShuru karu?"))return;
+    say("⏳ Shuru ho raha hai...");
+    try{
+      const r=await CloudFiles.migrate((a,b)=>say("⏳ Attachments Storage me ja rahi hain... "+a+" / "+b));
+      say(`✅ Poora. Total: <b>${r.total}</b>, gayi: <b>${r.ok}</b> (${cloudMB(r.bytes)}), fail: <b>${r.fail}</b>.${r.lastErr?`<br><span style="color:#c62828">${esc(r.lastErr)}</span>`:""}<br><span style="font-size:11px;color:#555">Dhyan: sirf abhi chalu saal (FY) ki attachments gayi. Purane saal ke liye us saal me jakar dobara chalao. Database ka dikhne wala size turant kam nahi hoga, Supabase me <code>vacuum full public.jpl_records;</code> chalane par kam hoga.</span>`);
+      Cloud.usage&&(Cloud.usage.at=0);
+    }catch(e){say('<span style="color:#c62828">❌ '+esc(e.message||e)+'</span>');}
+  }
+};
+
 const App=Object.assign({},PackingApp,PendingStockApp,StockSummaryApp,DispatchApp,DispatchRegisterApp,
   POApp,PendingOrderApp,OrderVsAvailableApp,ItemMasterApp,MtItemModalApp,MTPoApp,MTDispatchApp,MTPendingApp,MTPackingApp,MtVehReqApp,PlannerApp,ImportApp,StoreApp,StoreItemApp,InventoryStockApp,MtPlannerApp,RecycleBinApp,LotReportApp,
-  UserManagementApp,AuthApp,MouldApp,DailyReportApp,UserMenuApp,MtWhyApp,CloudApp,MainDeviceApp,CategoryApp);
+  UserManagementApp,AuthApp,MouldApp,DailyReportApp,UserMenuApp,MtWhyApp,CloudApp,MainDeviceApp,CategoryApp,CloudFilesApp);
 // ── PROGRAM STOCK CHECK (General Planner programs vs Inventory Stock) ──
 function getProgramStockCheck(p){
   const wastage=(p.result&&p.result.wastage)||{};
@@ -5822,7 +5943,7 @@ function renderHomeTab(){
   const lowRows=low.map(r=>`<tr><td><b>${esc(r.name)}</b></td><td style="text-align:right;font-weight:700;color:${r.stock<=0?"#c62828":"#e65100"}">${esc(r.stock)}</td><td style="text-align:right">${esc(r.min)}</td></tr>`).join("")||`<tr><td colspan="3" style="text-align:center;color:#2e7d32;padding:14px">✅ Koi accessory kam stock me nahi hai</td></tr>`;
   const ovRows=overdue.slice(0,10).map(p=>`<tr><td><b>${esc(p.poNo)}</b></td><td>${esc(p.dc)}</td><td style="text-align:right">${esc(fmtDate(p.deliveryDate))}</td><td style="text-align:center"><span class="badge" style="background:#b71c1c">${Math.abs(p.days)} din</span></td><td style="text-align:right">${Math.round(p.pendBox)}</td></tr>`).join("")||`<tr><td colspan="5" style="text-align:center;color:#2e7d32;padding:14px">✅ Koi overdue MT PO nahi hai</td></tr>`;
   const fgRows=fg.map(r=>`<tr><td><b>${esc(r.name)}</b></td><td style="text-align:center;font-weight:800;color:${r.cts===0?"#c62828":"#e65100"}">${r.cts===0?"Nill":"1 Cts"}</td><td style="text-align:right;font-weight:700;color:${r.pend>0?"#1565c0":"#999"}">${r.pend>0?r.pend+" Cts":"—"}</td></tr>`).join("")||`<tr><td colspan="3" style="text-align:center;color:#999;padding:14px">Koi item nahi mila</td></tr>`;
-  return`<div style="display:flex;justify-content:space-between;align-items:center;flex-wrap:wrap;gap:8px;margin-bottom:10px"><div style="font-size:12px;color:#666">📅 ${esc(fmtDate(today))} ka summary</div><div style="display:flex;gap:6px;align-items:center"><input type="date" id="drDate" class="inp" style="margin:0;width:150px" value="${esc(today)}"><button class="btn btn-primary" onclick="App.dailyReport()">📤 Daily Report</button></div></div>
+  return`<div style="display:flex;justify-content:space-between;align-items:center;flex-wrap:wrap;gap:8px;margin-bottom:10px"><div style="font-size:12px;color:#666">📅 ${esc(fmtDate(today))} ka summary</div><div style="display:flex;gap:6px;align-items:center"><input type="date" id="drDate" class="inp" style="margin:0;width:150px" value="${esc(today)}"><button class="btn btn-primary" onclick="App.dailyReport()">📤 Daily Report</button></div></div>${cloudUsageCardHtml()}
   <div style="display:grid;grid-template-columns:repeat(auto-fit,minmax(170px,1fr));gap:14px;margin-bottom:20px">
     ${card("#e8f5e9","#2e7d32","📦 Aaj ki Packing",tpCtn+" Ctn",tp.length+" entries","packing")}
     ${card("#e3f2fd","#1565c0","🚚 Aaj ka Dispatch",td.length+tdMt.length,"General "+td.length+" + MT "+tdMt.length+" challan","dispatchRegister")}
