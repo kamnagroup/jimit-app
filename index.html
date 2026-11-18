@@ -570,6 +570,26 @@ function alertBadge(days){
 function canAcc(){const u=state.currentUser;return !!u&&(u.role==="admin"||!!(u.permissions&&u.permissions.accounts));}
 function can(p){const u=state.currentUser;if(!u)return false;if(u.role==="owner")return ["stockSummary","pendingOrder","mtPending","mtPacking","inventoryStock","canMake"].includes(p);return u.role==="admin"||!!(u.permissions&&u.permissions[p])||!!u.readOnly||(p==="mouldPlanner"&&!!(u.permissions&&u.permissions.planner));}
 function isRO(){const u=state.currentUser;return!!u&&u.role!=="admin"&&(!!u.readOnly||u.role==="owner");}
+// ── STRICT TAB ACCESS: user ko sirf wahi tab/kaam milega jiski permission hai ──
+const ALL_TAB_KEYS=["packing","home","pendingStock","stockSummary","dispatch","dispatchRegister","gatePass","po","pendingOrder","orderVsAvailable","mtPo","mtDispatch","mtPending","mtPacking","mtVehReq","planner","mouldPlanner","mtPlanner","mtSalesDashboard","store","inventoryStock","canMake","accParty","accBills","accPay","accRates","accOut","invoice","creditNote","debitNote","productionReport","minStock","mtReport","programStock","userManagement","recycleBin","yearEnd"];
+function tabAllowed(tab){
+  const u=state.currentUser;if(!u||!tab)return false;
+  if(u.role==="admin")return true;
+  if(u.role==="owner")return OWNER_TABS.includes(tab);
+  if(tab==="userManagement"||tab==="recycleBin"||tab==="yearEnd")return false;
+  if(["accParty","accBills","accPay","accRates","accOut"].includes(tab))return canAcc();
+  if(tab==="creditNote"||tab==="debitNote")return can("invoice");
+  return can(tab);
+}
+function firstAllowedTab(){for(const k of ALL_TAB_KEYS){if(tabAllowed(k))return k;}return "";}
+function enforceTabAccess(){
+  if(!state.currentUser)return;
+  if(!tabAllowed(state.activeTab))state.activeTab=firstAllowedTab();
+}
+function denyAction(p){
+  if(!can(p)||isRO()){alert("🔒 Aapko is kaam ki permission nahi hai.");return true;}
+  return false;
+}
 function roBanner(){return isRO()?`<div class="ro-banner">👁️ <b>Read Only Mode</b></div>`:"";}
 function buildDispMap(){
   const m={};
@@ -652,7 +672,7 @@ function setupEnterNav(){
         mtPlanner:()=>{if(temp.mtPlannerResult)App.saveMtProgram();else alert("⚠️ Pehle 'Plan Production' dabao, tabhi Save hoga");}
       };
       const fn=saveMap[state.activeTab];
-      if(fn){try{fn();}catch(err){console.error(err);}}
+      if(fn&&tabAllowed(state.activeTab)){try{fn();}catch(err){console.error(err);}}
       return;
     }
     const dropId=e.target && e.target.id ? e.target.id+"_drop" : null;
@@ -1098,6 +1118,7 @@ function render(){
   const root=document.getElementById("root");
   const _tgm=document.getElementById("tabGroupMenu");if(_tgm)_tgm.remove();
   if(!state.currentUser){root.innerHTML=loginHtml()+fyLoginBadge()+cloudLoginLinkHtml();return;}
+  enforceTabAccess();
   root.innerHTML=shellHtml();
   renderTabContent();
 }
@@ -1167,6 +1188,8 @@ function shellHtml(){
 
 function renderTabContent(){
   const el=document.getElementById("tabContent");if(!el)return;
+  enforceTabAccess();
+  if(!state.activeTab){el.innerHTML=`<div class="card"><div class="card-body">🔒 Aapko koi tab ki permission nahi mili hai. Admin se permission lo.</div></div>`;return;}
   if(ownerBlocked()&&!OWNER_TABS.includes(state.activeTab))state.activeTab="stockSummary";
   const fns={packing:renderPackingTab,pendingStock:renderPendingStockTab,stockSummary:renderStockSummaryTab,
     dispatch:renderDispatchTab,dispatchRegister:renderDispatchRegisterTab,gatePass:renderGatePassTab,po:renderPOTab,
@@ -1300,12 +1323,12 @@ const PackingApp={
     }
   },
   autofillProduct(name){const mi=state.itemMaster.find(i=>i.name===name);if(mi){document.getElementById("pkCategory").value=mi.category||"";document.getElementById("pkQtyType").value=mi.qtyType||"Pcs";document.getElementById("pkQtyPerCarton").value=mi.qtyPerCarton||"";return;}const match=state.packings.find(p=>p.productName===name);if(match){document.getElementById("pkCategory").value=match.category||"";document.getElementById("pkQtyType").value=match.qtyType||"Pcs";document.getElementById("pkQtyPerCarton").value=match.qtyPerCarton||"";}},
-  addBatchOption(){const v=prompt("New batch name:");if(!v)return;const t=v.trim().toUpperCase();if(!t||state.batchOptions.includes(t)){alert(t?"Already exists!":"Empty input");return;}state.batchOptions.push(t);persist("batch_options",state.batchOptions);const sel=document.getElementById("pkBatch");if(sel){const o=document.createElement("option");o.value=t;o.textContent=t;sel.appendChild(o);sel.value=t;}},
-  addCategory(){const v=document.getElementById("newCatInput").value.trim();if(v&&!state.categories.includes(v)){state.categories.push(v);persist("categories",state.categories);renderTabContent();}},
-  savePacking(andPrint){const batchNo=document.getElementById("pkBatch").value;const productName=document.getElementById("pkProduct").value.trim();const category=document.getElementById("pkCategory").value;const qtyPerCarton=document.getElementById("pkQtyPerCarton").value;if(!batchNo){alert("Batch No required");return;}if(!productName){alert("Product Name required");return;}if(!category){alert("Category required");return;}if(!qtyPerCarton||Number(qtyPerCarton)<=0){alert("Qty/Carton required");return;}const mode=document.querySelector('input[name="cartonMode"]:checked')?.value;if(mode==="manual"&&!document.getElementById("pkCartonNo").value){alert("Carton No required");return;}const cartonNo=mode==="manual"?Number(document.getElementById("pkCartonNo").value):genCarton();const _dupPk=!temp.editPackingId?state.packings.find(p=>String(p.cartonNo)===String(cartonNo)&&p.productName===productName):null;if(_dupPk&&!confirm("⚠️ Carton #"+cartonNo+" me '"+productName+"' pehle se packed hai ("+fmtDate(_dupPk.date)+", "+_dupPk.totalQty+" "+_dupPk.qtyType+").\n\nKya ye dobara entry karni hai?"))return;const qpc=Number(qtyPerCarton),cartons=Number(document.getElementById("pkCartons").value||1);const edPk=temp.editPackingId?state.packings.find(p=>p.id===temp.editPackingId):null;const entry={id:temp.editPackingId||uid(),cartonNo,date:document.getElementById("pkDate").value,batchNo,productName,category,qtyType:document.getElementById("pkQtyType").value,qtyPerCarton:qpc,cartons,totalQty:qpc*cartons,location:document.getElementById("pkLocation").value,remark:document.getElementById("pkRemark").value,savedAt:nowStr(),savedBy:edPk?edPk.savedBy:state.currentUser.name,_ts:Date.now()};if(temp.editPackingId){state.packings=state.packings.map(p=>p.id===entry.id?entry:p);temp.editPackingId=null;}else state.packings.push(entry);persist("packings",state.packings);temp.pkDateFilter="";temp.pkTodayOnly=false;if(andPrint)printPackingLabel(entry);renderTabContent();},
-  editPacking(id){temp.editPackingId=id;renderTabContent();window.scrollTo(0,0);},
+  addBatchOption(){if(denyAction("packing"))return;const v=prompt("New batch name:");if(!v)return;const t=v.trim().toUpperCase();if(!t||state.batchOptions.includes(t)){alert(t?"Already exists!":"Empty input");return;}state.batchOptions.push(t);persist("batch_options",state.batchOptions);const sel=document.getElementById("pkBatch");if(sel){const o=document.createElement("option");o.value=t;o.textContent=t;sel.appendChild(o);sel.value=t;}},
+  addCategory(){if(denyAction("packing"))return;const v=document.getElementById("newCatInput").value.trim();if(v&&!state.categories.includes(v)){state.categories.push(v);persist("categories",state.categories);renderTabContent();}},
+  savePacking(andPrint){if(denyAction("packing"))return;const batchNo=document.getElementById("pkBatch").value;const productName=document.getElementById("pkProduct").value.trim();const category=document.getElementById("pkCategory").value;const qtyPerCarton=document.getElementById("pkQtyPerCarton").value;if(!batchNo){alert("Batch No required");return;}if(!productName){alert("Product Name required");return;}if(!category){alert("Category required");return;}if(!qtyPerCarton||Number(qtyPerCarton)<=0){alert("Qty/Carton required");return;}const mode=document.querySelector('input[name="cartonMode"]:checked')?.value;if(mode==="manual"&&!document.getElementById("pkCartonNo").value){alert("Carton No required");return;}const cartonNo=mode==="manual"?Number(document.getElementById("pkCartonNo").value):genCarton();const _dupPk=!temp.editPackingId?state.packings.find(p=>String(p.cartonNo)===String(cartonNo)&&p.productName===productName):null;if(_dupPk&&!confirm("⚠️ Carton #"+cartonNo+" me '"+productName+"' pehle se packed hai ("+fmtDate(_dupPk.date)+", "+_dupPk.totalQty+" "+_dupPk.qtyType+").\n\nKya ye dobara entry karni hai?"))return;const qpc=Number(qtyPerCarton),cartons=Number(document.getElementById("pkCartons").value||1);const edPk=temp.editPackingId?state.packings.find(p=>p.id===temp.editPackingId):null;const entry={id:temp.editPackingId||uid(),cartonNo,date:document.getElementById("pkDate").value,batchNo,productName,category,qtyType:document.getElementById("pkQtyType").value,qtyPerCarton:qpc,cartons,totalQty:qpc*cartons,location:document.getElementById("pkLocation").value,remark:document.getElementById("pkRemark").value,savedAt:nowStr(),savedBy:edPk?edPk.savedBy:state.currentUser.name,_ts:Date.now()};if(temp.editPackingId){state.packings=state.packings.map(p=>p.id===entry.id?entry:p);temp.editPackingId=null;}else state.packings.push(entry);persist("packings",state.packings);temp.pkDateFilter="";temp.pkTodayOnly=false;if(andPrint)printPackingLabel(entry);renderTabContent();},
+  editPacking(id){if(denyAction("packing"))return;temp.editPackingId=id;renderTabContent();window.scrollTo(0,0);},
   cancelEditPacking(){temp.editPackingId=null;renderTabContent();},
-  deletePacking(id){if(!confirm("Delete?"))return;const item=state.packings.find(p=>p.id===id);moveToRecycleBin("packings",item);state.packings=state.packings.filter(p=>p.id!==id);Tombstone.add("packings",id);persist("packings",state.packings);renderTabContent();},
+  deletePacking(id){if(denyAction("packing"))return;if(!confirm("Delete?"))return;const item=state.packings.find(p=>p.id===id);moveToRecycleBin("packings",item);state.packings=state.packings.filter(p=>p.id!==id);Tombstone.add("packings",id);persist("packings",state.packings);renderTabContent();},
   printPackingById(id){const p=state.packings.find(x=>x.id===id);if(p)printPackingLabel(p);},
   emailPackingById(id){const p=state.packings.find(x=>x.id===id);if(p)emailPackingLabel(p);}
 };
@@ -4290,7 +4313,7 @@ const AuthApp={
     openMail("✅ Test Mail — Jimit Pet LLP","Ye ek test mail hai. Agar ye aapko mil gaya hai, matlab Email Auto-Send sahi se set ho gaya hai.");
   },
   async login(){const u=document.getElementById("loginUser").value,p=document.getElementById("loginPass").value;const found=state.users.find(x=>x.username===u);const el=document.getElementById("loginErr");if(found&&found.passwordHash){const hash=await hashPassword(p,found.salt);if(hash===found.passwordHash){state.currentUser=found;afterLoginSetup(found);render();return;}}else if(found&&found.password&&found.password===p){state.currentUser=found;afterLoginSetup(found);render();return;}el.style.display="block";el.textContent="⚠️ Invalid username or password";},
-  logout(){try{localStorage.removeItem("jpl_owner_remember");}catch(e){}if(Cloud.role==="owner")Cloud.disconnect();state.currentUser=null;render();},
+  logout(){try{localStorage.removeItem("jpl_owner_remember");}catch(e){}if(Cloud.role==="owner")Cloud.disconnect();state.currentUser=null;state.activeTab="";temp.tabHistory=[];temp.editPackingId=null;render();},
   fySwitch(){if(confirm("Year badalne ke liye logout hoga aur year select screen aayegi. Continue?"))fyChangeYear();},
   closeTabMenu(){const m=document.getElementById("tabGroupMenu");if(m)m.remove();},
   toggleTabGroup(gk,el){
@@ -4314,7 +4337,7 @@ const AuthApp={
     }
   },
   pickTab(k){App.closeTabMenu();App.switchTab(k);},
-  switchTab(tab){if(state.activeTab&&state.activeTab!==tab){if(!temp.tabHistory)temp.tabHistory=[];temp.tabHistory.push(state.activeTab);if(temp.tabHistory.length>20)temp.tabHistory.shift();}state.activeTab=tab;temp.editPackingId=null;temp.editPOId=null;temp.editDispatchId=null;temp.editMtPoId=null;temp.editMtDispatchId=null;temp.editMtPackingId=null;temp.editUserId=null;temp.poItems=[];temp.dispatchItems=[];temp.mtPoItems=[];temp.mtDispatchItems=[];temp.mtPoAttach=null;temp.mtDispatchAttach=null;temp.plannerItems=[];temp.plannerResult=null;temp.editProgramId=null;temp.plannerRequiredDate="";temp.grnItems=[];temp.mtPlannerItems=[];temp.mtPlannerResult=null;temp.editMtProgramId=null;temp.mtPlannerRequiredDate="";temp.mtPlannerNote="";temp.plannerNote="";render();},
+  switchTab(tab){if(!tabAllowed(tab)){alert("🔒 Is tab ki permission nahi hai.");return;}if(state.activeTab&&state.activeTab!==tab){if(!temp.tabHistory)temp.tabHistory=[];temp.tabHistory.push(state.activeTab);if(temp.tabHistory.length>20)temp.tabHistory.shift();}state.activeTab=tab;temp.editPackingId=null;temp.editPOId=null;temp.editDispatchId=null;temp.editMtPoId=null;temp.editMtDispatchId=null;temp.editMtPackingId=null;temp.editUserId=null;temp.poItems=[];temp.dispatchItems=[];temp.mtPoItems=[];temp.mtDispatchItems=[];temp.mtPoAttach=null;temp.mtDispatchAttach=null;temp.plannerItems=[];temp.plannerResult=null;temp.editProgramId=null;temp.plannerRequiredDate="";temp.grnItems=[];temp.mtPlannerItems=[];temp.mtPlannerResult=null;temp.editMtProgramId=null;temp.mtPlannerRequiredDate="";temp.mtPlannerNote="";temp.plannerNote="";render();},
   goToPreviousTab(){if(!temp.tabHistory||!temp.tabHistory.length){return;}const prev=temp.tabHistory.pop();state.activeTab=prev;temp.editPackingId=null;temp.editPOId=null;temp.editDispatchId=null;temp.editMtPoId=null;temp.editMtDispatchId=null;temp.editMtPackingId=null;temp.editUserId=null;temp.poItems=[];temp.dispatchItems=[];temp.mtPoItems=[];temp.mtDispatchItems=[];temp.mtPoAttach=null;temp.mtDispatchAttach=null;render();},
   async clearAllEntries(){
     if(state.currentUser.role!=="admin"){alert("Sirf admin hi entries clear kar sakta hai");return;}
@@ -5072,7 +5095,9 @@ function afterLoginSetup(u){
       localStorage.setItem("jpl_owner_device","1");            // is phone par auto-backup / auto-email nahi chalenge
     }else{
       localStorage.removeItem("jpl_owner_remember");localStorage.removeItem("jpl_owner_device");
+      state.activeTab=firstAllowedTab();   // pichhle user ka tab nahi, sirf apni permission wala pehla tab
     }
+    temp.tabHistory=[];
   }catch(e){}
 }
 const OWNER_WRITE_RE=/App\.(save\w*|delete\w*|del[A-Z]\w*|edit\w*|cancel\w*|add\w*|update\w*|remove\w*|openMtItemModal|openItemMaster|openManualStockAdjust|emailPendingOrders|send\w*Email\w*|import\w*|restore\w*|clearAll\w*|close\w*Pending\w*)\(/;
@@ -7750,8 +7775,37 @@ window.App=App; window.AC=AC;
   window.addEventListener("load",function(){
     var had=!!navigator.serviceWorker.controller;
     navigator.serviceWorker.register("sw.js").catch(function(){});
+    // 🔄 Update: Main PC par "Reload" button dikhega (aap dabaoge). Baaki sab device par ye apne aap reload ho jayega
+    // (jab user kuch type/click nahi kar raha ho, taaki beech ka kaam na jaye).
+    var lastAct=Date.now();
+    ["keydown","input","click","touchstart","change"].forEach(function(ev){document.addEventListener(ev,function(){lastAct=Date.now();},true);});
+    function isMainPc(){
+      try{
+        if(typeof mainDeviceInfo!=="function"||typeof jplDeviceId!=="function")return true;
+        var m=mainDeviceInfo();if(!m)return true;          // main device set nahi hai to sabko button dikhega
+        return m.mainDeviceId===jplDeviceId();
+      }catch(e){return true;}
+    }
+    function userBusy(){
+      var a=document.activeElement,t=a&&a.tagName?a.tagName.toUpperCase():"";
+      if(t==="INPUT"||t==="TEXTAREA"||t==="SELECT"||(a&&a.isContentEditable))return true;
+      return (Date.now()-lastAct)<20000;                    // pichhle 20 sec me koi kaam kiya to ruk jao
+    }
+    function autoReloadWhenIdle(){
+      try{
+        var last=+sessionStorage.getItem("jplAutoReloadAt")||0;
+        if(Date.now()-last<60000)return;                    // loop se bachav: 1 minute me ek hi baar
+      }catch(e){}
+      var iv=setInterval(function(){
+        if(userBusy())return;
+        clearInterval(iv);
+        try{sessionStorage.setItem("jplAutoReloadAt",String(Date.now()));}catch(e){}
+        location.reload();
+      },5000);
+    }
     navigator.serviceWorker.addEventListener("controllerchange",function(){
       if(!had||document.getElementById("pwaUpdBar"))return;
+      if(!isMainPc()){autoReloadWhenIdle();return;}
       var b=document.createElement("div");b.id="pwaUpdBar";
       b.style.cssText="position:fixed;left:50%;bottom:16px;transform:translateX(-50%);background:#1a237e;color:#fff;padding:10px 16px;border-radius:10px;z-index:99999;font:13px sans-serif;box-shadow:0 6px 20px rgba(0,0,0,.35)";
       b.innerHTML='🔄 Naya version aaya hai &nbsp;<button style="margin-left:6px;padding:4px 12px;border:none;border-radius:6px;background:#fff;color:#1a237e;font-weight:700;cursor:pointer" onclick="location.reload()">Reload</button>';

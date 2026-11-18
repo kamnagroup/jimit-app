@@ -1,7 +1,7 @@
 // Jimit Pet LLP — Service Worker
 // 👉 Har naye update par sirf neeche VERSION badlo (e.g. v1.0.1), phir GitHub par upload karo.
 // Sab phones/PC par apne aap naya version aa jayega aur "🔄 Naya version aaya hai — Reload" dikhega.
-const VERSION = "v1.7.0-storage-space";
+const VERSION = "v1.7.2-auto-reload";
 const CACHE = "jpl-" + VERSION;
 const CDN_OK = ["cdnjs.cloudflare.com", "cdn.jsdelivr.net"];
 const CORE = ["./", "./index.html", "./manifest.json", "./icon-192.png", "./icon-180.png"];
