@@ -250,6 +250,7 @@ const Tombstone = {
 };
 
 async function persist(key, data) {
+  if(window._audRec)window._audRec(key);
   await DB.save(key, data);
 }
 
@@ -279,7 +280,7 @@ let state = {
   lastPendingCategoryEmailDate:"",
   lastProductionReminderDate:"",
   itemMaster:[], dispatches:[], purchaseOrders:[], gatePasses:[],
-  mtItems:[], mtPos:[], mtDispatches:[], mtPackings:[], bomMaster:[], productionPlans:[], storeLedger:[], grns:[], mtBomMaster:[], mtProductionPlans:[], mtDivisions:["AVENUE","STYLE","VISHAL MEGA MART"], storeItems:[], storeQtyTypes:["Box","Pcs","Kgs"], storeCategories:[], storeBatches:[],
+  mtItems:[], mtPos:[], mtDispatches:[], mtPackings:[], bomMaster:[], productionPlans:[], storeLedger:[], grns:[], mtBomMaster:[], mtProductionPlans:[], mtDivisions:["AVENUE","STYLE","VISHAL MEGA MART"], storeItems:[], storeQtyTypes:["Box","Pcs","Kgs"], storeCategories:[], auditLog:[], storeBatches:[],
   mouldItems:[], mouldMats:[], mouldColours:[], mouldPrograms:[], mouldProducts:[], mouldGroups:[], appSettings:{},
   activeTab:"packing"
 };
@@ -561,12 +562,12 @@ function canAcc(){const u=state.currentUser;return !!u&&(u.role==="admin"||!!(u.
 function can(p){const u=state.currentUser;if(!u)return false;if(u.role==="owner")return ["stockSummary","pendingOrder","mtPending","mtPacking","inventoryStock","canMake"].includes(p);return u.role==="admin"||!!(u.permissions&&u.permissions[p])||!!u.readOnly||(p==="mouldPlanner"&&!!(u.permissions&&u.permissions.planner));}
 function isRO(){const u=state.currentUser;return!!u&&u.role!=="admin"&&(!!u.readOnly||u.role==="owner");}
 // ── STRICT TAB ACCESS: user ko sirf wahi tab/kaam milega jiski permission hai ──
-const ALL_TAB_KEYS=["packing","home","pendingStock","stockSummary","dispatch","dispatchRegister","gatePass","po","pendingOrder","orderVsAvailable","mtPo","mtDispatch","mtPending","mtPacking","mtVehReq","planner","mouldPlanner","mtPlanner","mtSalesDashboard","store","inventoryStock","canMake","accParty","accBills","accPay","accRates","accOut","invoice","creditNote","debitNote","productionReport","minStock","mtReport","programStock","userManagement","recycleBin","yearEnd"];
+const ALL_TAB_KEYS=["packing","home","pendingStock","stockSummary","dispatch","dispatchRegister","gatePass","po","pendingOrder","orderVsAvailable","mtPo","mtDispatch","mtPending","mtPacking","mtVehReq","planner","mouldPlanner","mtPlanner","mtSalesDashboard","store","inventoryStock","canMake","accParty","accBills","accPay","accRates","accOut","invoice","creditNote","debitNote","productionReport","minStock","mtReport","programStock","userManagement","recycleBin","yearEnd","auditLog","periodReport"];
 function tabAllowed(tab){
   const u=state.currentUser;if(!u||!tab)return false;
   if(u.role==="admin")return true;
   if(u.role==="owner")return OWNER_TABS.includes(tab);
-  if(tab==="userManagement"||tab==="recycleBin"||tab==="yearEnd")return false;
+  if(tab==="userManagement"||tab==="recycleBin"||tab==="yearEnd"||tab==="auditLog"||tab==="periodReport")return false;
   if(["accParty","accBills","accPay","accRates","accOut"].includes(tab))return canAcc();
   if(tab==="creditNote"||tab==="debitNote")return can("invoice");
   return can(tab);
@@ -685,6 +686,251 @@ function reportOutRun(fmt,title,headers,rows,fname,sub){
   const w=window.open("","_blank");if(!w){alert("Popup blocked! Popup allow karo.");return;}
   w.document.write(_rptHtml(title,headers,rows,sub,fmt==="pdf"));w.document.close();
 }
+// ══════════ AUDIT LOG + LOGIN SECURITY + EAN/QR + REPORTS (v6) ══════════
+const _audQ=[];let _audT=null,_audDepth=0,_audKeys=null;
+window._audRec=function(k){if(_audKeys&&k!=="audit_log")_audKeys.add(k);};
+function _audUser(u){u=u||state.currentUser||{};return{user:u.name||u.username||"-",role:u.role||"-"};}
+function _audDev(){try{return String(jplDeviceId()||"").slice(-5);}catch(e){return"";}}
+function auditEvent(act,det,u){
+  try{
+    const w=_audUser(u);
+    _audQ.push({id:uid(),ts:Date.now(),at:nowStr(),user:w.user,role:w.role,dev:_audDev(),tab:(state.currentUser&&state.activeTab)||"",act:act,arg:"",det:det||""});
+    clearTimeout(_audT);_audT=setTimeout(_audFlush,2500);
+    if(/Logout|FAIL|Lock/i.test(act))_audFlush();
+  }catch(e){}
+}
+function _audFlush(){
+  if(!_audQ.length)return;
+  clearTimeout(_audT);
+  try{
+    state.auditLog=(state.auditLog||[]).concat(_audQ.splice(0));
+    if(state.auditLog.length>4000)state.auditLog=state.auditLog.slice(-4000);
+    persist("audit_log",state.auditLog);
+  }catch(e){}
+}
+window.addEventListener("beforeunload",_audFlush);
+const _AUD_PROP={pos:"purchaseOrders"};
+function _audProp(k){return _AUD_PROP[k]||k.replace(/_([a-z])/g,function(m,c){return c.toUpperCase();});}
+function _audLabel(x){if(!x||typeof x!=="object")return String(x);return String(x.poNo||x.grnNo||x.challanNo||x.programNo||x.name||x.productName||x.itemName||x.username||(x.cartonNo?"Carton "+x.cartonNo:"")||x.id||"").slice(0,40);}
+function _audSnap(withItems){
+  const lens={},items={};
+  Object.keys(state).forEach(function(p){const a=state[p];if(Array.isArray(a)){lens[p]=a.length;if(withItems)items[p]=a.slice();}});
+  return{lens:lens,items:items};
+}
+function _audLog(name,args,before){
+  const keys=_audKeys;_audKeys=null;_audDepth=Math.max(0,_audDepth-1);
+  if(!keys||!keys.size)return;
+  const det=[];
+  keys.forEach(function(k){
+    const p=_audProp(k),a=state[p];
+    if(!Array.isArray(a)||!before||before.lens[p]==null){det.push(k);return;}
+    const b=before.lens[p],n=a.length;let s=k+" "+b+"→"+n;
+    if(n<b&&before.items[p]){const ids=new Set(a.map(function(x){return x&&x.id;}));const rem=before.items[p].filter(function(x){return x&&!ids.has(x.id);}).slice(0,4).map(_audLabel);if(rem.length)s+=" (hata: "+rem.join(", ")+")";}
+    else if(n>b){s+=" (naya: "+a.slice(b).slice(0,3).map(_audLabel).join(", ")+")";}
+    else s+=" (edit)";
+    det.push(s);
+  });
+  auditEvent(name,det.join(" | "));
+  const a0=args&&args[0],last=_audQ[_audQ.length-1];
+  if(last&&(typeof a0==="number"||(typeof a0==="string"&&a0.length<=30)))last.arg=String(a0);
+}
+function _auditWrap(name,fn){
+  const destructive=/^(delete|del[A-Z]|remove|cancel|restore|permanentlyDelete|clear|reset|ye[A-Z])/.test(name);
+  return function(){
+    const a=Array.prototype.slice.call(arguments);
+    if(_audDepth>0)return fn.apply(this,a);
+    _audDepth++;_audKeys=new Set();
+    const before=_audSnap(destructive);let r;
+    try{r=fn.apply(this,a);}catch(e){_audDepth=Math.max(0,_audDepth-1);_audKeys=null;throw e;}
+    if(r&&typeof r.then==="function")return r.then(function(v){_audLog(name,a,before);return v;},function(e){_audLog(name,a,before);throw e;});
+    _audLog(name,a,before);return r;
+  };
+}
+function auditAll(){return (state.auditLog||[]).concat(_audQ);}
+function auditFiltered(){
+  const q=(temp.audQ||"").trim().toLowerCase(),u=temp.audUser||"",f=temp.audFrom||"",t=temp.audTo||"",sec=temp.audSec;
+  return auditAll().slice().reverse().filter(function(e){
+    const d=new Date(e.ts),day=d.getFullYear()+"-"+String(d.getMonth()+1).padStart(2,"0")+"-"+String(d.getDate()).padStart(2,"0");
+    if(f&&day<f)return false;if(t&&day>t)return false;if(u&&e.user!==u)return false;
+    if(sec&&!/Login|Logout|Lock/i.test(e.act))return false;
+    if(q&&!JSON.stringify([e.user,e.act,e.arg,e.det,e.tab]).toLowerCase().includes(q))return false;
+    return true;
+  });
+}
+function renderAuditLogTab(){
+  if(!isAdminU())return`<div class="card"><div class="card-body">Ye tab sirf admin ke liye hai.</div></div>`;
+  const all=auditFiltered(),list=all.slice(0,500),users=[...new Set(auditAll().map(function(e){return e.user;}))].sort();
+  const rows=list.map(function(e){const bad=/FAIL|Lock/i.test(e.act),ok=e.act==="Login";
+    return`<tr style="${bad?"background:#ffebee":""}"><td style="white-space:nowrap">${esc(e.at||"")}</td><td><b>${esc(e.user)}</b><div style="font-size:10px;color:#777">${esc(e.role)}</div></td><td style="font-size:11px;color:#777">${esc(e.dev||"")}</td><td style="font-size:11px">${esc(e.tab||"")}</td><td style="font-weight:700;color:${bad?"#c62828":ok?"#2e7d32":"#1a237e"}">${esc(e.act)}${e.arg?` <span style="color:#777;font-weight:400">(${esc(e.arg)})</span>`:""}</td><td style="font-size:12px">${esc(e.det)}</td></tr>`;}).join("")||`<tr><td colspan="6" style="text-align:center;color:#999;padding:20px">Koi entry nahi</td></tr>`;
+  return`<div class="card"><div class="card-title">📜 Audit Log — kisne, kab, kya kiya</div><div class="card-body">
+  <div style="display:flex;gap:8px;flex-wrap:wrap;align-items:flex-end;margin-bottom:12px">
+   <div><label class="lbl">Search</label><input class="inp" id="audSearchInput" value="${esc(temp.audQ||"")}" placeholder="user / action / PO no / item..." style="width:220px;margin-bottom:0" oninput="App.onAudSearch(this.value)"></div>
+   <div><label class="lbl">User</label><select class="inp" style="width:150px;margin-bottom:0" onchange="App.setAud('audUser',this.value)"><option value="">Sab</option>${users.map(function(u){return`<option ${temp.audUser===u?"selected":""}>${esc(u)}</option>`;}).join("")}</select></div>
+   <div><label class="lbl">From</label><input type="date" class="inp" value="${esc(temp.audFrom||"")}" style="width:145px;margin-bottom:0" onchange="App.setAud('audFrom',this.value)"></div>
+   <div><label class="lbl">To</label><input type="date" class="inp" value="${esc(temp.audTo||"")}" style="width:145px;margin-bottom:0" onchange="App.setAud('audTo',this.value)"></div>
+   <label style="font-size:13px;padding-bottom:8px;cursor:pointer"><input type="checkbox" ${temp.audSec?"checked":""} onchange="App.setAud('audSec',this.checked)"> Sirf Login/Security</label>
+   ${reportBtns("aud")}
+  </div>
+  <div style="font-size:11px;color:#888;margin-bottom:6px">Latest ${list.length} / total ${all.length} entries dikh rahi hain. Poori list Excel/PDF me aayegi. (Sirf wahi kaam likhe jate hain jinse data badla ho.)</div>
+  <div style="max-height:620px;overflow:auto;border:1px solid #e0e0e0;border-radius:6px"><table class="tbl" style="margin:0"><thead><tr style="background:#1a237e;color:#fff;position:sticky;top:0"><th>Time</th><th>User</th><th>Device</th><th>Tab</th><th>Action</th><th>Detail</th></tr></thead><tbody>${rows}</tbody></table></div></div></div>`;
+}
+// ── LOGIN LOCK: 3 galat attempt = us device par 1 ghanta band ──
+const _LK="jpl_login_lock";
+function _lkGet(){try{return JSON.parse(localStorage.getItem(_LK)||"{}");}catch(e){return{};}}
+function _loginLockInfo(){const d=_lkGet();if(d.until){if(Date.now()<d.until)return{locked:true,mins:Math.max(1,Math.ceil((d.until-Date.now())/60000))};try{localStorage.removeItem(_LK);}catch(e){}}return{locked:false};}
+function _loginFailAdd(){const d=_lkGet(),n=(d.until?0:(d.fails||0))+1,nd={fails:n};if(n>=3)nd.until=Date.now()+3600000;try{localStorage.setItem(_LK,JSON.stringify(nd));}catch(e){}return n;}
+function _loginLockReset(){try{localStorage.removeItem(_LK);}catch(e){}}
+// ── AUTO LOGOUT: 5 min koi kaam nahi ──
+let _lastAct=Date.now(),_idleBar=null;
+function _idleHide(){if(_idleBar){_idleBar.remove();_idleBar=null;}}
+function _idleInit(){
+  ["mousemove","mousedown","keydown","click","touchstart","scroll","wheel"].forEach(function(e){document.addEventListener(e,function(){_lastAct=Date.now();if(_idleBar)_idleHide();},true);});
+  setInterval(function(){
+    if(!state.currentUser){_idleHide();return;}
+    const idle=Date.now()-_lastAct;
+    if(idle>=300000){
+      _idleHide();auditEvent("Auto Logout","5 min tak koi kaam nahi hua — auto logout");window._autoLo=true;App.logout();
+      const m=document.createElement("div");m.style.cssText="position:fixed;left:50%;top:14px;transform:translateX(-50%);background:#c62828;color:#fff;padding:10px 18px;border-radius:10px;z-index:99999;font:14px sans-serif";m.textContent="🔒 5 minute kuch kaam nahi hua — auto logout ho gaya. Dobara login karo.";document.body.appendChild(m);setTimeout(function(){m.remove();},9000);
+    }else if(idle>=270000&&!_idleBar){
+      _idleBar=document.createElement("div");_idleBar.style.cssText="position:fixed;left:50%;top:12px;transform:translateX(-50%);background:#e65100;color:#fff;padding:10px 18px;border-radius:10px;z-index:99999;font:14px sans-serif;box-shadow:0 6px 20px rgba(0,0,0,.35)";_idleBar.textContent="⏳ Kuch kaam nahi hua — 30 second me auto logout ho jayega";document.body.appendChild(_idleBar);
+    }
+  },5000);
+}
+// ── EAN-13 (size-wise item barcode) + QR ──
+function eanCheck12(d){let s=0;for(let i=0;i<12;i++)s+=(+d[i])*(i%2?3:1);return String((10-s%10)%10);}
+function eanValid(c){return /^\d{13}$/.test(c)&&eanCheck12(c)===c[12];}
+function nextEan(){let max=0;(state.itemMaster||[]).forEach(function(i){const e=String(i.ean||"");if(/^29\d{11}$/.test(e))max=Math.max(max,+e.slice(2,12));});const b="29"+String(max+1).padStart(10,"0");return b+eanCheck12(b);}
+function ensureEan(name){const it=(state.itemMaster||[]).find(function(i){return i.name===name;});if(!it)return"";if(!it.ean){it.ean=nextEan();persist("item_master",state.itemMaster);}return it.ean;}
+function autoEanAll(){let n=0;(state.itemMaster||[]).forEach(function(i){if(!i.ean){i.ean=nextEan();n++;}});if(n)persist("item_master",state.itemMaster);return n;}
+const _EL=["0001101","0011001","0010011","0111101","0100011","0110001","0101111","0111011","0110111","0001011"],_EG=["0100111","0110011","0011011","0100001","0011101","0111001","0000101","0010001","0001001","0010111"],_ER=["1110010","1100110","1101100","1000010","1011100","1001110","1010000","1000100","1001000","1110100"],_EP=["LLLLLL","LLGLGG","LLGGLG","LLGGGL","LGLLGG","LGGLLG","LGGGLL","LGLGLG","LGLGGL","LGGLGL"];
+function ean13Bits(code){let b="101";const par=_EP[+code[0]];for(let i=1;i<=6;i++)b+=(par[i-1]==="L"?_EL:_EG)[+code[i]];b+="01010";for(let i=7;i<=12;i++)b+=_ER[+code[i]];return b+"101";}
+function ean13Svg(code,wpx){
+  if(!eanValid(code))return"";
+  const bits=ean13Bits(code),q=9,W=95+q*2,H=64;let r="";
+  for(let i=0;i<95;i++)if(bits[i]==="1"){const g=(i<3||(i>=45&&i<50)||i>=92);r+=`<rect x="${q+i}" y="0" width="1" height="${g?H+6:H}"/>`;}
+  const t=function(x,s,len){return`<text x="${x}" y="${H+13}" font-size="10" font-family="monospace" ${len?`textLength="${len}" lengthAdjust="spacing" text-anchor="start"`:'text-anchor="middle"'}>${s}</text>`;};
+  return`<svg xmlns="http://www.w3.org/2000/svg" width="${wpx||200}" viewBox="0 0 ${W} ${H+17}" shape-rendering="crispEdges"><rect width="${W}" height="${H+17}" fill="#fff"/><g fill="#000">${r}</g>${t(3,code[0])}${t(q+4,code.slice(1,7),38)}${t(q+51,code.slice(7),38)}</svg>`;
+}
+function qrSvg(text,px){
+  try{qrcode.stringToBytes=qrcode.stringToBytesFuncs["UTF-8"];const q=qrcode(0,"M");q.addData(text);q.make();return q.createSvgTag({cellSize:2,margin:2,scalable:true}).replace("<svg ",`<svg width="${px||110}" height="${px||110}" `);}catch(e){return"";}
+}
+function packingQrText(p){
+  return["JIMIT PET LLP","Carton No: "+cartonLabel(p.cartonNo),"Item: "+p.productName,"Packing: "+(p.qtyType||""),"Qty/Carton: "+p.qtyPerCarton+" "+(p.qtyType||""),"EAN: "+ensureEan(p.productName)].join("\n");
+}
+// ── SCAN / LOOKUP ──
+function scanLookup(text){
+  const t=String(text||"").trim();if(!t)return"";
+  const nz=function(x){return String(x==null?"":x).trim().split("/")[0].replace(/^0+/,"")||"0";};
+  const get=function(k){const m=t.match(new RegExp("^\\s*"+k+"\\s*:\\s*(.+)$","im"));return m?m[1].trim():"";};
+  let carton=get("Carton No"),ean=get("EAN");
+  if(!carton&&/^\d{13}$/.test(t))ean=t;
+  if(!carton&&!ean)carton=t;
+  const row=function(a,b){return`<tr><td style="padding:6px 10px;color:#555;width:40%">${a}</td><td style="padding:6px 10px;font-weight:700">${b}</td></tr>`;};
+  const box=function(inner){return`<table style="width:100%;border-collapse:collapse;border:1px solid #c5cae9;border-radius:8px;margin-top:10px;background:#f8f9ff">${inner}</table>`;};
+  let out="";
+  if(carton){
+    const hits=(state.packings||[]).filter(function(p){return nz(p.cartonNo)===nz(carton);});
+    hits.forEach(function(p){
+      const dp=(state.dispatches||[]).find(function(d){return(d.items||[]).some(function(i){return nz(i.cartonNo)===nz(p.cartonNo);});});
+      const it=(state.itemMaster||[]).find(function(i){return i.name===p.productName;})||{};
+      out+=box(row("🏭 Factory","Jimit Pet LLP")+row("Carton No",esc(cartonLabel(p.cartonNo)))+row("Item",esc(p.productName))+row("Packing",esc(p.qtyType||"—"))+row("Qty / Carton",esc(p.qtyPerCarton)+" "+esc(p.qtyType||""))+row("EAN",esc(it.ean||"—"))+row("Batch / Date",esc(p.batchNo||"—")+" / "+esc(fmtDate(p.date)))+row("Status",dp?`<span style="color:#c2185b">🚚 Dispatched — Challan ${esc(dp.challanNo)} → ${esc(dp.partyName)} (${esc(fmtDate(dp.date))})</span>`:`<span style="color:#2e7d32">📦 Stock me hai (abhi dispatch nahi hua)</span>`));
+    });
+    if(hits.length)return out;
+  }
+  if(ean){
+    const it=(state.itemMaster||[]).find(function(i){return i.ean===ean;});
+    if(it)return box(row("🏭 Factory","Jimit Pet LLP")+row("Item",esc(it.name))+row("EAN",esc(it.ean))+row("Packing",esc(it.qtyType||"—"))+row("Qty / Carton",esc(it.qtyPerCarton||"—")+" "+esc(it.qtyType||""))+row("Category / Batch",esc(it.category||"—")+" / "+esc(it.batch||"—")));
+  }
+  return`<div style="margin-top:10px;color:#c62828;font-weight:600">❌ Kuch nahi mila: ${esc(carton||ean)}</div>`;
+}
+let _scanStream=null,_scanTimer=null;
+function _scanStop(){clearInterval(_scanTimer);_scanTimer=null;if(_scanStream){_scanStream.getTracks().forEach(function(t){t.stop();});_scanStream=null;}}
+// ── PURCHASE REPORT (supplier-wise / item-wise, rate se amount) ──
+function purchaseReportData(f,t){
+  const sup={},item={};
+  (state.grns||[]).filter(function(g){return g.kind==="purchase"&&(!f||g.date>=f)&&(!t||g.date<=t);}).forEach(function(g){
+    const sn=g.supplier||"(Supplier nahi)";
+    (g.items||[]).forEach(function(i){
+      const q=Number(i.qty)||0,r=Number(i.rate)||0,amt=q*r;
+      const S=sup[sn]=sup[sn]||{name:sn,grns:new Set(),qty:0,amt:0,noRate:0};S.grns.add(g.grnNo);S.qty+=q;S.amt+=amt;if(!r)S.noRate++;
+      const I=item[i.name]=item[i.name]||{name:i.name,qty:0,amt:0,rq:0};I.qty+=q;I.amt+=amt;if(r)I.rq+=q;
+    });
+  });
+  return{sup:Object.values(sup).sort(function(a,b){return b.amt-a.amt;}),item:Object.values(item).sort(function(a,b){return b.amt-a.amt;})};
+}
+function _inr(n){return"₹"+Number(n||0).toLocaleString("en-IN",{minimumFractionDigits:2,maximumFractionDigits:2});}
+function _prInner(){
+  const d=purchaseReportData(temp.prFrom||"",temp.prTo||""),tot=d.sup.reduce(function(s,x){return s+x.amt;},0);
+  const th=function(a){return`<tr style="background:#1a237e;color:#fff">${a.map(function(x){return`<th>${x}</th>`;}).join("")}</tr>`;};
+  return`<div style="display:flex;gap:10px;flex-wrap:wrap;align-items:flex-end;margin-bottom:12px"><div><label class="lbl">From</label><input type="date" class="inp" value="${esc(temp.prFrom||"")}" style="margin-bottom:0" onchange="App.setPr('prFrom',this.value)"></div><div><label class="lbl">To</label><input type="date" class="inp" value="${esc(temp.prTo||"")}" style="margin-bottom:0" onchange="App.setPr('prTo',this.value)"></div><div style="font-weight:800;color:#1b5e20;font-size:18px;padding-bottom:6px">Total: ${_inr(tot)}</div></div>
+  <div style="font-weight:700;margin:6px 0">🏭 Supplier-wise <span style="margin-left:8px">${reportBtns("pur_sup")}</span></div>
+  <table class="tbl"><thead>${th(["Supplier","GRN","Total Qty","Amount (₹)","Bina rate wali lines"])}</thead><tbody>${d.sup.map(function(x){return`<tr><td><b>${esc(x.name)}</b></td><td>${x.grns.size}</td><td style="text-align:right">${x.qty}</td><td style="text-align:right;font-weight:700">${_inr(x.amt)}</td><td style="text-align:center;color:${x.noRate?"#e65100":"#999"}">${x.noRate||"—"}</td></tr>`;}).join("")||`<tr><td colspan="5" style="text-align:center;color:#999">Is period me koi purchase nahi</td></tr>`}</tbody></table>
+  <div style="font-weight:700;margin:14px 0 6px">📦 Item-wise <span style="margin-left:8px">${reportBtns("pur_item")}</span></div>
+  <div style="max-height:300px;overflow:auto"><table class="tbl"><thead>${th(["Item","Total Qty","Avg Rate","Amount (₹)"])}</thead><tbody>${d.item.map(function(x){return`<tr><td><b>${esc(x.name)}</b></td><td style="text-align:right">${x.qty}</td><td style="text-align:right">${x.rq?_inr(x.amt/x.rq):"—"}</td><td style="text-align:right;font-weight:700">${_inr(x.amt)}</td></tr>`;}).join("")}</tbody></table></div>
+  <div style="font-size:11px;color:#888;margin-top:8px">Amount sirf un lines ka hai jinme GRN me Rate bhara tha.</div>`;
+}
+// ── PENDING PROGRAMS ki accessories zaroorat (Purchase List ke liye) ──
+function pendingProgramNeed(){
+  const need=Object.create(null);
+  (state.productionPlans||[]).concat(state.mtProductionPlans||[]).forEach(function(p){
+    if(!p||p.status!=="pending"||!p.result||!p.result.accTotals)return;
+    const w=p.result.wastage||{};
+    Object.keys(p.result.accTotals).forEach(function(n){const nd=Math.ceil(p.result.accTotals[n]*100)/100,pct=Number(w[n]||0);need[n]=(need[n]||0)+Math.ceil(nd*(1+pct/100));});
+  });
+  return need;
+}
+function purchaseListRows(){
+  const need=pendingProgramNeed();
+  return msRows().map(function(r){const pn=need[r.name]||0,order=Math.max(0,Math.round((r.min+pn-r.stock)*100)/100);return Object.assign({},r,{pending:pn,order:order,short:order});})
+    .filter(function(r){return r.order>0;})
+    .sort(function(a,b){return String(a.supplier||"~").localeCompare(String(b.supplier||"~"))||a.name.localeCompare(b.name);});
+}
+// ── MONTH / YEAR REPORT (sirf admin) ──
+function renderPeriodReportTab(){
+  if(!isAdminU())return`<div class="card"><div class="card-body">Ye tab sirf admin ke liye hai.</div></div>`;
+  let fyl="";try{fyl=yeCompute().src;}catch(e){}
+  const m=temp.prMonth||todayStr().slice(0,7);
+  return`<div class="card"><div class="card-title">📊 Month / Year Report (Excel)</div><div class="card-body">
+  <div style="font-size:12px;color:#555;margin-bottom:14px;line-height:1.7">Ek click me poori report Excel me ban kar download hoti hai: <b>Summary, Packing, Dispatch, Dispatch Detail, Store Stock (opening / in / out / closing), Purchase, MT PO</b>. Ye report sirf admin ko dikhti hai.</div>
+  <div style="display:flex;gap:14px;flex-wrap:wrap;align-items:flex-end"><div><label class="lbl">Month chuno</label><input class="inp" type="month" value="${esc(m)}" onchange="temp.prMonth=this.value" style="margin-bottom:0"></div>
+  <button class="btn btn-primary" style="padding:11px 22px" onclick="App.periodReport('month')">📅 Month Report Download</button>
+  <button class="btn" style="background:#1b5e20;color:#fff;padding:11px 22px" onclick="App.periodReport('year')">📆 Poore Year ${fyl?"(FY "+esc(fyl)+") ":""}ki Report</button></div></div></div>`;
+}
+function buildPeriodReport(from,to,label){
+  const inR=function(d){return d&&d>=from&&d<=to;};
+  const sheets=[];
+  const pk={};(state.packings||[]).filter(function(p){return inR(p.date);}).forEach(function(p){const k=p.productName+"|"+(p.qtyType||""),o=pk[k]=pk[k]||{item:p.productName,cat:p.category||"",type:p.qtyType||"",recs:0,cartons:0,qty:0};o.recs++;o.cartons+=Number(p.cartons)||0;o.qty+=Number(p.totalQty)||0;});
+  const pkRows=Object.values(pk).sort(function(a,b){return String(a.item).localeCompare(String(b.item));}).map(function(o){return[o.item,o.cat,o.type,o.recs,o.cartons,o.qty];});
+  const dp=(state.dispatches||[]).filter(function(d){return inR(d.date);}),party={},det=[];
+  dp.forEach(function(d){let q=0;(d.items||[]).forEach(function(i){q+=Number(i.qty)||0;det.push([d.date,d.challanNo,d.partyName,d.destination||"",d.transport||"",d.vehicleNo||"",i.productName||"",i.cartonNo!=null?cartonLabel(i.cartonNo):"",Number(i.qty)||0,i.qtyType||""]);});const o=party[d.partyName]=party[d.partyName]||{n:d.partyName,ch:0,qty:0};o.ch++;o.qty+=q;});
+  const dpRows=Object.values(party).sort(function(a,b){return b.qty-a.qty;}).map(function(o){return[o.n,o.ch,o.qty];});
+  const names=getAllStoreItemNames(),op={},inn={},out={};
+  (state.storeLedger||[]).forEach(function(l){
+    const q=Number(l.qty||0),sg=(l.type==="plan_out"||l.type==="internal_issue")?-q:q,n=l.itemName;
+    if(l.date&&l.date<from)op[n]=(op[n]||0)+sg;
+    else if(inR(l.date)){if(sg>=0)inn[n]=(inn[n]||0)+sg;else out[n]=(out[n]||0)-sg;}
+  });
+  const r2=function(x){return Math.round(x*100)/100;};
+  const stRows=names.map(function(n){const o=op[n]||0,i=inn[n]||0,u=out[n]||0;return[n,r2(o),r2(i),r2(u),r2(o+i-u)];});
+  const pu=purchaseReportData(from,to),puRows=pu.sup.map(function(x){return[x.name,x.grns.size,x.qty,r2(x.amt)];});
+  const dm=buildMtDispMap(),mtList=(state.mtPos||[]).filter(function(p){return inR(p.poDate);});
+  const mtRows=mtList.map(function(p){const canc=isMtPoFullyCancelled(p),disp=isMtPoDispatched(p.id,dm);const bx=(p.items||[]).reduce(function(s,i){return s+(Number(i.qtyBox)||0);},0);return[p.poNo,p.poDate,p.dc,p.deliveryDate||"",canc?"Cancelled":p.manualFullDispatch?"Full Dispatch (manual)":disp?"Dispatched":"Pending",bx];});
+  const pkQ=pkRows.reduce(function(s,r){return s+r[5];},0),pkC=pkRows.reduce(function(s,r){return s+r[4];},0);
+  const sum=[["Jimit Pet LLP — "+label],["Period",(from>"0001"?from:"Shuru")+" se "+(to<"9999"?to:"Aaj tak")],["Generated",nowStr()],[],
+   ["Packing — records",pkRows.reduce(function(s,r){return s+r[3];},0)],["Packing — total cartons",pkC],["Packing — total qty",pkQ],
+   ["Dispatch — challans",dp.length],["Dispatch — total qty",dpRows.reduce(function(s,r){return s+r[2];},0)],
+   ["Purchase — GRN suppliers",pu.sup.length],["Purchase — total amount (₹)",r2(pu.sup.reduce(function(s,x){return s+x.amt;},0))],
+   ["Store — items",names.length],["MT — POs aaye",mtList.length],["MT — Pending",mtRows.filter(function(r){return r[4]==="Pending";}).length],["MT — Dispatched",mtRows.filter(function(r){return/Dispatch/.test(r[4]);}).length]];
+  sheets.push({n:"Summary",r:sum});
+  sheets.push({n:"Packing",r:[["Item","Category","Qty Type","Records","Cartons","Total Qty"]].concat(pkRows)});
+  sheets.push({n:"Dispatch (Party)",r:[["Party","Challans","Total Qty"]].concat(dpRows)});
+  sheets.push({n:"Dispatch Detail",r:[["Date","Challan","Party","Destination","Transport","Vehicle","Item","Carton","Qty","Type"]].concat(det)});
+  sheets.push({n:"Store Stock",r:[["Item","Opening","In","Out","Closing"]].concat(stRows)});
+  sheets.push({n:"Purchase",r:[["Supplier","GRN","Qty","Amount (₹)"]].concat(puRows)});
+  sheets.push({n:"MT PO",r:[["PO No","PO Date","DC/Location","Delivery","Status","Boxes"]].concat(mtRows)});
+  return sheets;
+}
+
 function _progDelete(id,mt){
   const arr=mt?state.mtProductionPlans:state.productionPlans;
   const p=arr.find(x=>x.id===id);if(!p)return;
@@ -831,8 +1077,9 @@ function registerAC(){
 
 // ── PRINT FUNCTIONS ───────────────────────────
 function printPackingLabel(p){
+  const _ean=ensureEan(p.productName),_qr=qrSvg(packingQrText(p),118),_bc=_ean?ean13Svg(_ean,215):"";
   const w=window.open("","_blank","width=620,height=540");if(!w){alert("Popup blocked!");return;}
-  w.document.write(`<!DOCTYPE html><html><head><title>Packing Label</title><style>@media print{.np{display:none!important}body{margin:0}}body{font-family:Arial,sans-serif;padding:20px;background:#fff}.label{border:3px solid #1a237e;padding:20px;max-width:420px;border-radius:8px}h2{margin:0 0 4px;text-align:center;color:#1a237e;font-size:20px}.sub{text-align:center;color:#555;font-size:12px;margin-bottom:14px;border-bottom:1px dashed #ccc;padding-bottom:10px}table{width:100%;border-collapse:collapse}td{padding:6px 8px;font-size:14px;border-bottom:1px solid #eee}td:first-child{font-weight:bold;width:48%;color:#333}td:last-child{color:#1a237e;font-weight:600}.cn{font-size:28px;font-weight:900;text-align:center;color:#1a237e;padding:10px 0;border:2px dashed #1a237e;border-radius:6px;margin:12px 0}.ft{margin-top:14px;text-align:center;font-size:11px;color:#888;border-top:1px dashed #ccc;padding-top:8px}.btn{margin:5px;padding:8px 20px;background:#1a237e;color:#fff;border:none;border-radius:4px;cursor:pointer;font-size:14px}</style></head><body><div class="np" style="text-align:center;margin-bottom:10px"><button class="btn" onclick="window.print()">🖨️ Print</button><button class="btn" style="background:#555" onclick="window.close()">✕ Close</button></div><div class="label"><h2>🏭 Jimit Pet LLP</h2><div class="sub">Packing Label</div><div class="cn">Carton # ${esc(cartonLabel(p.cartonNo))}</div><table><tr><td>Date:</td><td>${esc(fmtDate(p.date))}</td></tr><tr><td>Batch No:</td><td>${esc(p.batchNo)}</td></tr><tr><td>Product:</td><td>${esc(p.productName)}</td></tr><tr><td>Category:</td><td>${esc(p.category)}</td></tr><tr><td>Qty/Carton:</td><td>${esc(p.qtyPerCarton)} ${esc(p.qtyType)}</td></tr><tr><td>No. of Cartons:</td><td>${esc(p.cartons)}</td></tr><tr><td>Total Qty:</td><td><b style="font-size:16px">${esc(p.totalQty)} ${esc(p.qtyType)}</b></td></tr>${p.remark?`<tr><td>Remark:</td><td>${esc(p.remark)}</td></tr>`:""}</table><div class="ft">Printed: ${nowStr()}</div></div><script>window.onload=function(){setTimeout(function(){window.print()},400)}<\/script></body></html>`);w.document.close();
+  w.document.write(`<!DOCTYPE html><html><head><title>Packing Label</title><style>@media print{.np{display:none!important}body{margin:0}}body{font-family:Arial,sans-serif;padding:20px;background:#fff}.label{border:3px solid #1a237e;padding:20px;max-width:420px;border-radius:8px}h2{margin:0 0 4px;text-align:center;color:#1a237e;font-size:20px}.sub{text-align:center;color:#555;font-size:12px;margin-bottom:14px;border-bottom:1px dashed #ccc;padding-bottom:10px}table{width:100%;border-collapse:collapse}td{padding:6px 8px;font-size:14px;border-bottom:1px solid #eee}td:first-child{font-weight:bold;width:48%;color:#333}td:last-child{color:#1a237e;font-weight:600}.cn{font-size:28px;font-weight:900;text-align:center;color:#1a237e;padding:10px 0;border:2px dashed #1a237e;border-radius:6px;margin:12px 0}.ft{margin-top:14px;text-align:center;font-size:11px;color:#888;border-top:1px dashed #ccc;padding-top:8px}.btn{margin:5px;padding:8px 20px;background:#1a237e;color:#fff;border:none;border-radius:4px;cursor:pointer;font-size:14px}</style></head><body><div class="np" style="text-align:center;margin-bottom:10px"><button class="btn" onclick="window.print()">🖨️ Print</button><button class="btn" style="background:#555" onclick="window.close()">✕ Close</button></div><div class="label"><h2>🏭 Jimit Pet LLP</h2><div class="sub">Packing Label</div><div class="cn">Carton # ${esc(cartonLabel(p.cartonNo))}</div><table><tr><td>Date:</td><td>${esc(fmtDate(p.date))}</td></tr><tr><td>Batch No:</td><td>${esc(p.batchNo)}</td></tr><tr><td>Product:</td><td>${esc(p.productName)}</td></tr><tr><td>Category:</td><td>${esc(p.category)}</td></tr><tr><td>Qty/Carton:</td><td>${esc(p.qtyPerCarton)} ${esc(p.qtyType)}</td></tr><tr><td>No. of Cartons:</td><td>${esc(p.cartons)}</td></tr><tr><td>Total Qty:</td><td><b style="font-size:16px">${esc(p.totalQty)} ${esc(p.qtyType)}</b></td></tr>${p.remark?`<tr><td>Remark:</td><td>${esc(p.remark)}</td></tr>`:""}</table><div style="display:flex;justify-content:space-between;align-items:center;gap:10px;margin-top:12px;border-top:1px dashed #ccc;padding-top:10px"><div>${_qr}</div><div style="text-align:center">${_bc}</div></div><div class="ft">Printed: ${nowStr()}</div></div><script>window.onload=function(){setTimeout(function(){window.print()},400)}<\/script></body></html>`);w.document.close();
 }
 function emailPackingLabel(p){
   const lines=["🏭 Jimit Pet LLP — Packing Label","",`Carton No: ${cartonLabel(p.cartonNo)}`,`Date: ${fmtDate(p.date)}`,`Batch No: ${p.batchNo}`,`Product: ${p.productName}`,`Category: ${p.category}`,`Qty/Carton: ${p.qtyPerCarton} ${p.qtyType}`,`No. of Cartons: ${p.cartons}`,`Total Qty: ${p.totalQty} ${p.qtyType}`,p.remark?`Remark: ${p.remark}`:null].filter(Boolean);
@@ -1191,7 +1438,7 @@ function backfillDispatchItemBatches(){
 function buildBackupData(){
   const map={users:"users",packings:"packings",categories:"categories",dispatches:"dispatches",
     purchaseOrders:"pos",mtPos:"mt_pos",mtDispatches:"mt_dispatches",batchOptions:"batch_options",
-    mtItems:"mt_items",mtPackings:"mt_packings",itemMaster:"item_master",bomMaster:"bom_master",productionPlans:"production_plans",storeLedger:"store_ledger",grns:"grns",mtBomMaster:"mt_bom_master",mouldItems:"mould_items",mouldMats:"mould_mats",mouldColours:"mould_colours",mouldPrograms:"mould_programs",mouldProducts:"mould_products",mouldGroups:"mould_groups",appSettings:"app_settings",mtProductionPlans:"mt_production_plans",mtDivisions:"mt_divisions",storeItems:"store_items",storeQtyTypes:"store_qty_types",storeCategories:"store_categories",storeBatches:"store_batches",recycleBin:"recycle_bin",nextChallanOverride:"next_challan_override",partyEmails:"party_emails",autoTriggeredProducts:"auto_triggered_products",lastAutoBackupDate:"last_auto_backup_date",lastAutoEmailDate:"last_auto_email_date",lastMtAlertEmailDate:"last_mt_alert_email_date",lastPendingCategoryEmailDate:"last_pending_category_email_date",lastProductionReminderDate:"last_production_reminder_date",gatePasses:"gate_passes",parties:"parties",accBills:"acc_bills",accReceipts:"acc_receipts",invoices:"invoices",creditNotes:"credit_notes",debitNotes:"debit_notes",itemRates:"item_rates",company:"company"};
+    mtItems:"mt_items",mtPackings:"mt_packings",itemMaster:"item_master",bomMaster:"bom_master",productionPlans:"production_plans",storeLedger:"store_ledger",grns:"grns",mtBomMaster:"mt_bom_master",mouldItems:"mould_items",mouldMats:"mould_mats",mouldColours:"mould_colours",mouldPrograms:"mould_programs",mouldProducts:"mould_products",mouldGroups:"mould_groups",appSettings:"app_settings",mtProductionPlans:"mt_production_plans",mtDivisions:"mt_divisions",storeItems:"store_items",storeQtyTypes:"store_qty_types",storeCategories:"store_categories",auditLog:"audit_log",storeBatches:"store_batches",recycleBin:"recycle_bin",nextChallanOverride:"next_challan_override",partyEmails:"party_emails",autoTriggeredProducts:"auto_triggered_products",lastAutoBackupDate:"last_auto_backup_date",lastAutoEmailDate:"last_auto_email_date",lastMtAlertEmailDate:"last_mt_alert_email_date",lastPendingCategoryEmailDate:"last_pending_category_email_date",lastProductionReminderDate:"last_production_reminder_date",gatePasses:"gate_passes",parties:"parties",accBills:"acc_bills",accReceipts:"acc_receipts",invoices:"invoices",creditNotes:"credit_notes",debitNotes:"debit_notes",itemRates:"item_rates",company:"company"};
   const backup={ _meta:{app:"JimitPetLLP",exportedAt:new Date().toISOString(),version:1}, data:{} };
   Object.entries(map).forEach(([sk,dbk])=>{ backup.data[dbk]=state[sk]; });
   backup.data.tombstones=Tombstone.get();
@@ -1250,7 +1497,7 @@ function shellHtml(){
     {key:"mtSalesDashboard",label:"📊 MT Sales Dashboard",perm:"mtSalesDashboard"},
     {key:"store",label:"🏬 Store",perm:"store"},
     {key:"inventoryStock",label:"📦 Inventory Stock",perm:"inventoryStock"},{key:"canMake",label:"✅ Can Make Report",perm:"canMake"},{key:"accParty",label:"👥 Party Master",perm:"accounts"},{key:"accBills",label:"🧾 Bills (Sale / Purchase)",perm:"accounts"},{key:"accPay",label:"💵 Receipt / Payment",perm:"accounts"},{key:"accRates",label:"🏷️ Item Rates",perm:"accounts"},{key:"accOut",label:"📊 Accounts (Ledger / Ageing)",perm:"accounts"},{key:"invoice",label:"🧾 Invoice",perm:"invoice"},{key:"creditNote",label:"↩️ Credit Note",perm:"invoice"},{key:"debitNote",label:"📑 Debit Note",perm:"invoice"},{key:"productionReport",label:"📊 Production Report",perm:"productionReport"},{key:"minStock",label:"🛒 Min Stock & Purchase",perm:"minStock"},{key:"mtReport",label:"📈 MT Delivery Report",perm:"mtReport"},{key:"programStock",label:"✅ Program Stock Check",perm:"programStock"},
-    ...(state.currentUser.role==="admin"?[{key:"userManagement",label:"👥 Users",perm:"userManagement"},{key:"recycleBin",label:"🗑️ Recycle Bin",perm:"userManagement"},{key:"yearEnd",label:"📅 Year End Process",perm:"userManagement"}]:[])
+    ...(state.currentUser.role==="admin"?[{key:"userManagement",label:"👥 Users",perm:"userManagement"},{key:"recycleBin",label:"🗑️ Recycle Bin",perm:"userManagement"},{key:"yearEnd",label:"📅 Year End Process",perm:"userManagement"},{key:"auditLog",label:"📜 Audit Log",perm:"userManagement"},{key:"periodReport",label:"📊 Month/Year Report",perm:"userManagement"}]:[])
   ].filter(t=>t.perm==="accounts"?canAcc():can(t.perm));
   // ── TAB GROUPS (sirf navigation grouping; tabs ka kaam same hai) ──
   const TAB_GROUPS=[
@@ -1260,7 +1507,7 @@ function shellHtml(){
     {k:"mtGrp",label:"🏪 MT",keys:["mtPo","mtDispatch","mtPending","mtPacking","mtVehReq","mtPlanner","mtSalesDashboard","mtReport"]},
     {k:"storeGrp",label:"🏬 STORE/REPORTS",keys:["store","inventoryStock","canMake","productionReport","minStock","programStock"]},
     {k:"accGrp",label:"💰 ACCOUNTS",keys:["accParty","accBills","accPay","accRates","accOut"]},
-    {k:"adminGrp",label:"🛠️ UTILITY",keys:["userManagement","recycleBin","yearEnd"]}
+    {k:"adminGrp",label:"🛠️ UTILITY",keys:["userManagement","recycleBin","yearEnd","auditLog","periodReport"]}
   ];
   window.__tabGroups={};
   const _grouped=new Set();
@@ -1288,7 +1535,7 @@ function shellHtml(){
           :state.currentUser.role==="owner"
           ?`<button class="btn" style="background:#2e7d32;border:1px solid rgba(255,255,255,.4);padding:5px 12px;font-size:12px" onclick="App.dailyReport()">📤 Daily Report</button><span style="font-size:13px">👁 ${esc(state.currentUser.name)}</span>${cloudDotHtml()}`
           :`${fyBadgeHtml()}<span style="font-size:13px">👤 ${esc(state.currentUser.name)}</span>`}
-        <button class="btn" style="background:rgba(255,255,255,.2);border:1px solid rgba(255,255,255,.4);padding:5px 14px" onclick="App.logout()">Logout</button>
+        <button class="btn" style="background:rgba(255,255,255,.2);border:1px solid rgba(255,255,255,.4);padding:5px 14px;margin-right:6px" onclick="App.openScan()">📷 Scan</button><button class="btn" style="background:rgba(255,255,255,.2);border:1px solid rgba(255,255,255,.4);padding:5px 14px" onclick="App.logout()">Logout</button>
       </div>
     </div>
     <div class="tabs-row" onscroll="App.closeTabMenu()">${tabsBarHtml}</div>
@@ -1305,7 +1552,7 @@ function renderTabContent(){
   const fns={packing:renderPackingTab,pendingStock:renderPendingStockTab,stockSummary:renderStockSummaryTab,
     dispatch:renderDispatchTab,dispatchRegister:renderDispatchRegisterTab,gatePass:renderGatePassTab,po:renderPOTab,
     pendingOrder:renderPendingOrderTab,orderVsAvailable:renderOrderVsAvailableTab,mtPo:renderMTPoTab,mtDispatch:renderMTDispatchTab,
-    mtPending:renderMTPendingTab,mtPacking:renderMTPackingTab,mtVehReq:renderMtVehReqTab,planner:renderPlannerTab,mouldPlanner:renderMouldPlannerTab,store:renderStoreTab,inventoryStock:renderInventoryStockTab,canMake:renderCanMakeTab,yearEnd:renderYearEndTab,accParty:renderAccPartyTab,accBills:renderAccBillsTab,accPay:renderAccPayTab,accOut:renderAccOutTab,accRates:renderAccRatesTab,invoice:renderInvoiceTab,creditNote:renderCreditNoteTab,debitNote:renderDebitNoteTab,productionReport:renderProductionReportTab,home:renderHomeTab,minStock:renderMinStockTab,mtReport:renderMtReportTab,programStock:renderProgramStockTabV2,mtPlanner:renderMtPlannerTab,mtSalesDashboard:renderMtSalesDashboardTab,userManagement:renderUserManagementTab,recycleBin:renderRecycleBinTab};
+    mtPending:renderMTPendingTab,mtPacking:renderMTPackingTab,mtVehReq:renderMtVehReqTab,planner:renderPlannerTab,mouldPlanner:renderMouldPlannerTab,store:renderStoreTab,inventoryStock:renderInventoryStockTab,canMake:renderCanMakeTab,yearEnd:renderYearEndTab,accParty:renderAccPartyTab,accBills:renderAccBillsTab,accPay:renderAccPayTab,accOut:renderAccOutTab,accRates:renderAccRatesTab,invoice:renderInvoiceTab,creditNote:renderCreditNoteTab,debitNote:renderDebitNoteTab,productionReport:renderProductionReportTab,home:renderHomeTab,minStock:renderMinStockTab,mtReport:renderMtReportTab,programStock:renderProgramStockTabV2,mtPlanner:renderMtPlannerTab,mtSalesDashboard:renderMtSalesDashboardTab,userManagement:renderUserManagementTab,recycleBin:renderRecycleBinTab,auditLog:renderAuditLogTab,periodReport:renderPeriodReportTab};
   el.innerHTML=(fns[state.activeTab]||(() =>""))();
   ownerSanitize();
   const mr=document.getElementById("modalRoot");if(mr)mr.innerHTML=renderItemMasterModal()+renderMtItemModal();
@@ -1334,14 +1581,18 @@ function softRefreshCurrentTab(){
 function renderItemMasterModal(){
   if(!temp.itemMasterOpen)return"";
   const ed=temp.itemMasterEditId?state.itemMaster.find(i=>i.id===temp.itemMasterEditId):null;
-  const rows=state.itemMaster.map(it=>`<tr><td><b>${esc(it.name)}</b></td><td>${esc(it.batch)||"—"}</td><td>${esc(it.category)||"—"}</td><td>${esc(it.qtyType)||"—"}</td><td>${esc(it.qtyPerCarton)||"—"}</td><td>${esc(it.unit)||"—"}</td><td>${esc(it.boxesPerCarton)||"—"}</td><td><button class="btn btn-sm btn-primary" onclick="App.editIMItem(${it.id})">Edit</button> <button class="btn btn-sm btn-danger" onclick="App.deleteIMItem(${it.id})">Del</button></td></tr>`).join("")||`<tr><td colspan="8" style="text-align:center;color:#999;padding:16px">Koi item nahi. Add karo.</td></tr>`;
-  return`<div class="modal-overlay" onclick="if(event.target===this)App.closeItemMaster()"><div class="modal-box"><div class="modal-head"><span style="font-weight:700;font-size:16px">📋 Item Master — ${state.itemMaster.length} items</span><button class="btn" style="background:rgba(255,255,255,.2)" onclick="App.closeItemMaster()">✕ Close</button></div><div style="padding:24px"><div style="background:#f3f4ff;border:1px solid #c5cae9;border-radius:10px;padding:16px;margin-bottom:20px"><b style="color:#1a237e">${ed?"✏️ Edit Item":"➕ Add New Item"}</b><div style="display:grid;grid-template-columns:2fr 1fr 1fr 1fr 1fr 1fr 1fr;gap:10px;margin-top:12px"><div><label class="lbl">Item Name *</label><input class="inp" id="imName" value="${ed?esc(ed.name):""}" placeholder="Product name"></div><div><label class="lbl">Batch</label><div style="display:flex;gap:6px"><select class="inp" id="imBatch" style="flex:1;margin-bottom:0"><option value="">-- None --</option>${state.batchOptions.map(b=>`<option value="${esc(b)}" ${ed&&ed.batch===b?"selected":""}>${esc(b)}</option>`).join("")}</select><button class="btn btn-primary" style="width:34px;padding:0" onclick="App.addBatchOptionIM()" title="Naya batch add karo">+</button></div></div><div><label class="lbl">Category</label><select class="inp" id="imCat"><option value="">--</option>${state.categories.map(c=>`<option value="${esc(c)}" ${ed&&ed.category===c?"selected":""}>${esc(c)}</option>`).join("")}</select></div><div><label class="lbl">Qty Type</label><select class="inp" id="imQtyType">${["Pcs","Set","Box","Cts"].map(q=>`<option ${ed&&ed.qtyType===q?"selected":""}>${q}</option>`).join("")}</select></div><div><label class="lbl">Qty/Carton</label><input class="inp" type="number" id="imQtyPer" value="${ed?esc(ed.qtyPerCarton):""}" placeholder="0"></div><div><label class="lbl">PO Unit</label><select class="inp" id="imUnit">${["Pcs","Set","Box","Cts"].map(u=>`<option ${ed&&ed.unit===u?"selected":""}>${u}</option>`).join("")}</select></div><div><label class="lbl">Boxes/Master Ctn <span style="font-weight:400;color:#888">(Planner ke liye)</span></label><input class="inp" type="number" step="0.01" id="imBoxesPerCtn" value="${ed?esc(ed.boxesPerCarton):""}" placeholder="e.g. 6"></div></div><div style="display:flex;gap:8px;margin-top:12px"><button class="btn btn-primary" onclick="App.saveIMItem()">${ed?"✏️ Update":"💾 Save"}</button>${ed?`<button class="btn btn-secondary" onclick="App.cancelEditIMItem()">Cancel</button>`:""}</div></div><div style="overflow-x:auto"><table class="tbl"><thead><tr style="background:#37474f;color:#fff"><th>Name</th><th>Batch</th><th>Category</th><th>Qty Type</th><th>Qty/Carton</th><th>PO Unit</th><th>Boxes/Master Ctn</th><th>Actions</th></tr></thead><tbody>${rows}</tbody></table></div></div></div></div>`;
+  const rows=state.itemMaster.map(it=>`<tr><td><b>${esc(it.name)}</b><div style="font-size:10px;color:#777">EAN: ${esc(it.ean||"—")}</div></td><td>${esc(it.batch)||"—"}</td><td>${esc(it.category)||"—"}</td><td>${esc(it.qtyType)||"—"}</td><td>${esc(it.qtyPerCarton)||"—"}</td><td>${esc(it.unit)||"—"}</td><td>${esc(it.boxesPerCarton)||"—"}</td><td><button class="btn btn-sm btn-primary" onclick="App.editIMItem(${it.id})">Edit</button> <button class="btn btn-sm btn-danger" onclick="App.deleteIMItem(${it.id})">Del</button></td></tr>`).join("")||`<tr><td colspan="8" style="text-align:center;color:#999;padding:16px">Koi item nahi. Add karo.</td></tr>`;
+  return`<div class="modal-overlay" onclick="if(event.target===this)App.closeItemMaster()"><div class="modal-box"><div class="modal-head"><span style="font-weight:700;font-size:16px">📋 Item Master — ${state.itemMaster.length} items</span><button class="btn" style="background:rgba(255,255,255,.2)" onclick="App.closeItemMaster()">✕ Close</button></div><div style="padding:24px"><div style="background:#f3f4ff;border:1px solid #c5cae9;border-radius:10px;padding:16px;margin-bottom:20px"><b style="color:#1a237e">${ed?"✏️ Edit Item":"➕ Add New Item"}</b><div style="display:grid;grid-template-columns:2fr 1fr 1fr 1fr 1fr 1fr 1fr;gap:10px;margin-top:12px"><div><label class="lbl">Item Name *</label><input class="inp" id="imName" value="${ed?esc(ed.name):""}" placeholder="Product name"></div><div><label class="lbl">EAN / Barcode No <span style="font-weight:400;color:#888">(13 digit, khali = auto)</span></label><div style="display:flex;gap:6px"><input class="inp" id="imEan" value="${ed?esc(ed.ean||""):""}" placeholder="Auto" style="flex:1;margin-bottom:0"><button class="btn btn-primary" onclick="App.autoAssignEan()" title="Jinka EAN nahi hai un sab ko auto EAN do" style="white-space:nowrap">🔢 Sab ko Auto EAN</button></div></div><div><label class="lbl">Batch</label><div style="display:flex;gap:6px"><select class="inp" id="imBatch" style="flex:1;margin-bottom:0"><option value="">-- None --</option>${state.batchOptions.map(b=>`<option value="${esc(b)}" ${ed&&ed.batch===b?"selected":""}>${esc(b)}</option>`).join("")}</select><button class="btn btn-primary" style="width:34px;padding:0" onclick="App.addBatchOptionIM()" title="Naya batch add karo">+</button></div></div><div><label class="lbl">Category</label><select class="inp" id="imCat"><option value="">--</option>${state.categories.map(c=>`<option value="${esc(c)}" ${ed&&ed.category===c?"selected":""}>${esc(c)}</option>`).join("")}</select></div><div><label class="lbl">Qty Type</label><select class="inp" id="imQtyType">${["Pcs","Set","Box","Cts"].map(q=>`<option ${ed&&ed.qtyType===q?"selected":""}>${q}</option>`).join("")}</select></div><div><label class="lbl">Qty/Carton</label><input class="inp" type="number" id="imQtyPer" value="${ed?esc(ed.qtyPerCarton):""}" placeholder="0"></div><div><label class="lbl">PO Unit</label><select class="inp" id="imUnit">${["Pcs","Set","Box","Cts"].map(u=>`<option ${ed&&ed.unit===u?"selected":""}>${u}</option>`).join("")}</select></div><div><label class="lbl">Boxes/Master Ctn <span style="font-weight:400;color:#888">(Planner ke liye)</span></label><input class="inp" type="number" step="0.01" id="imBoxesPerCtn" value="${ed?esc(ed.boxesPerCarton):""}" placeholder="e.g. 6"></div></div><div style="display:flex;gap:8px;margin-top:12px"><button class="btn btn-primary" onclick="App.saveIMItem()">${ed?"✏️ Update":"💾 Save"}</button>${ed?`<button class="btn btn-secondary" onclick="App.cancelEditIMItem()">Cancel</button>`:""}</div></div><div style="overflow-x:auto"><table class="tbl"><thead><tr style="background:#37474f;color:#fff"><th>Name</th><th>Batch</th><th>Category</th><th>Qty Type</th><th>Qty/Carton</th><th>PO Unit</th><th>Boxes/Master Ctn</th><th>Actions</th></tr></thead><tbody>${rows}</tbody></table></div></div></div></div>`;
 }
 const ItemMasterApp={
   openItemMaster(){temp.itemMasterOpen=true;temp.itemMasterEditId=null;_refreshModal();},
   closeItemMaster(){temp.itemMasterOpen=false;temp.itemMasterEditId=null;_refreshModal();setTimeout(registerAC,0);},
   addBatchOptionIM(){const v=prompt("New batch name:");if(!v)return;const t=v.trim().toUpperCase();if(!t||state.batchOptions.includes(t)){alert(t?"Already exists!":"Empty input");return;}state.batchOptions.push(t);persist("batch_options",state.batchOptions);const sel=document.getElementById("imBatch");if(sel){const o=document.createElement("option");o.value=t;o.textContent=t;sel.appendChild(o);sel.value=t;}},
-  saveIMItem(){const name=document.getElementById("imName").value.trim();if(!name){alert("Item Name required");return;}const entry={id:temp.itemMasterEditId||uid(),name,batch:document.getElementById("imBatch").value,category:document.getElementById("imCat").value,qtyType:document.getElementById("imQtyType").value,qtyPerCarton:document.getElementById("imQtyPer").value,unit:document.getElementById("imUnit").value,boxesPerCarton:document.getElementById("imBoxesPerCtn").value};if(temp.itemMasterEditId){state.itemMaster=state.itemMaster.map(i=>i.id===entry.id?entry:i);temp.itemMasterEditId=null;}else state.itemMaster.push(entry);persist("item_master",state.itemMaster);_refreshModal();setTimeout(registerAC,0);},
+  saveIMItem(){const name=document.getElementById("imName").value.trim();if(!name){alert("Item Name required");return;}
+    let ean=((document.getElementById("imEan")||{}).value||"").replace(/\s/g,"");if(/^\d{12}$/.test(ean))ean+=eanCheck12(ean);
+    if(ean&&!eanValid(ean)){alert("⚠️ EAN 13 digit ka sahi number hona chahiye (last digit check-digit hai). Khali chhodoge to auto ban jayega.");return;}
+    if(ean&&(state.itemMaster||[]).some(i=>i.ean===ean&&i.id!==temp.itemMasterEditId)){alert("⚠️ Ye EAN kisi aur item ko pehle se diya hua hai.");return;}
+    const prevEan=(state.itemMaster.find(i=>i.id===temp.itemMasterEditId)||{}).ean;const entry={id:temp.itemMasterEditId||uid(),name,batch:document.getElementById("imBatch").value,category:document.getElementById("imCat").value,qtyType:document.getElementById("imQtyType").value,qtyPerCarton:document.getElementById("imQtyPer").value,unit:document.getElementById("imUnit").value,boxesPerCarton:document.getElementById("imBoxesPerCtn").value,ean:ean||prevEan||nextEan()};if(temp.itemMasterEditId){state.itemMaster=state.itemMaster.map(i=>i.id===entry.id?entry:i);temp.itemMasterEditId=null;}else state.itemMaster.push(entry);persist("item_master",state.itemMaster);_refreshModal();setTimeout(registerAC,0);},
   editIMItem(id){temp.itemMasterEditId=id;_refreshModal();},
   cancelEditIMItem(){temp.itemMasterEditId=null;_refreshModal();},
   deleteIMItem(id){if(!confirm("Delete?"))return;const item=state.itemMaster.find(i=>i.id===id);moveToRecycleBin("item_master",item);state.itemMaster=state.itemMaster.filter(i=>i.id!==id);persist("item_master",state.itemMaster);_refreshModal();setTimeout(registerAC,0);}
@@ -2630,7 +2881,7 @@ function renderStoreTab(){
   const partyFilter=temp.grnPartyFilter||"";
   const _gAll=grnHistoryList(),grnTotal=_gAll.length;let histList=_gAll.slice(0,300);
   const kindMeta={purchase:{badge:"#1565c0",label:"📥 GRN"},return:{badge:"#6a1b9a",label:"↩️ Return"},internal_issue:{badge:"#e65100",label:"➡️ Internal Issue"},internal_receive:{badge:"#00838f",label:"⬅️ Internal Receive"}};
-  const historyRows=histList.map(g=>{const km=kindMeta[g.kind]||{badge:"#555",label:g.kind};const ref=g.kind==="purchase"?((esc(g.supplier)||"—")+(g.billNo?" | Bill: "+esc(g.billNo):"")+(g.vehicleNo?" | Veh: "+esc(g.vehicleNo):"")):g.kind==="return"?esc(g.programNo)||"—":`${esc(g.challanNo)||"—"}${g.party?` (${esc(g.party)})`:""}`;return`<tr><td><span class="badge" style="background:${km.badge}">${km.label}</span></td><td><b>${esc(g.grnNo)}</b></td><td>${esc(fmtDate(g.date))}</td><td>${ref}</td><td>${(g.items||[]).map(i=>`${esc(i.name)}(${esc(i.qty)})`).join(", ")}</td><td><span style="font-size:11px;color:#1565c0;font-weight:600">${esc(g.savedBy||"—")}</span></td><td><button class="btn btn-sm btn-success" onclick="App.printGrn(${g.id})">🖨️</button> ${isAdminU()?`<button class="btn btn-sm btn-danger" onclick="App.deleteGrn(${g.id})">Del</button>`:""}</td></tr>`;}).join("")||`<tr><td colspan="7" style="text-align:center;color:#999;padding:24px">Koi entry nahi hui abhi</td></tr>`;
+  const historyRows=histList.map(g=>{const km=kindMeta[g.kind]||{badge:"#555",label:g.kind};const ref=g.kind==="purchase"?((esc(g.supplier)||"—")+(g.billNo?" | Bill: "+esc(g.billNo):"")+(g.vehicleNo?" | Veh: "+esc(g.vehicleNo):"")+(g.poRef?" | PO: "+esc(g.poRef):"")):g.kind==="return"?esc(g.programNo)||"—":`${esc(g.challanNo)||"—"}${g.party?` (${esc(g.party)})`:""}`;return`<tr><td><span class="badge" style="background:${km.badge}">${km.label}</span></td><td><b>${esc(g.grnNo)}</b></td><td>${esc(fmtDate(g.date))}</td><td>${ref}</td><td>${(g.items||[]).map(i=>`${esc(i.name)}(${esc(i.qty)})`).join(", ")}</td><td><span style="font-size:11px;color:#1565c0;font-weight:600">${esc(g.savedBy||"—")}</span></td><td><button class="btn btn-sm btn-success" onclick="App.printGrn(${g.id})">🖨️</button> ${isAdminU()?`<button class="btn btn-sm btn-danger" onclick="App.deleteGrn(${g.id})">Del</button>`:""}</td></tr>`;}).join("")||`<tr><td colspan="7" style="text-align:center;color:#999;padding:24px">Koi entry nahi hui abhi</td></tr>`;
   const modeTitle=mode==="purchase"?"📥 New GRN (Stock In — Purchase)":mode==="return"?"↩️ Return from Plant (Stock In)":internalType==="issue"?"➡️ Internal Issue (Stock Out)":"⬅️ Internal Receive (Stock In)";
   return`${roBanner()}<div style="display:flex;justify-content:flex-end;margin-bottom:12px"><button class="btn btn-primary" onclick="App.openStoreItemModal()">📋 Store Item Master (${storeItemCount()})</button></div>
   <div class="card"><div class="card-title">${modeTitle}</div><div class="card-body">
@@ -2640,7 +2891,7 @@ function renderStoreTab(){
       ${mode==="internal"?`<div><label class="lbl">Factory Challan No. *</label><input class="inp" id="grnChallanNo" placeholder="Challan No type karo"></div>`:`<div><label class="lbl">${mode==="purchase"?"GRN No (Auto)":"Return No (Auto)"}</label><input class="inp" value="${mode==="purchase"?genGrnNo():genReturnNo()}" readonly style="background:#f5f5f5;font-weight:700"></div>`}
       <div><label class="lbl">Date</label><input class="inp" type="date" id="grnDate" value="${todayStr()}"></div>
       ${mode==="purchase"?`<div><label class="lbl">Supplier Name</label><input class="inp" id="grnSupplier" list="grnSupplierList" placeholder="Supplier / Vendor"><datalist id="grnSupplierList">${suppliers.map(s=>`<option value="${esc(s)}">`).join("")}</datalist></div>`:mode==="return"?`<div><label class="lbl">Program No (Optional)</label><select class="inp" id="grnProgramNo"><option value="">-- Select --</option>${[...state.productionPlans.map(p=>({...p,_src:"Planner"})),...state.mtProductionPlans.map(p=>({...p,_src:"MT Planner"}))].sort((a,b)=>(b._ts||0)-(a._ts||0)).map(p=>`<option value="${esc(p.programNo)}">${esc(p.programNo)} — ${esc(fmtDate(p.date))} (${esc(p._src)})</option>`).join("")}</select></div>`:`<div><label class="lbl">${internalType==="issue"?"Issued To (Dept./Party)":"Received From (Dept./Party)"}</label><input class="inp" id="grnInternalParty" placeholder="Optional"></div>`}
-      ${mode==="purchase"?`<div><label class="lbl">Bill / Invoice No</label><input class="inp" id="grnBillNo" placeholder="Optional"></div><div><label class="lbl">Vehicle No</label><input class="inp" id="grnVehicleNo" placeholder="Optional"></div>`:""}
+      ${mode==="purchase"?`<div><label class="lbl">Bill / Invoice No</label><input class="inp" id="grnBillNo" placeholder="Optional"></div><div><label class="lbl">Vehicle No</label><input class="inp" id="grnVehicleNo" placeholder="Optional"></div><div><label class="lbl">PO / Indent Ref</label><input class="inp" id="grnPoRef" placeholder="Optional"></div>`:""}
       <div><label class="lbl">Remark</label><input class="inp" id="grnRemark" placeholder="Optional"></div>
     </div>
     <div style="margin-top:14px;padding-top:14px;border-top:1px solid #e0e0e0"><b style="font-size:13px;color:#1a237e">📋 Items</b>
@@ -2656,7 +2907,7 @@ function renderStoreTab(){
     </div>
     <div style="display:flex;gap:10px;margin-top:16px">${!isRO()?`<button class="btn btn-primary" onclick="App.saveGrn()">💾 ${mode==="purchase"?"Save GRN":mode==="return"?"Save Return":internalType==="issue"?"Save Internal Issue":"Save Internal Receive"}</button>`:""}${temp.grnItems.length?`<button class="btn btn-secondary" onclick="App.clearGrnForm()">🗑️ Clear</button>`:""}</div>
   </div></div>
-  <div class="card"><div class="card-title" style="display:flex;justify-content:space-between;align-items:center;flex-wrap:wrap;gap:8px"><span>📋 GRN / Return History</span><div style="display:flex;gap:6px;align-items:center"><input type="date" class="inp" title="Date From" value="${esc(temp.grnFrom||"")}" style="margin-bottom:0;width:140px" onchange="App.setGrnFilter('grnFrom',this.value)"><input type="date" class="inp" title="Date To" value="${esc(temp.grnTo||"")}" style="margin-bottom:0;width:140px" onchange="App.setGrnFilter('grnTo',this.value)"><input class="inp" id="grnSearchInput" placeholder="🔍 GRN no / item / bill..." value="${esc(temp.grnSearch||"")}" style="margin-bottom:0;width:170px" oninput="App.onGrnSearch(this.value)">${(temp.grnFrom||temp.grnTo||temp.grnSearch||temp.grnPartyFilter)?`<button class="btn btn-sm btn-secondary" onclick="App.clearGrnFilters()">Clear</button>`:""}${reportBtns("grn")}<span style="font-size:12px;color:#fff;font-weight:400">Party:</span><select class="inp" style="margin-bottom:0;width:200px" onchange="App.filterGrnByParty(this.value)"><option value="">All Suppliers</option>${suppliers.map(s=>`<option value="${esc(s)}" ${partyFilter===s?"selected":""}>${esc(s)}</option>`).join("")}</select></div></div><div class="card-body" style="overflow-x:auto"><div style="max-height:600px;overflow-y:auto;border:1px solid #e0e0e0;border-radius:6px"><table class="tbl" style="margin:0"><thead><tr style="background:#1a237e;color:#fff;position:sticky;top:0;z-index:10"><th>Type</th><th>No.</th><th>Date</th><th>Supplier/Program</th><th>Items</th><th>By</th><th>Actions</th></tr></thead><tbody>${historyRows}</tbody></table></div>${grnTotal>300?`<div style="font-size:11px;color:#888;margin-top:6px">Sirf latest 300 entries dikhayi ja rahi hain (total ${grnTotal}). Poori list Excel/PDF me aayegi.</div>`:""}</div></div>`;
+  <div class="card"><div class="card-title" style="display:flex;justify-content:space-between;align-items:center;flex-wrap:wrap;gap:8px"><span>📋 GRN / Return History</span><div style="display:flex;gap:6px;align-items:center"><input type="date" class="inp" title="Date From" value="${esc(temp.grnFrom||"")}" style="margin-bottom:0;width:140px" onchange="App.setGrnFilter('grnFrom',this.value)"><input type="date" class="inp" title="Date To" value="${esc(temp.grnTo||"")}" style="margin-bottom:0;width:140px" onchange="App.setGrnFilter('grnTo',this.value)"><input class="inp" id="grnSearchInput" placeholder="🔍 GRN no / item / bill..." value="${esc(temp.grnSearch||"")}" style="margin-bottom:0;width:170px" oninput="App.onGrnSearch(this.value)">${(temp.grnFrom||temp.grnTo||temp.grnSearch||temp.grnPartyFilter)?`<button class="btn btn-sm btn-secondary" onclick="App.clearGrnFilters()">Clear</button>`:""}${reportBtns("grn")}<button class="btn" style="background:#6a1b9a;color:#fff" onclick="App.openPurchaseReport()">💰 Purchase Report</button><span style="font-size:12px;color:#fff;font-weight:400">Party:</span><select class="inp" style="margin-bottom:0;width:200px" onchange="App.filterGrnByParty(this.value)"><option value="">All Suppliers</option>${suppliers.map(s=>`<option value="${esc(s)}" ${partyFilter===s?"selected":""}>${esc(s)}</option>`).join("")}</select></div></div><div class="card-body" style="overflow-x:auto"><div style="max-height:600px;overflow-y:auto;border:1px solid #e0e0e0;border-radius:6px"><table class="tbl" style="margin:0"><thead><tr style="background:#1a237e;color:#fff;position:sticky;top:0;z-index:10"><th>Type</th><th>No.</th><th>Date</th><th>Supplier/Program</th><th>Items</th><th>By</th><th>Actions</th></tr></thead><tbody>${historyRows}</tbody></table></div>${grnTotal>300?`<div style="font-size:11px;color:#888;margin-top:6px">Sirf latest 300 entries dikhayi ja rahi hain (total ${grnTotal}). Poori list Excel/PDF me aayegi.</div>`:""}</div></div>`;
 }
 const StoreApp={
   setGrnMode(m){temp.grnMode=m;temp.grnItems=[];renderTabContent();},
@@ -2687,7 +2938,7 @@ const StoreApp={
       entry={id:uid(),kind,grnNo:challanNo,challanNo,date,remark,items:temp.grnItems,party:document.getElementById("grnInternalParty").value,savedAt:nowStr(),savedBy:state.currentUser.name,_ts:Date.now()};
     }else{
       entry={id:uid(),kind:mode,grnNo:mode==="purchase"?genGrnNo():genReturnNo(),date,remark,items:temp.grnItems,savedAt:nowStr(),savedBy:state.currentUser.name,_ts:Date.now()};
-      if(mode==="purchase"){entry.supplier=document.getElementById("grnSupplier").value;entry.billNo=((document.getElementById("grnBillNo")||{}).value||"").trim();entry.vehicleNo=((document.getElementById("grnVehicleNo")||{}).value||"").trim();}
+      if(mode==="purchase"){entry.supplier=document.getElementById("grnSupplier").value;entry.billNo=((document.getElementById("grnBillNo")||{}).value||"").trim();entry.vehicleNo=((document.getElementById("grnVehicleNo")||{}).value||"").trim();entry.poRef=((document.getElementById("grnPoRef")||{}).value||"").trim();}
       else{entry.programNo=document.getElementById("grnProgramNo").value;}
     }
     if(state.grns.some(g=>g.kind===entry.kind&&String(g.grnNo).trim().toLowerCase()===String(entry.grnNo).trim().toLowerCase())){
@@ -4375,6 +4626,7 @@ const RecycleBinApp={
     const sk=stateKeyMap[entry.module];
     if(!sk){alert("Unknown module: "+entry.module);return;}
     if(state[sk].some(x=>x.id===entry.item.id))entry.item={...entry.item,id:uid()};
+    if((entry.module==="production_plans"||entry.module==="mt_production_plans")&&entry.item.status==="approved"){entry.item={...entry.item,status:"pending"};delete entry.item.approvedAt;delete entry.item.approvedBy;setTimeout(()=>alert("ℹ️ Ye program PENDING me restore hua hai (stock abhi nahi kata). Stock katne ke liye ise dobara Approve karo."),100);}
     state[sk].push(entry.item);
     persist(entry.module,state[sk]);
     if(entry.module==="grns"){
@@ -4469,8 +4721,21 @@ const AuthApp={
     saveEmailConfig(cfg);
     openMail("✅ Test Mail — Jimit Pet LLP","Ye ek test mail hai. Agar ye aapko mil gaya hai, matlab Email Auto-Send sahi se set ho gaya hai.");
   },
-  async login(){const u=document.getElementById("loginUser").value,p=document.getElementById("loginPass").value;const found=state.users.find(x=>x.username===u);const el=document.getElementById("loginErr");if(found&&found.passwordHash){const hash=await hashPassword(p,found.salt);if(hash===found.passwordHash){state.currentUser=found;afterLoginSetup(found);render();return;}}else if(found&&found.password&&found.password===p){state.currentUser=found;afterLoginSetup(found);render();return;}el.style.display="block";el.textContent="⚠️ Invalid username or password";},
-  logout(){try{localStorage.removeItem("jpl_owner_remember");}catch(e){}if(Cloud.role==="owner")Cloud.disconnect();state.currentUser=null;state.activeTab="";temp.tabHistory=[];temp.editPackingId=null;render();},
+  async login(){
+    const u=document.getElementById("loginUser").value,p=document.getElementById("loginPass").value,el=document.getElementById("loginErr");
+    const lk=_loginLockInfo();
+    if(lk.locked){el.style.display="block";el.textContent="🔒 Is device par login 1 ghante ke liye band hai. Lagbhag "+lk.mins+" minute baad dobara try karo.";return;}
+    const found=state.users.find(x=>x.username===u);let good=false;
+    if(found&&found.passwordHash){const hash=await hashPassword(p,found.salt);good=(hash===found.passwordHash);}
+    else if(found&&found.password&&found.password===p)good=true;
+    if(good){_loginLockReset();_lastAct=Date.now();state.currentUser=found;auditEvent("Login","Login ho gaya",found);if(found.role==="admin"){try{autoEanAll();}catch(e){}}afterLoginSetup(found);render();return;}
+    const n=_loginFailAdd();
+    auditEvent("Login FAIL","Galat username/password: '"+u+"' (attempt "+n+"/3)",{name:u||"-",role:"-"});
+    if(n>=3)auditEvent("Login Lock","3 galat attempt — is device par 1 ghante ke liye login band",{name:u||"-",role:"-"});
+    el.style.display="block";
+    el.textContent=n>=3?"🔒 3 baar galat password. Is device par login 1 ghante ke liye band ho gaya.":"⚠️ Invalid username or password ("+n+"/3 attempts)";
+  },
+  logout(){if(state.currentUser&&!window._autoLo)auditEvent("Logout","Manual logout");window._autoLo=false;try{localStorage.removeItem("jpl_owner_remember");}catch(e){}if(Cloud.role==="owner")Cloud.disconnect();state.currentUser=null;state.activeTab="";temp.tabHistory=[];temp.editPackingId=null;render();},
   fySwitch(){if(confirm("Year badalne ke liye logout hoga aur year select screen aayegi. Continue?"))fyChangeYear();},
   closeTabMenu(){const m=document.getElementById("tabGroupMenu");if(m)m.remove();},
   toggleTabGroup(gk,el){
@@ -5315,7 +5580,7 @@ const MtWhyApp={
 // ══════════════════════════════════════════════════════════════════════════
 const CLOUD_URL="https://hawuifhzjwvdaieowpkj.supabase.co";
 const CLOUD_KEY="sb_publishable_hnfEhQ7HBPEFLjYoXpQiMw_JePcUjuB";
-const CLOUD_PROP_OF={users:"users",packings:"packings",categories:"categories",dispatches:"dispatches",pos:"purchaseOrders",mt_pos:"mtPos",mt_dispatches:"mtDispatches",batch_options:"batchOptions",mt_items:"mtItems",mt_packings:"mtPackings",item_master:"itemMaster",bom_master:"bomMaster",production_plans:"productionPlans",store_ledger:"storeLedger",grns:"grns",mt_bom_master:"mtBomMaster",mould_items:"mouldItems",mould_mats:"mouldMats",mould_colours:"mouldColours",mould_programs:"mouldPrograms",mould_products:"mouldProducts",mould_groups:"mouldGroups",app_settings:"appSettings",mt_production_plans:"mtProductionPlans",mt_divisions:"mtDivisions",store_items:"storeItems",store_qty_types:"storeQtyTypes",store_categories:"storeCategories",store_batches:"storeBatches",recycle_bin:"recycleBin",next_challan_override:"nextChallanOverride",party_emails:"partyEmails",auto_triggered_products:"autoTriggeredProducts",gate_passes:"gatePasses",parties:"parties",acc_bills:"accBills",acc_receipts:"accReceipts",invoices:"invoices",credit_notes:"creditNotes",debit_notes:"debitNotes",item_rates:"itemRates",company:"company"};
+const CLOUD_PROP_OF={users:"users",packings:"packings",categories:"categories",dispatches:"dispatches",pos:"purchaseOrders",mt_pos:"mtPos",mt_dispatches:"mtDispatches",batch_options:"batchOptions",mt_items:"mtItems",mt_packings:"mtPackings",item_master:"itemMaster",bom_master:"bomMaster",production_plans:"productionPlans",store_ledger:"storeLedger",grns:"grns",mt_bom_master:"mtBomMaster",mould_items:"mouldItems",mould_mats:"mouldMats",mould_colours:"mouldColours",mould_programs:"mouldPrograms",mould_products:"mouldProducts",mould_groups:"mouldGroups",app_settings:"appSettings",mt_production_plans:"mtProductionPlans",mt_divisions:"mtDivisions",store_items:"storeItems",store_qty_types:"storeQtyTypes",store_categories:"storeCategories",audit_log:"auditLog",store_batches:"storeBatches",recycle_bin:"recycleBin",next_challan_override:"nextChallanOverride",party_emails:"partyEmails",auto_triggered_products:"autoTriggeredProducts",gate_passes:"gatePasses",parties:"parties",acc_bills:"accBills",acc_receipts:"accReceipts",invoices:"invoices",credit_notes:"creditNotes",debit_notes:"debitNotes",item_rates:"itemRates",company:"company"};
 function cloudStable(v){
   if(v===undefined||v===null)return "null";
   if(typeof v!=="object")return JSON.stringify(v);
@@ -6146,17 +6411,20 @@ function msRows(){
   const q=(temp.msSearch||"").toLowerCase();
   let rows=getAllStoreItemNames().filter(n=>!q||n.toLowerCase().includes(q)).map(n=>{const stock=getStoreStock(n),min=getMinStock(n);return{name:n,stock,min,custom:(state.storeItems||[]).some(i=>i.name===n&&Number(i.minStock)>0),short:Math.max(0,Math.round((min-stock)*100)/100),supplier:getItemSupplier(n)};});
   if(temp.msOnlyLow)rows=rows.filter(r=>r.stock<r.min);
+  if(temp.msNoMin)rows=rows.filter(r=>!r.custom);
   return rows.sort((a,b)=>(b.stock<b.min)-(a.stock<a.min)||a.name.localeCompare(b.name));
 }
 function renderMinStockTab(){
   const rows=msRows();
   const lowCount=getAllStoreItemNames().filter(n=>getStoreStock(n)<getMinStock(n)).length;
+  const noMinCount=getAllStoreItemNames().filter(n=>!(state.storeItems||[]).some(i=>i.name===n&&Number(i.minStock)>0)).length;
   const body=rows.map(r=>{const low=r.stock<r.min;return`<tr style="${low?"background:#fff3e0":""}"><td><b>${esc(r.name)}</b></td><td style="text-align:right;font-weight:700;color:${r.stock<=0?"#c62828":low?"#e65100":"#2e7d32"}">${esc(r.stock)}</td><td style="text-align:right"><input class="inp" type="number" min="0" step="1" value="${r.custom?esc(r.min):""}" placeholder="${esc(r.min)}" style="width:100px;margin-bottom:0;text-align:right" onchange="App.setMinStock(decodeURIComponent('${encodeURIComponent(r.name)}'),this.value)" ${isRO()?"disabled":""}></td><td style="text-align:right;font-weight:800;color:#c62828">${low?esc(r.short):"—"}</td><td style="font-size:11px">${esc(r.supplier)||"—"}</td><td>${low?`<span class="badge" style="background:#e65100">MANGWANA</span>`:`<span style="color:#2e7d32;font-weight:700">✅ OK</span>`}</td></tr>`;}).join("")||`<tr><td colspan="6" style="text-align:center;color:#999;padding:20px">Koi item nahi mila</td></tr>`;
   return`<div class="card"><div class="card-title">🛒 Min Stock & Purchase List</div><div class="card-body">
-    <div style="background:#e3f2fd;border:1px solid #90caf9;border-radius:8px;padding:10px 14px;font-size:12px;color:#0d47a1;margin-bottom:14px">ℹ️ Har accessory ka apna <b>minimum stock</b> yahan set karo (khaali chhodoge to 10 maana jaayega). Jo item minimum se neeche hoga wo <b>MANGWANA</b> dikhega, aur Purchase List me aayega. Yehi minimum Inventory Stock ke LOW/OUT me bhi lagega.</div>
+    <div style="background:#e3f2fd;border:1px solid #90caf9;border-radius:8px;padding:10px 14px;font-size:12px;color:#0d47a1;margin-bottom:14px">ℹ️ Har accessory ka apna <b>minimum stock</b> yahan set karo (khaali chhodoge to 10 maana jaayega). Jo item minimum se neeche hoga wo <b>MANGWANA</b> dikhega, aur Purchase List me aayega. Yehi minimum Inventory Stock ke LOW/OUT me bhi lagega. <b>Purchase List</b> me ab pending programs ki zaroorat bhi judti hai aur wo supplier-wise aati hai.</div>
     <div style="display:flex;gap:8px;flex-wrap:wrap;align-items:flex-end;margin-bottom:14px">
       <div><label class="lbl">Item Search</label><input class="inp" id="msSearchInput" value="${esc(temp.msSearch||"")}" placeholder="Item naam..." style="width:220px;margin-bottom:0" oninput="App.onMsSearch(this.value)"></div>
       <label style="font-size:13px;cursor:pointer;padding-bottom:8px"><input type="checkbox" ${temp.msOnlyLow?"checked":""} onchange="App.toggleMsOnlyLow(this.checked)"> Sirf kam stock wale (${lowCount})</label>
+      <label style="font-size:13px;cursor:pointer;padding-bottom:8px"><input type="checkbox" ${temp.msNoMin?"checked":""} onchange="App.toggleMsNoMin(this.checked)"> ⚠️ Sirf jinka minimum set nahi (${noMinCount}) — default 10 maana ja raha</label>
       <button class="btn" style="background:#37474f;color:#fff" onclick="App.printPurchaseList()">🖨️ Purchase List Print</button>
       ${reportBtns("ms",true)}
     </div>
@@ -6228,7 +6496,6 @@ function renderCanMakeTab(){
     <div style="font-size:11px;color:#777;margin-top:8px">Kisi item par click karke uski saari accessories dekho. Peeli line = wahi accessory limit laga rahi hai, laal line = stock khatam.</div>
   </div></div>`;
 }
-function purchaseListRows(){return msRows().filter(r=>r.stock<r.min);}
 
 // ── MT DELIVERY REPORT ──
 function mtReportHtml(){
@@ -7946,19 +8213,88 @@ const StoreV2App={
     }else if(kind==="grn"){
       title="Jimit Pet LLP - GRN / Return / Internal History";fname="grn_history";
       const KL={purchase:"GRN",return:"Return",internal_issue:"Internal Issue",internal_receive:"Internal Receive"};
-      headers=["Date","Type","No.","Supplier/Program/Party","Bill No","Vehicle No","Item","Qty","Rate","Location","By","Remark"];
-      grnHistoryList().forEach(g=>{const ref=g.kind==="purchase"?(g.supplier||""):g.kind==="return"?(g.programNo||""):((g.challanNo||"")+(g.party?" ("+g.party+")":""));(g.items||[]).forEach(i=>rows.push([g.date||"",KL[g.kind]||g.kind,g.grnNo||"",ref,g.billNo||"",g.vehicleNo||"",i.name,Number(i.qty)||0,i.rate?Number(i.rate):"",i.location||"",g.savedBy||"",g.remark||""]));});
+      headers=["Date","Type","No.","Supplier/Program/Party","Bill No","Vehicle No","PO Ref","Item","Qty","Rate","Location","By","Remark"];
+      grnHistoryList().forEach(g=>{const ref=g.kind==="purchase"?(g.supplier||""):g.kind==="return"?(g.programNo||""):((g.challanNo||"")+(g.party?" ("+g.party+")":""));(g.items||[]).forEach(i=>rows.push([g.date||"",KL[g.kind]||g.kind,g.grnNo||"",ref,g.billNo||"",g.vehicleNo||"",g.poRef||"",i.name,Number(i.qty)||0,i.rate?Number(i.rate):"",i.location||"",g.savedBy||"",g.remark||""]));});
     }else if(kind==="ms"){
-      title="Jimit Pet LLP - Purchase List (Min Stock se kam)";fname="purchase_list";
-      headers=["Accessory","Current Stock","Minimum","Kitna Kam Hai","Last Supplier"];
-      rows=msRows().filter(r=>r.stock<r.min).map(r=>[r.name,r.stock,r.min,r.short,r.supplier||""]);
-      if(!rows.length){alert("Abhi koi item minimum se neeche nahi hai");return;}
+      title="Jimit Pet LLP - Purchase List (Supplier-wise)";fname="purchase_list";
+      headers=["Supplier","Accessory","Current Stock","Minimum","Pending Programs ki Zaroorat","Order Qty"];
+      rows=purchaseListRows().map(r=>[r.supplier||"(Supplier nahi)",r.name,r.stock,r.min,r.pending,r.order]);
+      sub+=" | Order Qty = Minimum + pending programs ki zaroorat - current stock";
+      if(!rows.length){alert("✅ Abhi kuch mangwane ki zaroorat nahi hai");return;}
+    }else if(kind==="aud"){
+      title="Jimit Pet LLP - Audit Log";fname="audit_log";
+      headers=["Time","User","Role","Device","Tab","Action","Ref","Detail"];
+      rows=auditFiltered().map(e=>[e.at||"",e.user,e.role,e.dev||"",e.tab||"",e.act,e.arg||"",e.det||""]);
+    }else if(kind==="pur_sup"||kind==="pur_item"){
+      const d=purchaseReportData(temp.prFrom||"",temp.prTo||"");
+      sub+=" | "+(temp.prFrom||"shuru")+" se "+(temp.prTo||"aaj tak");
+      if(kind==="pur_sup"){title="Jimit Pet LLP - Purchase Report (Supplier-wise)";fname="purchase_supplier_wise";headers=["Supplier","GRN","Total Qty","Amount (Rs)","Bina rate wali lines"];rows=d.sup.map(x=>[x.name,x.grns.size,x.qty,Math.round(x.amt*100)/100,x.noRate]);}
+      else{title="Jimit Pet LLP - Purchase Report (Item-wise)";fname="purchase_item_wise";headers=["Item","Total Qty","Avg Rate","Amount (Rs)"];rows=d.item.map(x=>[x.name,x.qty,x.rq?Math.round(x.amt/x.rq*100)/100:"",Math.round(x.amt*100)/100]);}
     }
     if(!rows.length){alert("Export ke liye koi data nahi hai");return;}
     reportOutRun(fmt,title,headers,rows,fname,sub);
   }
 };
 Object.assign(App,StoreV2App);
+// ══ v6: audit / scan / purchase / reports ══
+const StoreV3App={
+  setAud(k,v){temp[k]=v;renderTabContent();},
+  onAudSearch(v){temp.audQ=v;clearTimeout(temp._audT);temp._audT=setTimeout(()=>{renderTabContent();const el=document.getElementById("audSearchInput");if(el){el.focus();el.setSelectionRange(el.value.length,el.value.length);}},250);},
+  toggleMsNoMin(v){temp.msNoMin=v;renderTabContent();},
+  printPurchaseList(){App.reportOut("ms","print");},
+  exportPurchaseList(){App.reportOut("ms","csv");},
+  autoAssignEan(){
+    const miss=(state.itemMaster||[]).filter(i=>!i.ean).length;
+    if(!miss){alert("Sab items ko EAN pehle se mila hua hai ✅");return;}
+    if(!confirm(miss+" items ko auto EAN (size-wise ek ek unique number) dena hai?"))return;
+    autoEanAll();_refreshModal();showSyncPill("ok","✅ "+miss+" items ko EAN mil gaya",3000);
+  },
+  openPurchaseReport(){
+    const old=document.getElementById("prModal");if(old)old.remove();
+    const d=document.createElement("div");d.id="prModal";d.style.cssText="position:fixed;inset:0;background:rgba(0,0,0,.5);z-index:9999;display:flex;align-items:center;justify-content:center;padding:14px";
+    d.onclick=e=>{if(e.target===d)App.closePurchaseReport();};
+    d.innerHTML='<div style="background:#fff;border-radius:12px;max-width:900px;width:100%;max-height:90vh;overflow:auto;padding:18px"><div style="display:flex;justify-content:space-between;align-items:center;margin-bottom:10px"><b style="font-size:17px;color:#1a237e">💰 Purchase Report</b><button class="btn btn-secondary" onclick="App.closePurchaseReport()">✕ Close</button></div><div id="prBody">'+_prInner()+'</div></div>';
+    document.body.appendChild(d);
+  },
+  closePurchaseReport(){const d=document.getElementById("prModal");if(d)d.remove();},
+  setPr(k,v){temp[k]=v;const b=document.getElementById("prBody");if(b)b.innerHTML=_prInner();},
+  periodReport(kind){
+    if(!isAdminU()){alert("🔒 Ye report sirf admin ke liye hai.");return;}
+    if(typeof XLSX==="undefined"){alert("Excel library load nahi hui — internet check karke dobara try karo.");return;}
+    let from,to,label;
+    if(kind==="month"){const m=temp.prMonth||todayStr().slice(0,7);from=m+"-01";to=m+"-31";label="Month Report "+m;}
+    else{let fyl="";try{fyl=yeCompute().src;}catch(e){}from="0000-01-01";to="9999-12-31";label="Year Report"+(fyl?" FY "+fyl:"");}
+    const sheets=buildPeriodReport(from,to,label),wb=XLSX.utils.book_new();
+    sheets.forEach(sh=>{const ws=XLSX.utils.aoa_to_sheet(sh.r);ws["!cols"]=(sh.r[sh.r.length>3?3:0]||[]).map((_,i)=>({wch:Math.min(40,Math.max(10,...sh.r.slice(0,120).map(r=>String(r[i]==null?"":r[i]).length))+2)}));XLSX.utils.book_append_sheet(wb,ws,sh.n.slice(0,31));});
+    XLSX.writeFile(wb,"Jimit_"+label.replace(/\s+/g,"_")+".xlsx");
+    auditEvent("Report Download",label);
+  },
+  openScan(){
+    const old=document.getElementById("scanModal");if(old)old.remove();
+    const d=document.createElement("div");d.id="scanModal";d.style.cssText="position:fixed;inset:0;background:rgba(0,0,0,.5);z-index:9999;display:flex;align-items:center;justify-content:center;padding:14px";
+    d.onclick=e=>{if(e.target===d)App.closeScan();};
+    d.innerHTML='<div style="background:#fff;border-radius:12px;max-width:520px;width:100%;max-height:92vh;overflow:auto;padding:18px"><div style="display:flex;justify-content:space-between;align-items:center;margin-bottom:8px"><b style="font-size:17px;color:#1a237e">📷 Scan / Carton Lookup</b><button class="btn btn-secondary" onclick="App.closeScan()">✕</button></div><div style="font-size:12px;color:#666;margin-bottom:8px">Barcode scanner se scan karo (yahan cursor rakho), ya Carton No / EAN likho, ya camera se scan karo.</div><textarea id="scanInput" class="inp" rows="2" placeholder="Scan karo ya carton no likho..." oninput="App.onScanInput()" style="margin-bottom:8px"></textarea><div style="display:flex;gap:8px;margin-bottom:6px"><button class="btn btn-primary" onclick="App.scanGo()">🔍 Dhundo</button><button class="btn" style="background:#00838f;color:#fff" onclick="App.scanCamera()">📷 Camera se Scan</button></div><video id="scanVideo" playsinline muted style="display:none;width:100%;border-radius:8px;margin-top:6px"></video><div id="scanOut"></div></div>';
+    document.body.appendChild(d);setTimeout(()=>{const i=document.getElementById("scanInput");if(i)i.focus();},50);
+  },
+  closeScan(){_scanStop();const d=document.getElementById("scanModal");if(d)d.remove();},
+  onScanInput(){clearTimeout(temp._scT);temp._scT=setTimeout(()=>App.scanGo(),450);},
+  scanGo(){const i=document.getElementById("scanInput"),o=document.getElementById("scanOut");if(i&&o)o.innerHTML=scanLookup(i.value);},
+  async scanCamera(){
+    if(!("BarcodeDetector" in window)){alert("Is device/browser me camera scan support nahi hai. Phone ka camera ya USB barcode scanner use karo.");return;}
+    try{
+      _scanStop();const v=document.getElementById("scanVideo");
+      _scanStream=await navigator.mediaDevices.getUserMedia({video:{facingMode:"environment"}});
+      v.srcObject=_scanStream;v.style.display="block";await v.play();
+      const det=new BarcodeDetector({formats:["qr_code","ean_13"]});
+      _scanTimer=setInterval(async()=>{try{const r=await det.detect(v);if(r&&r.length){const i=document.getElementById("scanInput");if(i)i.value=r[0].rawValue;_scanStop();v.style.display="none";App.scanGo();}}catch(e){}},350);
+    }catch(e){alert("Camera nahi khul paya: "+(e&&e.message||e));}
+  }
+};
+Object.assign(App,StoreV3App);
+// Audit: har App action ko wrap karo (sirf wahi log hota hai jisme data save hua)
+Object.keys(App).forEach(k=>{if(typeof App[k]==="function"&&k[0]!=="_"&&!/^render/.test(k))App[k]=_auditWrap(k,App[k]);});
+_idleInit();
+
 
 
 
@@ -7982,7 +8318,7 @@ window.App=App; window.AC=AC;
   try{sessionStorage.setItem("jpl_fy",FY.label);}catch(e){}
   const map={users:"users",packings:"packings",categories:"categories",dispatches:"dispatches",
     purchaseOrders:"pos",mtPos:"mt_pos",mtDispatches:"mt_dispatches",batchOptions:"batch_options",
-    mtItems:"mt_items",mtPackings:"mt_packings",itemMaster:"item_master",bomMaster:"bom_master",productionPlans:"production_plans",storeLedger:"store_ledger",grns:"grns",mtBomMaster:"mt_bom_master",mouldItems:"mould_items",mouldMats:"mould_mats",mouldColours:"mould_colours",mouldPrograms:"mould_programs",mouldProducts:"mould_products",mouldGroups:"mould_groups",appSettings:"app_settings",mtProductionPlans:"mt_production_plans",mtDivisions:"mt_divisions",storeItems:"store_items",storeQtyTypes:"store_qty_types",storeCategories:"store_categories",storeBatches:"store_batches",recycleBin:"recycle_bin",nextChallanOverride:"next_challan_override",partyEmails:"party_emails",autoTriggeredProducts:"auto_triggered_products",lastAutoBackupDate:"last_auto_backup_date",lastAutoEmailDate:"last_auto_email_date",lastMtAlertEmailDate:"last_mt_alert_email_date",lastPendingCategoryEmailDate:"last_pending_category_email_date",lastProductionReminderDate:"last_production_reminder_date",gatePasses:"gate_passes",parties:"parties",accBills:"acc_bills",accReceipts:"acc_receipts",invoices:"invoices",creditNotes:"credit_notes",debitNotes:"debit_notes",itemRates:"item_rates",company:"company"};
+    mtItems:"mt_items",mtPackings:"mt_packings",itemMaster:"item_master",bomMaster:"bom_master",productionPlans:"production_plans",storeLedger:"store_ledger",grns:"grns",mtBomMaster:"mt_bom_master",mouldItems:"mould_items",mouldMats:"mould_mats",mouldColours:"mould_colours",mouldPrograms:"mould_programs",mouldProducts:"mould_products",mouldGroups:"mould_groups",appSettings:"app_settings",mtProductionPlans:"mt_production_plans",mtDivisions:"mt_divisions",storeItems:"store_items",storeQtyTypes:"store_qty_types",storeCategories:"store_categories",auditLog:"audit_log",storeBatches:"store_batches",recycleBin:"recycle_bin",nextChallanOverride:"next_challan_override",partyEmails:"party_emails",autoTriggeredProducts:"auto_triggered_products",lastAutoBackupDate:"last_auto_backup_date",lastAutoEmailDate:"last_auto_email_date",lastMtAlertEmailDate:"last_mt_alert_email_date",lastPendingCategoryEmailDate:"last_pending_category_email_date",lastProductionReminderDate:"last_production_reminder_date",gatePasses:"gate_passes",parties:"parties",accBills:"acc_bills",accReceipts:"acc_receipts",invoices:"invoices",creditNotes:"credit_notes",debitNotes:"debit_notes",itemRates:"item_rates",company:"company"};
   for(const [sk,dbk] of Object.entries(map)){ const d=await DB.get(dbk); if(d)state[sk]=d; }
   await migratePlaintextPasswords();
   backfillDispatchBatches();
@@ -8051,6 +8387,11 @@ window.App=App; window.AC=AC;
     if(navigator.storage&&navigator.storage.persist){navigator.storage.persist().catch(function(){});}
   });
 })();
+</script>
+<script>/* qrcode-generator (MIT) */
+// Copyright (c) 2009 Kazuhiko Arase
+// Licensed under the MIT license:
+var qrcode=function(){var t=function(t,r){var e=t,n=g[r],o=null,i=0,a=null,u=[],f={},c=function(t,r){o=function(t){for(var r=new Array(t),e=0;e<t;e+=1){r[e]=new Array(t);for(var n=0;n<t;n+=1)r[e][n]=null}return r}(i=4*e+17),l(0,0),l(i-7,0),l(0,i-7),s(),h(),d(t,r),e>=7&&v(t),null==a&&(a=p(e,n,u)),w(a,r)},l=function(t,r){for(var e=-1;e<=7;e+=1)if(!(t+e<=-1||i<=t+e))for(var n=-1;n<=7;n+=1)r+n<=-1||i<=r+n||(o[t+e][r+n]=0<=e&&e<=6&&(0==n||6==n)||0<=n&&n<=6&&(0==e||6==e)||2<=e&&e<=4&&2<=n&&n<=4)},h=function(){for(var t=8;t<i-8;t+=1)null==o[t][6]&&(o[t][6]=t%2==0);for(var r=8;r<i-8;r+=1)null==o[6][r]&&(o[6][r]=r%2==0)},s=function(){for(var t=B.getPatternPosition(e),r=0;r<t.length;r+=1)for(var n=0;n<t.length;n+=1){var i=t[r],a=t[n];if(null==o[i][a])for(var u=-2;u<=2;u+=1)for(var f=-2;f<=2;f+=1)o[i+u][a+f]=-2==u||2==u||-2==f||2==f||0==u&&0==f}},v=function(t){for(var r=B.getBCHTypeNumber(e),n=0;n<18;n+=1){var a=!t&&1==(r>>n&1);o[Math.floor(n/3)][n%3+i-8-3]=a}for(n=0;n<18;n+=1){a=!t&&1==(r>>n&1);o[n%3+i-8-3][Math.floor(n/3)]=a}},d=function(t,r){for(var e=n<<3|r,a=B.getBCHTypeInfo(e),u=0;u<15;u+=1){var f=!t&&1==(a>>u&1);u<6?o[u][8]=f:u<8?o[u+1][8]=f:o[i-15+u][8]=f}for(u=0;u<15;u+=1){f=!t&&1==(a>>u&1);u<8?o[8][i-u-1]=f:u<9?o[8][15-u-1+1]=f:o[8][15-u-1]=f}o[i-8][8]=!t},w=function(t,r){for(var e=-1,n=i-1,a=7,u=0,f=B.getMaskFunction(r),c=i-1;c>0;c-=2)for(6==c&&(c-=1);;){for(var g=0;g<2;g+=1)if(null==o[n][c-g]){var l=!1;u<t.length&&(l=1==(t[u]>>>a&1)),f(n,c-g)&&(l=!l),o[n][c-g]=l,-1==(a-=1)&&(u+=1,a=7)}if((n+=e)<0||i<=n){n-=e,e=-e;break}}},p=function(t,r,e){for(var n=A.getRSBlocks(t,r),o=b(),i=0;i<e.length;i+=1){var a=e[i];o.put(a.getMode(),4),o.put(a.getLength(),B.getLengthInBits(a.getMode(),t)),a.write(o)}var u=0;for(i=0;i<n.length;i+=1)u+=n[i].dataCount;if(o.getLengthInBits()>8*u)throw"code length overflow. ("+o.getLengthInBits()+">"+8*u+")";for(o.getLengthInBits()+4<=8*u&&o.put(0,4);o.getLengthInBits()%8!=0;)o.putBit(!1);for(;!(o.getLengthInBits()>=8*u||(o.put(236,8),o.getLengthInBits()>=8*u));)o.put(17,8);return function(t,r){for(var e=0,n=0,o=0,i=new Array(r.length),a=new Array(r.length),u=0;u<r.length;u+=1){var f=r[u].dataCount,c=r[u].totalCount-f;n=Math.max(n,f),o=Math.max(o,c),i[u]=new Array(f);for(var g=0;g<i[u].length;g+=1)i[u][g]=255&t.getBuffer()[g+e];e+=f;var l=B.getErrorCorrectPolynomial(c),h=k(i[u],l.getLength()-1).mod(l);for(a[u]=new Array(l.getLength()-1),g=0;g<a[u].length;g+=1){var s=g+h.getLength()-a[u].length;a[u][g]=s>=0?h.getAt(s):0}}var v=0;for(g=0;g<r.length;g+=1)v+=r[g].totalCount;var d=new Array(v),w=0;for(g=0;g<n;g+=1)for(u=0;u<r.length;u+=1)g<i[u].length&&(d[w]=i[u][g],w+=1);for(g=0;g<o;g+=1)for(u=0;u<r.length;u+=1)g<a[u].length&&(d[w]=a[u][g],w+=1);return d}(o,n)};f.addData=function(t,r){var e=null;switch(r=r||"Byte"){case"Numeric":e=M(t);break;case"Alphanumeric":e=x(t);break;case"Byte":e=m(t);break;case"Kanji":e=L(t);break;default:throw"mode:"+r}u.push(e),a=null},f.isDark=function(t,r){if(t<0||i<=t||r<0||i<=r)throw t+","+r;return o[t][r]},f.getModuleCount=function(){return i},f.make=function(){if(e<1){for(var t=1;t<40;t++){for(var r=A.getRSBlocks(t,n),o=b(),i=0;i<u.length;i++){var a=u[i];o.put(a.getMode(),4),o.put(a.getLength(),B.getLengthInBits(a.getMode(),t)),a.write(o)}var g=0;for(i=0;i<r.length;i++)g+=r[i].dataCount;if(o.getLengthInBits()<=8*g)break}e=t}c(!1,function(){for(var t=0,r=0,e=0;e<8;e+=1){c(!0,e);var n=B.getLostPoint(f);(0==e||t>n)&&(t=n,r=e)}return r}())},f.createTableTag=function(t,r){t=t||2;var e="";e+='<table style="',e+=" border-width: 0px; border-style: none;",e+=" border-collapse: collapse;",e+=" padding: 0px; margin: "+(r=void 0===r?4*t:r)+"px;",e+='">',e+="<tbody>";for(var n=0;n<f.getModuleCount();n+=1){e+="<tr>";for(var o=0;o<f.getModuleCount();o+=1)e+='<td style="',e+=" border-width: 0px; border-style: none;",e+=" border-collapse: collapse;",e+=" padding: 0px; margin: 0px;",e+=" width: "+t+"px;",e+=" height: "+t+"px;",e+=" background-color: ",e+=f.isDark(n,o)?"#000000":"#ffffff",e+=";",e+='"/>';e+="</tr>"}return e+="</tbody>",e+="</table>"},f.createSvgTag=function(t,r,e,n){var o={};"object"==typeof arguments[0]&&(t=(o=arguments[0]).cellSize,r=o.margin,e=o.alt,n=o.title),t=t||2,r=void 0===r?4*t:r,(e="string"==typeof e?{text:e}:e||{}).text=e.text||null,e.id=e.text?e.id||"qrcode-description":null,(n="string"==typeof n?{text:n}:n||{}).text=n.text||null,n.id=n.text?n.id||"qrcode-title":null;var i,a,u,c,g=f.getModuleCount()*t+2*r,l="";for(c="l"+t+",0 0,"+t+" -"+t+",0 0,-"+t+"z ",l+='<svg version="1.1" xmlns="http://www.w3.org/2000/svg"',l+=o.scalable?"":' width="'+g+'px" height="'+g+'px"',l+=' viewBox="0 0 '+g+" "+g+'" ',l+=' preserveAspectRatio="xMinYMin meet"',l+=n.text||e.text?' role="img" aria-labelledby="'+y([n.id,e.id].join(" ").trim())+'"':"",l+=">",l+=n.text?'<title id="'+y(n.id)+'">'+y(n.text)+"</title>":"",l+=e.text?'<description id="'+y(e.id)+'">'+y(e.text)+"</description>":"",l+='<rect width="100%" height="100%" fill="white" cx="0" cy="0"/>',l+='<path d="',a=0;a<f.getModuleCount();a+=1)for(u=a*t+r,i=0;i<f.getModuleCount();i+=1)f.isDark(a,i)&&(l+="M"+(i*t+r)+","+u+c);return l+='" stroke="transparent" fill="black"/>',l+="</svg>"},f.createDataURL=function(t,r){t=t||2,r=void 0===r?4*t:r;var e=f.getModuleCount()*t+2*r,n=r,o=e-r;return I(e,e,function(r,e){if(n<=r&&r<o&&n<=e&&e<o){var i=Math.floor((r-n)/t),a=Math.floor((e-n)/t);return f.isDark(a,i)?0:1}return 1})},f.createImgTag=function(t,r,e){t=t||2,r=void 0===r?4*t:r;var n=f.getModuleCount()*t+2*r,o="";return o+="<img",o+=' src="',o+=f.createDataURL(t,r),o+='"',o+=' width="',o+=n,o+='"',o+=' height="',o+=n,o+='"',e&&(o+=' alt="',o+=y(e),o+='"'),o+="/>"};var y=function(t){for(var r="",e=0;e<t.length;e+=1){var n=t.charAt(e);switch(n){case"<":r+="&lt;";break;case">":r+="&gt;";break;case"&":r+="&amp;";break;case'"':r+="&quot;";break;default:r+=n}}return r};return f.createASCII=function(t,r){if((t=t||1)<2)return function(t){t=void 0===t?2:t;var r,e,n,o,i,a=1*f.getModuleCount()+2*t,u=t,c=a-t,g={"██":"█","█ ":"▀"," █":"▄","  ":" "},l={"██":"▀","█ ":"▀"," █":" ","  ":" "},h="";for(r=0;r<a;r+=2){for(n=Math.floor((r-u)/1),o=Math.floor((r+1-u)/1),e=0;e<a;e+=1)i="█",u<=e&&e<c&&u<=r&&r<c&&f.isDark(n,Math.floor((e-u)/1))&&(i=" "),u<=e&&e<c&&u<=r+1&&r+1<c&&f.isDark(o,Math.floor((e-u)/1))?i+=" ":i+="█",h+=t<1&&r+1>=c?l[i]:g[i];h+="\n"}return a%2&&t>0?h.substring(0,h.length-a-1)+Array(a+1).join("▀"):h.substring(0,h.length-1)}(r);t-=1,r=void 0===r?2*t:r;var e,n,o,i,a=f.getModuleCount()*t+2*r,u=r,c=a-r,g=Array(t+1).join("██"),l=Array(t+1).join("  "),h="",s="";for(e=0;e<a;e+=1){for(o=Math.floor((e-u)/t),s="",n=0;n<a;n+=1)i=1,u<=n&&n<c&&u<=e&&e<c&&f.isDark(o,Math.floor((n-u)/t))&&(i=0),s+=i?g:l;for(o=0;o<t;o+=1)h+=s+"\n"}return h.substring(0,h.length-1)},f.renderTo2dContext=function(t,r){r=r||2;for(var e=f.getModuleCount(),n=0;n<e;n++)for(var o=0;o<e;o++)t.fillStyle=f.isDark(n,o)?"black":"white",t.fillRect(n*r,o*r,r,r)},f};t.stringToBytes=(t.stringToBytesFuncs={default:function(t){for(var r=[],e=0;e<t.length;e+=1){var n=t.charCodeAt(e);r.push(255&n)}return r}}).default,t.createStringToBytes=function(t,r){var e=function(){for(var e=S(t),n=function(){var t=e.read();if(-1==t)throw"eof";return t},o=0,i={};;){var a=e.read();if(-1==a)break;var u=n(),f=n()<<8|n();i[String.fromCharCode(a<<8|u)]=f,o+=1}if(o!=r)throw o+" != "+r;return i}(),n="?".charCodeAt(0);return function(t){for(var r=[],o=0;o<t.length;o+=1){var i=t.charCodeAt(o);if(i<128)r.push(i);else{var a=e[t.charAt(o)];"number"==typeof a?(255&a)==a?r.push(a):(r.push(a>>>8),r.push(255&a)):r.push(n)}}return r}};var r,e,n,o,i,a=1,u=2,f=4,c=8,g={L:1,M:0,Q:3,H:2},l=0,h=1,s=2,v=3,d=4,w=5,p=6,y=7,B=(r=[[],[6,18],[6,22],[6,26],[6,30],[6,34],[6,22,38],[6,24,42],[6,26,46],[6,28,50],[6,30,54],[6,32,58],[6,34,62],[6,26,46,66],[6,26,48,70],[6,26,50,74],[6,30,54,78],[6,30,56,82],[6,30,58,86],[6,34,62,90],[6,28,50,72,94],[6,26,50,74,98],[6,30,54,78,102],[6,28,54,80,106],[6,32,58,84,110],[6,30,58,86,114],[6,34,62,90,118],[6,26,50,74,98,122],[6,30,54,78,102,126],[6,26,52,78,104,130],[6,30,56,82,108,134],[6,34,60,86,112,138],[6,30,58,86,114,142],[6,34,62,90,118,146],[6,30,54,78,102,126,150],[6,24,50,76,102,128,154],[6,28,54,80,106,132,158],[6,32,58,84,110,136,162],[6,26,54,82,110,138,166],[6,30,58,86,114,142,170]],e=1335,n=7973,i=function(t){for(var r=0;0!=t;)r+=1,t>>>=1;return r},(o={}).getBCHTypeInfo=function(t){for(var r=t<<10;i(r)-i(e)>=0;)r^=e<<i(r)-i(e);return 21522^(t<<10|r)},o.getBCHTypeNumber=function(t){for(var r=t<<12;i(r)-i(n)>=0;)r^=n<<i(r)-i(n);return t<<12|r},o.getPatternPosition=function(t){return r[t-1]},o.getMaskFunction=function(t){switch(t){case l:return function(t,r){return(t+r)%2==0};case h:return function(t,r){return t%2==0};case s:return function(t,r){return r%3==0};case v:return function(t,r){return(t+r)%3==0};case d:return function(t,r){return(Math.floor(t/2)+Math.floor(r/3))%2==0};case w:return function(t,r){return t*r%2+t*r%3==0};case p:return function(t,r){return(t*r%2+t*r%3)%2==0};case y:return function(t,r){return(t*r%3+(t+r)%2)%2==0};default:throw"bad maskPattern:"+t}},o.getErrorCorrectPolynomial=function(t){for(var r=k([1],0),e=0;e<t;e+=1)r=r.multiply(k([1,C.gexp(e)],0));return r},o.getLengthInBits=function(t,r){if(1<=r&&r<10)switch(t){case a:return 10;case u:return 9;case f:case c:return 8;default:throw"mode:"+t}else if(r<27)switch(t){case a:return 12;case u:return 11;case f:return 16;case c:return 10;default:throw"mode:"+t}else{if(!(r<41))throw"type:"+r;switch(t){case a:return 14;case u:return 13;case f:return 16;case c:return 12;default:throw"mode:"+t}}},o.getLostPoint=function(t){for(var r=t.getModuleCount(),e=0,n=0;n<r;n+=1)for(var o=0;o<r;o+=1){for(var i=0,a=t.isDark(n,o),u=-1;u<=1;u+=1)if(!(n+u<0||r<=n+u))for(var f=-1;f<=1;f+=1)o+f<0||r<=o+f||0==u&&0==f||a==t.isDark(n+u,o+f)&&(i+=1);i>5&&(e+=3+i-5)}for(n=0;n<r-1;n+=1)for(o=0;o<r-1;o+=1){var c=0;t.isDark(n,o)&&(c+=1),t.isDark(n+1,o)&&(c+=1),t.isDark(n,o+1)&&(c+=1),t.isDark(n+1,o+1)&&(c+=1),0!=c&&4!=c||(e+=3)}for(n=0;n<r;n+=1)for(o=0;o<r-6;o+=1)t.isDark(n,o)&&!t.isDark(n,o+1)&&t.isDark(n,o+2)&&t.isDark(n,o+3)&&t.isDark(n,o+4)&&!t.isDark(n,o+5)&&t.isDark(n,o+6)&&(e+=40);for(o=0;o<r;o+=1)for(n=0;n<r-6;n+=1)t.isDark(n,o)&&!t.isDark(n+1,o)&&t.isDark(n+2,o)&&t.isDark(n+3,o)&&t.isDark(n+4,o)&&!t.isDark(n+5,o)&&t.isDark(n+6,o)&&(e+=40);var g=0;for(o=0;o<r;o+=1)for(n=0;n<r;n+=1)t.isDark(n,o)&&(g+=1);return e+=Math.abs(100*g/r/r-50)/5*10},o),C=function(){for(var t=new Array(256),r=new Array(256),e=0;e<8;e+=1)t[e]=1<<e;for(e=8;e<256;e+=1)t[e]=t[e-4]^t[e-5]^t[e-6]^t[e-8];for(e=0;e<255;e+=1)r[t[e]]=e;var n={glog:function(t){if(t<1)throw"glog("+t+")";return r[t]},gexp:function(r){for(;r<0;)r+=255;for(;r>=256;)r-=255;return t[r]}};return n}();function k(t,r){if(void 0===t.length)throw t.length+"/"+r;var e=function(){for(var e=0;e<t.length&&0==t[e];)e+=1;for(var n=new Array(t.length-e+r),o=0;o<t.length-e;o+=1)n[o]=t[o+e];return n}(),n={getAt:function(t){return e[t]},getLength:function(){return e.length},multiply:function(t){for(var r=new Array(n.getLength()+t.getLength()-1),e=0;e<n.getLength();e+=1)for(var o=0;o<t.getLength();o+=1)r[e+o]^=C.gexp(C.glog(n.getAt(e))+C.glog(t.getAt(o)));return k(r,0)},mod:function(t){if(n.getLength()-t.getLength()<0)return n;for(var r=C.glog(n.getAt(0))-C.glog(t.getAt(0)),e=new Array(n.getLength()),o=0;o<n.getLength();o+=1)e[o]=n.getAt(o);for(o=0;o<t.getLength();o+=1)e[o]^=C.gexp(C.glog(t.getAt(o))+r);return k(e,0).mod(t)}};return n}var A=function(){var t=[[1,26,19],[1,26,16],[1,26,13],[1,26,9],[1,44,34],[1,44,28],[1,44,22],[1,44,16],[1,70,55],[1,70,44],[2,35,17],[2,35,13],[1,100,80],[2,50,32],[2,50,24],[4,25,9],[1,134,108],[2,67,43],[2,33,15,2,34,16],[2,33,11,2,34,12],[2,86,68],[4,43,27],[4,43,19],[4,43,15],[2,98,78],[4,49,31],[2,32,14,4,33,15],[4,39,13,1,40,14],[2,121,97],[2,60,38,2,61,39],[4,40,18,2,41,19],[4,40,14,2,41,15],[2,146,116],[3,58,36,2,59,37],[4,36,16,4,37,17],[4,36,12,4,37,13],[2,86,68,2,87,69],[4,69,43,1,70,44],[6,43,19,2,44,20],[6,43,15,2,44,16],[4,101,81],[1,80,50,4,81,51],[4,50,22,4,51,23],[3,36,12,8,37,13],[2,116,92,2,117,93],[6,58,36,2,59,37],[4,46,20,6,47,21],[7,42,14,4,43,15],[4,133,107],[8,59,37,1,60,38],[8,44,20,4,45,21],[12,33,11,4,34,12],[3,145,115,1,146,116],[4,64,40,5,65,41],[11,36,16,5,37,17],[11,36,12,5,37,13],[5,109,87,1,110,88],[5,65,41,5,66,42],[5,54,24,7,55,25],[11,36,12,7,37,13],[5,122,98,1,123,99],[7,73,45,3,74,46],[15,43,19,2,44,20],[3,45,15,13,46,16],[1,135,107,5,136,108],[10,74,46,1,75,47],[1,50,22,15,51,23],[2,42,14,17,43,15],[5,150,120,1,151,121],[9,69,43,4,70,44],[17,50,22,1,51,23],[2,42,14,19,43,15],[3,141,113,4,142,114],[3,70,44,11,71,45],[17,47,21,4,48,22],[9,39,13,16,40,14],[3,135,107,5,136,108],[3,67,41,13,68,42],[15,54,24,5,55,25],[15,43,15,10,44,16],[4,144,116,4,145,117],[17,68,42],[17,50,22,6,51,23],[19,46,16,6,47,17],[2,139,111,7,140,112],[17,74,46],[7,54,24,16,55,25],[34,37,13],[4,151,121,5,152,122],[4,75,47,14,76,48],[11,54,24,14,55,25],[16,45,15,14,46,16],[6,147,117,4,148,118],[6,73,45,14,74,46],[11,54,24,16,55,25],[30,46,16,2,47,17],[8,132,106,4,133,107],[8,75,47,13,76,48],[7,54,24,22,55,25],[22,45,15,13,46,16],[10,142,114,2,143,115],[19,74,46,4,75,47],[28,50,22,6,51,23],[33,46,16,4,47,17],[8,152,122,4,153,123],[22,73,45,3,74,46],[8,53,23,26,54,24],[12,45,15,28,46,16],[3,147,117,10,148,118],[3,73,45,23,74,46],[4,54,24,31,55,25],[11,45,15,31,46,16],[7,146,116,7,147,117],[21,73,45,7,74,46],[1,53,23,37,54,24],[19,45,15,26,46,16],[5,145,115,10,146,116],[19,75,47,10,76,48],[15,54,24,25,55,25],[23,45,15,25,46,16],[13,145,115,3,146,116],[2,74,46,29,75,47],[42,54,24,1,55,25],[23,45,15,28,46,16],[17,145,115],[10,74,46,23,75,47],[10,54,24,35,55,25],[19,45,15,35,46,16],[17,145,115,1,146,116],[14,74,46,21,75,47],[29,54,24,19,55,25],[11,45,15,46,46,16],[13,145,115,6,146,116],[14,74,46,23,75,47],[44,54,24,7,55,25],[59,46,16,1,47,17],[12,151,121,7,152,122],[12,75,47,26,76,48],[39,54,24,14,55,25],[22,45,15,41,46,16],[6,151,121,14,152,122],[6,75,47,34,76,48],[46,54,24,10,55,25],[2,45,15,64,46,16],[17,152,122,4,153,123],[29,74,46,14,75,47],[49,54,24,10,55,25],[24,45,15,46,46,16],[4,152,122,18,153,123],[13,74,46,32,75,47],[48,54,24,14,55,25],[42,45,15,32,46,16],[20,147,117,4,148,118],[40,75,47,7,76,48],[43,54,24,22,55,25],[10,45,15,67,46,16],[19,148,118,6,149,119],[18,75,47,31,76,48],[34,54,24,34,55,25],[20,45,15,61,46,16]],r=function(t,r){var e={};return e.totalCount=t,e.dataCount=r,e},e={};return e.getRSBlocks=function(e,n){var o=function(r,e){switch(e){case g.L:return t[4*(r-1)+0];case g.M:return t[4*(r-1)+1];case g.Q:return t[4*(r-1)+2];case g.H:return t[4*(r-1)+3];default:return}}(e,n);if(void 0===o)throw"bad rs block @ typeNumber:"+e+"/errorCorrectionLevel:"+n;for(var i=o.length/3,a=[],u=0;u<i;u+=1)for(var f=o[3*u+0],c=o[3*u+1],l=o[3*u+2],h=0;h<f;h+=1)a.push(r(c,l));return a},e}(),b=function(){var t=[],r=0,e={getBuffer:function(){return t},getAt:function(r){var e=Math.floor(r/8);return 1==(t[e]>>>7-r%8&1)},put:function(t,r){for(var n=0;n<r;n+=1)e.putBit(1==(t>>>r-n-1&1))},getLengthInBits:function(){return r},putBit:function(e){var n=Math.floor(r/8);t.length<=n&&t.push(0),e&&(t[n]|=128>>>r%8),r+=1}};return e},M=function(t){var r=a,e=t,n={getMode:function(){return r},getLength:function(t){return e.length},write:function(t){for(var r=e,n=0;n+2<r.length;)t.put(o(r.substring(n,n+3)),10),n+=3;n<r.length&&(r.length-n==1?t.put(o(r.substring(n,n+1)),4):r.length-n==2&&t.put(o(r.substring(n,n+2)),7))}},o=function(t){for(var r=0,e=0;e<t.length;e+=1)r=10*r+i(t.charAt(e));return r},i=function(t){if("0"<=t&&t<="9")return t.charCodeAt(0)-"0".charCodeAt(0);throw"illegal char :"+t};return n},x=function(t){var r=u,e=t,n={getMode:function(){return r},getLength:function(t){return e.length},write:function(t){for(var r=e,n=0;n+1<r.length;)t.put(45*o(r.charAt(n))+o(r.charAt(n+1)),11),n+=2;n<r.length&&t.put(o(r.charAt(n)),6)}},o=function(t){if("0"<=t&&t<="9")return t.charCodeAt(0)-"0".charCodeAt(0);if("A"<=t&&t<="Z")return t.charCodeAt(0)-"A".charCodeAt(0)+10;switch(t){case" ":return 36;case"$":return 37;case"%":return 38;case"*":return 39;case"+":return 40;case"-":return 41;case".":return 42;case"/":return 43;case":":return 44;default:throw"illegal char :"+t}};return n},m=function(r){var e=f,n=t.stringToBytes(r),o={getMode:function(){return e},getLength:function(t){return n.length},write:function(t){for(var r=0;r<n.length;r+=1)t.put(n[r],8)}};return o},L=function(r){var e=c,n=t.stringToBytesFuncs.SJIS;if(!n)throw"sjis not supported.";!function(){var t=n("友");if(2!=t.length||38726!=(t[0]<<8|t[1]))throw"sjis not supported."}();var o=n(r),i={getMode:function(){return e},getLength:function(t){return~~(o.length/2)},write:function(t){for(var r=o,e=0;e+1<r.length;){var n=(255&r[e])<<8|255&r[e+1];if(33088<=n&&n<=40956)n-=33088;else{if(!(57408<=n&&n<=60351))throw"illegal char at "+(e+1)+"/"+n;n-=49472}n=192*(n>>>8&255)+(255&n),t.put(n,13),e+=2}if(e<r.length)throw"illegal char at "+(e+1)}};return i},D=function(){var t=[],r={writeByte:function(r){t.push(255&r)},writeShort:function(t){r.writeByte(t),r.writeByte(t>>>8)},writeBytes:function(t,e,n){e=e||0,n=n||t.length;for(var o=0;o<n;o+=1)r.writeByte(t[o+e])},writeString:function(t){for(var e=0;e<t.length;e+=1)r.writeByte(t.charCodeAt(e))},toByteArray:function(){return t},toString:function(){var r="";r+="[";for(var e=0;e<t.length;e+=1)e>0&&(r+=","),r+=t[e];return r+="]"}};return r},S=function(t){var r=t,e=0,n=0,o=0,i={read:function(){for(;o<8;){if(e>=r.length){if(0==o)return-1;throw"unexpected end of file./"+o}var t=r.charAt(e);if(e+=1,"="==t)return o=0,-1;t.match(/^\s$/)||(n=n<<6|a(t.charCodeAt(0)),o+=6)}var i=n>>>o-8&255;return o-=8,i}},a=function(t){if(65<=t&&t<=90)return t-65;if(97<=t&&t<=122)return t-97+26;if(48<=t&&t<=57)return t-48+52;if(43==t)return 62;if(47==t)return 63;throw"c:"+t};return i},I=function(t,r,e){for(var n=function(t,r){var e=t,n=r,o=new Array(t*r),i={setPixel:function(t,r,n){o[r*e+t]=n},write:function(t){t.writeString("GIF87a"),t.writeShort(e),t.writeShort(n),t.writeByte(128),t.writeByte(0),t.writeByte(0),t.writeByte(0),t.writeByte(0),t.writeByte(0),t.writeByte(255),t.writeByte(255),t.writeByte(255),t.writeString(","),t.writeShort(0),t.writeShort(0),t.writeShort(e),t.writeShort(n),t.writeByte(0);var r=a(2);t.writeByte(2);for(var o=0;r.length-o>255;)t.writeByte(255),t.writeBytes(r,o,255),o+=255;t.writeByte(r.length-o),t.writeBytes(r,o,r.length-o),t.writeByte(0),t.writeString(";")}},a=function(t){for(var r=1<<t,e=1+(1<<t),n=t+1,i=u(),a=0;a<r;a+=1)i.add(String.fromCharCode(a));i.add(String.fromCharCode(r)),i.add(String.fromCharCode(e));var f,c,g,l=D(),h=(f=l,c=0,g=0,{write:function(t,r){if(t>>>r!=0)throw"length over";for(;c+r>=8;)f.writeByte(255&(t<<c|g)),r-=8-c,t>>>=8-c,g=0,c=0;g|=t<<c,c+=r},flush:function(){c>0&&f.writeByte(g)}});h.write(r,n);var s=0,v=String.fromCharCode(o[s]);for(s+=1;s<o.length;){var d=String.fromCharCode(o[s]);s+=1,i.contains(v+d)?v+=d:(h.write(i.indexOf(v),n),i.size()<4095&&(i.size()==1<<n&&(n+=1),i.add(v+d)),v=d)}return h.write(i.indexOf(v),n),h.write(e,n),h.flush(),l.toByteArray()},u=function(){var t={},r=0,e={add:function(n){if(e.contains(n))throw"dup key:"+n;t[n]=r,r+=1},size:function(){return r},indexOf:function(r){return t[r]},contains:function(r){return void 0!==t[r]}};return e};return i}(t,r),o=0;o<r;o+=1)for(var i=0;i<t;i+=1)n.setPixel(i,o,e(i,o));var a=D();n.write(a);for(var u=function(){var t=0,r=0,e=0,n="",o={},i=function(t){n+=String.fromCharCode(a(63&t))},a=function(t){if(t<0);else{if(t<26)return 65+t;if(t<52)return t-26+97;if(t<62)return t-52+48;if(62==t)return 43;if(63==t)return 47}throw"n:"+t};return o.writeByte=function(n){for(t=t<<8|255&n,r+=8,e+=1;r>=6;)i(t>>>r-6),r-=6},o.flush=function(){if(r>0&&(i(t<<6-r),t=0,r=0),e%3!=0)for(var o=3-e%3,a=0;a<o;a+=1)n+="="},o.toString=function(){return n},o}(),f=a.toByteArray(),c=0;c<f.length;c+=1)u.writeByte(f[c]);return u.flush(),"data:image/gif;base64,"+u};return t}();qrcode.stringToBytesFuncs["UTF-8"]=function(t){return function(t){for(var r=[],e=0;e<t.length;e++){var n=t.charCodeAt(e);n<128?r.push(n):n<2048?r.push(192|n>>6,128|63&n):n<55296||n>=57344?r.push(224|n>>12,128|n>>6&63,128|63&n):(e++,n=65536+((1023&n)<<10|1023&t.charCodeAt(e)),r.push(240|n>>18,128|n>>12&63,128|n>>6&63,128|63&n))}return r}(t)},function(t){"function"==typeof define&&define.amd?define([],t):"object"==typeof exports&&(module.exports=t())}(function(){return qrcode});
 </script>
 </body>
 </html>
