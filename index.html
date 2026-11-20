@@ -4,7 +4,7 @@
 <head>
 <meta charset="UTF-8">
 <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no">
-<title>Jimit Pet LLP - Offline</title>
+<title>Jimit Pet LLP</title>
 <meta name="description" content="Jimit Pet LLP Packing Management System">
 <meta name="theme-color" content="#1a237e">
 <link rel="manifest" href="manifest.json">
@@ -1019,6 +1019,28 @@ function _polInit(){
   try{new MutationObserver(function(){clearTimeout(_hoT);_hoT=setTimeout(_hideAdminOnly,30);}).observe(document.body,{childList:true,subtree:true});}catch(e){}
 }
 
+// ══ v8: asli Online/Offline status + connection check ══
+function netBadgeInfo(){
+  const on=(typeof navigator==="undefined")||navigator.onLine!==false;
+  if(!on)return{t:"🔴 Internet nahi",c:"#c62828"};
+  if(!Cloud.session)return{t:"💾 Sirf is device par",c:"#546e7a"};
+  const st=Cloud.status;
+  if(st==="ok")return{t:"🟢 Online · Synced",c:"#2e7d32"};
+  if(st==="sync")return{t:"🔄 Sync ho raha hai",c:"#1565c0"};
+  if(st==="offline")return{t:"🟠 Server tak nahi pahunch pa rahe",c:"#e65100"};
+  if(st==="warn")return{t:"⚠️ Online · confirmation baaki",c:"#f9a825"};
+  if(st==="error")return{t:"⚠️ Sync error",c:"#c62828"};
+  return{t:"🟢 Online",c:"#2e7d32"};
+}
+function netBadgeUpdate(){try{const b=document.getElementById("netBadge");if(!b)return;const i=netBadgeInfo();b.textContent=i.t;b.style.background=i.c;}catch(e){}}
+window.addEventListener("online",function(){netBadgeUpdate();try{if(Cloud.session)Cloud.tick();}catch(e){}});
+window.addEventListener("offline",netBadgeUpdate);
+setInterval(netBadgeUpdate,5000);
+async function _netTry(url,opts){
+  const t0=Date.now(),ac=new AbortController(),to=setTimeout(function(){ac.abort();},8000);
+  try{const r=await fetch(url,Object.assign({cache:"no-store",signal:ac.signal},opts||{}));clearTimeout(to);return{ok:true,status:r.status,ms:Date.now()-t0};}
+  catch(e){clearTimeout(to);return{ok:false,err:String(e&&e.name==="AbortError"?"8 second me jawab nahi aaya":(e&&e.message)||e),ms:Date.now()-t0};}
+}
 function _progDelete(id,mt){
   const arr=mt?state.mtProductionPlans:state.productionPlans;
   const p=arr.find(x=>x.id===id);if(!p)return;
@@ -1615,7 +1637,7 @@ function shellHtml(){
   <div class="topbar">
     <div class="topbar-row">
       <div style="display:flex;align-items:center;gap:10px"><span style="font-size:20px;font-weight:800">🏭 Jimit Pet LLP</span>
-        <span style="font-size:11px;background:rgba(0,200,0,.2);padding:2px 8px;border-radius:20px;">💾 Offline</span><input id="globalSearchInput" class="inp" placeholder="🔍 PO / Carton / Challan search" style="width:210px;margin:0;padding:5px 12px;font-size:12px;border-radius:20px" onkeydown="if(event.key==='Enter'){App.globalSearch(this.value)}"><button class="btn btn-sm" style="background:rgba(255,255,255,.2)" onclick="App.globalSearch(document.getElementById('globalSearchInput').value)">Search</button><span id="liveClock" style="font-size:12px;font-weight:700;background:rgba(255,255,255,.15);padding:3px 10px;border-radius:20px;white-space:nowrap"></span>
+        <span id="netBadge" onclick="App.netDiag()" title="Dabao: connection check" style="cursor:pointer;font-size:11px;background:${netBadgeInfo().c};padding:2px 8px;border-radius:20px;white-space:nowrap">${netBadgeInfo().t}</span><input id="globalSearchInput" class="inp" placeholder="🔍 PO / Carton / Challan search" style="width:210px;margin:0;padding:5px 12px;font-size:12px;border-radius:20px" onkeydown="if(event.key==='Enter'){App.globalSearch(this.value)}"><button class="btn btn-sm" style="background:rgba(255,255,255,.2)" onclick="App.globalSearch(document.getElementById('globalSearchInput').value)">Search</button><span id="liveClock" style="font-size:12px;font-weight:700;background:rgba(255,255,255,.15);padding:3px 10px;border-radius:20px;white-space:nowrap"></span>
       </div>
       <div style="display:flex;align-items:center;gap:8px">
         ${state.currentUser.role==="admin"
@@ -5793,6 +5815,7 @@ const Cloud={
   setStatus(s){
     this.status=s;
     try{const d=document.getElementById("cloudDot");if(d){d.textContent=Cloud.dotText();d.title=Cloud.dotTitle();}}catch(e){}
+    try{netBadgeUpdate();}catch(e){}
   },
   dotText(){return {off:"",ok:"☁️✓",sync:"☁️⟳",offline:"☁️✗",error:"☁️⚠",warn:"☁️⚠"}[this.status]||"";},
   dotTitle(){
@@ -5829,23 +5852,42 @@ const Cloud={
   // ── push
   async flush(){
     const keys=Object.keys(this.outbox);if(!keys.length)return;
-    for(let i=0;i<keys.length;i+=200){
-      const part=keys.slice(i,i+200).map(k=>[k,this.outbox[k]]).filter(x=>x[1]);
-      if(!part.length)continue;
-      const rows=part.map(([k,e])=>({fy:e.fy,store:e.store,rid:e.rid,data:e.data,deleted:e.deleted,updated_by:this.session.email}));
-      await this.rest("POST","jpl_records?on_conflict=fy,store,rid",rows,{Prefer:"resolution=merge-duplicates,return=minimal"});
-      const touched=new Set();
-      for(const [k,e] of part){
-        const ks=e.fy+"|"+e.store;const b=this.base[ks]||(this.base[ks]={mode:null,h:{}});
-        if(this.outbox[k]===e){
-          if(e.deleted)delete b.h[e.rid];else b.h[e.rid]=e.h;
-          if(!b.mode)b.mode=e.rid==="_"?"val":"rec";
-          delete this.outbox[k];touched.add(ks);
+    const groups={};
+    keys.forEach(k=>{const e=this.outbox[k];if(!e)return;const g=e.fy+"|"+e.store;(groups[g]=groups[g]||[]).push(k);});
+    this.badStores=this.badStores||{};
+    let firstErr=null;
+    for(const g of Object.keys(groups)){
+      const store=g.slice(g.indexOf("|")+1),bad=this.badStores[g];
+      if(bad&&Date.now()-bad.at<600000)continue;   // reject hua store 10 min baad dobara try hoga, baaki data nahi rukega
+      const ks=groups[g];
+      try{
+        for(let i=0;i<ks.length;i+=200){
+          const part=ks.slice(i,i+200).map(k=>[k,this.outbox[k]]).filter(x=>x[1]);
+          if(!part.length)continue;
+          const rows=part.map(([k,e])=>({fy:e.fy,store:e.store,rid:e.rid,data:e.data,deleted:e.deleted,updated_by:this.session.email}));
+          await this.rest("POST","jpl_records?on_conflict=fy,store,rid",rows,{Prefer:"resolution=merge-duplicates,return=minimal"});
+          const touched=new Set();
+          for(const [k,e] of part){
+            const kk=e.fy+"|"+e.store;const b=this.base[kk]||(this.base[kk]={mode:null,h:{}});
+            if(this.outbox[k]===e){
+              if(e.deleted)delete b.h[e.rid];else b.h[e.rid]=e.h;
+              if(!b.mode)b.mode=e.rid==="_"?"val":"rec";
+              delete this.outbox[k];touched.add(kk);
+            }
+          }
+          touched.forEach(kk=>this.persistBase(kk));
+          this.persistOutbox();
         }
+        delete this.badStores[g];
+      }catch(e){
+        const st=e&&e.status;
+        if(!st||st===401||st===408||st===429||st>=500)throw e;   // network / server dikkat: sab ke liye same hogi
+        let m=String(e.message||"");try{m=JSON.parse(m).message||m;}catch(_){}
+        this.badStores[g]={err:m.slice(0,160),status:st,at:Date.now(),n:ks.length};
+        if(!firstErr)firstErr=new Error("Server ne '"+store+"' ka data mana kiya (HTTP "+st+"): "+m.slice(0,120));
       }
-      touched.forEach(ks=>this.persistBase(ks));
-      this.persistOutbox();
     }
+    if(firstErr)throw firstErr;
   },
   // ── pull
   async pullFy(fy){
@@ -6004,8 +6046,10 @@ const Cloud={
       this.firstPullDone=true;this.lastSync=Date.now();this.lastErr="";
       this.setStatus(Object.keys(this.suspect).length?"warn":"ok");
     }catch(e){
-      this.lastErr=String(e&&e.message||e).slice(0,200);
-      const net=(typeof navigator!=="undefined"&&navigator.onLine===false)||/fetch|network|Failed|Load failed|abort|timeout/i.test(this.lastErr);
+      const st=e&&e.status;let em=String(e&&e.message||e);
+      if(st){try{em=JSON.parse(em).message||em;}catch(_){}em="HTTP "+st+": "+em;}
+      this.lastErr=em.slice(0,200);
+      const net=!st&&((typeof navigator!=="undefined"&&navigator.onLine===false)||/failed to fetch|networkerror|load failed|network request failed|abort|timed? ?out|timeout/i.test(this.lastErr));
       this.setStatus(net?"offline":"error");
     }finally{this.busy=false;}
   },
@@ -8419,6 +8463,42 @@ const StoreV4App={
   closeScan(){qrCamStop();_scanStop();const d=document.getElementById("scanModal");if(d)d.remove();}
 };
 Object.assign(App,StoreV4App);
+// ══ v8 App: connection check ══
+const StoreV5App={
+  async netDiag(){
+    const old=document.getElementById("netDiagModal");if(old)old.remove();
+    const d=document.createElement("div");d.id="netDiagModal";d.style.cssText="position:fixed;inset:0;background:rgba(0,0,0,.5);z-index:9999;display:flex;align-items:center;justify-content:center;padding:14px";
+    d.onclick=function(e){if(e.target===d)App.closeNetDiag();};
+    d.innerHTML='<div style="background:#fff;border-radius:12px;max-width:480px;width:100%;max-height:90vh;overflow:auto;padding:16px"><div style="display:flex;justify-content:space-between;align-items:center;margin-bottom:10px"><b style="font-size:16px;color:#1a237e">📶 Connection Check</b><button class="btn btn-secondary" onclick="App.closeNetDiag()">✕</button></div><div id="netDiagBody" style="font-size:13px;line-height:1.7">Check ho raha hai... (8 second tak)</div></div>';
+    document.body.appendChild(d);
+    const body=document.getElementById("netDiagBody");
+    const dev=(typeof navigator!=="undefined"&&navigator.onLine!==false);
+    const pend=Object.keys((typeof Cloud!=="undefined"&&Cloud.outbox)||{}).length;
+    const r1=await _netTry("https://www.gstatic.com/generate_204",{mode:"no-cors"});
+    const r2=await _netTry(CLOUD_URL+"/auth/v1/health",{headers:{apikey:CLOUD_KEY}});
+    let r3=null;
+    if(typeof Cloud!=="undefined"&&Cloud.session){const t0=Date.now();try{await Cloud.rest("GET","jpl_records?select=rid&limit=1");r3={ok:true,ms:Date.now()-t0};}catch(e){let m=String(e&&e.message||e);try{m=JSON.parse(m).message||m;}catch(_){}r3={ok:false,err:(e&&e.status?"HTTP "+e.status+": ":"")+m.slice(0,160)};}}
+    const per={};Object.keys((Cloud&&Cloud.outbox)||{}).forEach(function(k){const e=Cloud.outbox[k];if(e)per[e.store]=(per[e.store]||0)+1;});
+    const stuck=Object.keys(per).map(function(st){const bs=Cloud.badStores&&Cloud.badStores[Object.keys(Cloud.badStores).find(function(g){return g.endsWith("|"+st);})];return"<div style='font-size:12px'>"+(bs?"❌":"⏳")+" <b>"+esc(st)+"</b>: "+per[st]+" entry baaki"+(bs?" — <span style='color:#b71c1c'>server ne mana kiya (HTTP "+bs.status+"): "+esc(bs.err)+"</span>":"")+"</div>";}).join("");
+    const ln=function(ok,a,b){return'<div>'+(ok?"✅":"❌")+' <b>'+a+'</b> — '+b+'</div>';};
+    let verdict;
+    if(r1.ok&&r2.ok&&r3&&!r3.ok)verdict='<div style="margin-top:10px;padding:8px;border-radius:8px;background:#fff3e0;color:#bf360c"><b>Internet aur server dono theek hain, par data lene me server ne error diya:</b><br>'+esc(r3.err)+'<br>Ye network ki nahi, login/permission/server setting ki baat hai. Is screen ka screenshot bhej do.</div>';
+    else if(r1.ok&&r2.ok)verdict='<div style="margin-top:10px;padding:8px;border-radius:8px;background:#e8f5e9;color:#1b5e20"><b>Sab theek hai.</b> Internet aur Supabase dono chal rahe hain. Neeche "Abhi sync karo" dabao — status hara ho jayega.</div>';
+    else if(r1.ok&&!r2.ok)verdict='<div style="margin-top:10px;padding:8px;border-radius:8px;background:#fff3e0;color:#bf360c"><b>Internet chalu hai, par Supabase server tak nahi pahunch pa raha.</b> Ye aksar network provider ya DNS ki wajah se hota hai (kuch Jio/Airtel/WiFi network me). Ye try karo:<br>1) Phone Settings → Private DNS → <b>dns.google</b> (ya <b>one.one.one.one</b>) daalo.<br>2) Dusre network par test karo (mobile data ↔ WiFi).<br>3) Ad-blocker / "Data saver" / VPN band karke dekho.<br>Tab tak aapki entries is device par safe hain, aur net theek hote hi apne aap sync ho jayengi.</div>';
+    else verdict='<div style="margin-top:10px;padding:8px;border-radius:8px;background:#ffebee;color:#b71c1c"><b>Is device par internet hi nahi chal raha.</b> WiFi/mobile data check karo. Entries device par safe hain.</div>';
+    const ls=(typeof Cloud!=="undefined"&&Cloud.lastSync)?new Date(Cloud.lastSync).toLocaleString():"abhi tak nahi";
+    body.innerHTML=ln(dev,"Phone ka network","browser kehta hai "+(dev?"online":"offline"))
+      +ln(r1.ok,"Internet","<span style='color:#555'>"+(r1.ok?r1.ms+" ms":esc(r1.err))+"</span>")
+      +ln(r2.ok,"Supabase server","<span style='color:#555'>"+(r2.ok?"jawab aaya ("+r2.status+"), "+r2.ms+" ms":esc(r2.err))+"</span>")
+      +(r3?ln(r3.ok,"Data lena (login ke saath)","<span style='color:#555'>"+(r3.ok?r3.ms+" ms":esc(r3.err))+"</span>"):"")
+      +(stuck?"<div style='margin-top:6px'><b>Cloud par bhejna baaki:</b>"+stuck+"</div>":"")
+      +'<div style="margin-top:6px;color:#555;font-size:12px">Cloud status: <b>'+esc(Cloud.status||"-")+'</b>'+(Cloud.lastErr?" · Aakhri error: "+esc(Cloud.lastErr):"")+'<br>Aakhri sync: '+esc(ls)+(pend?' · <b>'+pend+' entry bheji jaani baaki</b>':'')+'</div>'
+      +verdict+'<div style="margin-top:10px"><button class="btn btn-primary" onclick="App.netSyncNow()">🔄 Abhi sync karo</button></div>';
+  },
+  closeNetDiag(){const d=document.getElementById("netDiagModal");if(d)d.remove();},
+  async netSyncNow(){try{if(Cloud.session){Cloud.authLost=false;await Cloud.tick();}}catch(e){}netBadgeUpdate();App.closeNetDiag();showSyncPill(Cloud.status==="ok"?"ok":"err",Cloud.status==="ok"?"Sync ho gaya":"Abhi bhi sync nahi ho paya",3500);}
+};
+Object.assign(App,StoreV5App);
 
 // Audit: har App action ko wrap karo (sirf wahi log hota hai jisme data save hua)
 Object.keys(App).forEach(k=>{if(typeof App[k]==="function"&&k[0]!=="_"&&!/^render/.test(k))App[k]=_auditWrap(k,App[k]);});
