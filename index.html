@@ -5297,16 +5297,75 @@ function mouldMatsModalHtml(){
 }
 function mouldProgramsModalHtml(){
   const list=[...state.mouldPrograms].reverse();
-  return `<div style="overflow-x:auto;max-height:60vh;overflow-y:auto"><table class="tbl"><thead><tr style="background:#1a237e;color:#fff"><th>Date</th><th>Machine</th><th>Items</th><th>Total pcs</th><th>Total kg</th><th>By</th><th></th></tr></thead><tbody>
-  ${list.map(p=>`<tr><td>${esc(fmtDate?fmtDate(p.date):p.date)}</td><td>${esc(p.machine||"—")}</td><td style="font-size:12px">${esc(p.lines.map(l=>l.itemName+(l.colour?" ("+l.colour+")":"")).join(", "))}</td><td style="text-align:center">${mldF(p.totals.pcs,0)}</td><td style="text-align:center">${mldF(p.totals.kg,2)}</td><td>${esc(p.createdBy||"—")}</td>
-  <td style="white-space:nowrap"><button class="btn btn-sm btn-success" onclick="App.mouldPrint(${p.id})">🖨️</button> <button class="btn btn-sm" style="background:#2e7d32" onclick="App.mouldExcel(${p.id})">📥</button> ${isRO()?"":`<button class="btn btn-sm btn-primary" onclick="App.mouldLoadProg(${p.id})">Load</button> <button class="btn btn-sm btn-danger" onclick="App.mouldDelProg(${p.id})">Del</button>`}</td></tr>`).join("")||`<tr><td colspan="7" style="text-align:center;color:#999;padding:16px">Abhi koi program save nahi hua</td></tr>`}</tbody></table></div>`;
+  return `<div style="display:flex;gap:8px;align-items:center;flex-wrap:wrap;margin-bottom:10px;padding:8px;background:#f3f4ff;border-radius:8px"><b id="mpSelCount">${(temp.mpSel||[]).length} select</b><button class="btn btn-sm btn-success" onclick="App.mouldPrintSel()">🖨️ Selected ka Print (total ke saath)</button><button class="btn btn-sm" style="background:#2e7d32;color:#fff" onclick="App.mouldExcelSel()">📥 Selected ka Excel</button><span style="font-size:11px;color:#666">Ek hi select karo to purana jaisa single print aayega</span></div><div style="overflow-x:auto;max-height:60vh;overflow-y:auto"><table class="tbl"><thead><tr style="background:#1a237e;color:#fff"><th><input type="checkbox" title="Sab select" onchange="App.mouldSelAll(this.checked)"></th><th>Date</th><th>Machine</th><th>Items</th><th>Total pcs</th><th>Total kg</th><th>By</th><th></th></tr></thead><tbody>
+  ${list.map(p=>`<tr><td><input type="checkbox" class="mpSel" ${(temp.mpSel||[]).includes(p.id)?"checked":""} onchange="App.mouldSelToggle(${p.id},this.checked)"></td><td>${esc(fmtDate?fmtDate(p.date):p.date)}</td><td>${esc(p.machine||"—")}</td><td style="font-size:12px">${esc(p.lines.map(l=>l.itemName+(l.colour?" ("+l.colour+")":"")).join(", "))}</td><td style="text-align:center">${mldF(p.totals.pcs,0)}</td><td style="text-align:center">${mldF(p.totals.kg,2)}</td><td>${esc(p.createdBy||"—")}</td>
+  <td style="white-space:nowrap"><button class="btn btn-sm btn-success" onclick="App.mouldPrint(${p.id})">🖨️</button> <button class="btn btn-sm" style="background:#2e7d32" onclick="App.mouldExcel(${p.id})">📥</button> ${isRO()?"":`<button class="btn btn-sm btn-primary" onclick="App.mouldLoadProg(${p.id})">Load</button> <button class="btn btn-sm btn-danger" onclick="App.mouldDelProg(${p.id})">Del</button>`}</td></tr>`).join("")||`<tr><td colspan="8" style="text-align:center;color:#999;padding:16px">Abhi koi program save nahi hua</td></tr>`}</tbody></table></div>`;
+}
+
+// ══ v10: Moulding — column total, item-wise total, multi-program combined print ══
+function mouldAggItems(lines){
+  const map={};
+  (lines||[]).forEach(function(l){
+    const k=l.itemName+"|"+l.wtG,o=map[k]||(map[k]={itemName:l.itemName,wtG:l.wtG,pcs:0,kg:0,pkt:0,mats:{}});
+    o.pcs+=Number(l.pcs)||0;o.kg+=Number(l.totKg)||0;o.pkt+=Number(l.colPkt)||0;
+    (l.mats||[]).forEach(function(m){o.mats[m.name]=(o.mats[m.name]||0)+(Number(m.kg)||0);});
+  });
+  return Object.values(map).sort(function(a,b){return String(a.itemName).localeCompare(String(b.itemName))||a.wtG-b.wtG;});
+}
+function mouldCombine(list){
+  const lines=[],pm={},mm={},cm={};let pcs=0,kg=0;
+  list.forEach(function(p){
+    (p.lines||[]).forEach(function(l){lines.push(l);});
+    pcs+=Number(p.totals.pcs)||0;kg+=Number(p.totals.kg)||0;
+    (p.totals.mats||[]).forEach(function(m){const o=mm[m.name]||(mm[m.name]={name:m.name,kg:0,bagKg:m.bagKg||25});o.kg+=Number(m.kg)||0;});
+    (p.totals.colours||[]).forEach(function(c){const o=cm[c.name]||(cm[c.name]={name:c.name,code:c.code,pkt:0});o.pkt+=Number(c.pkt)||0;});
+    (p.plans||[]).forEach(function(pl){const o=pm[pl.name]||(pm[pl.name]={name:pl.name,cartons:0,pcs:0,colours:[]});o.cartons+=Number(pl.cartons)||0;o.pcs+=Number(pl.pcs)||0;(pl.colours||[]).forEach(function(c){if(o.colours.indexOf(c)<0)o.colours.push(c);});});
+  });
+  const plans=Object.values(pm);
+  const res=plans.map(function(pl){const pr=(state.mouldProducts||[]).find(function(x){return x.name===pl.name;});return pr?{productId:pr.id,cartons:pl.cartons}:null;});
+  let acc;
+  if(res.every(Boolean))acc=mouldAccTotals(res);   // sab programs ke cartons jod kar ek baar me hisaab (rounding ka farq nahi)
+  else{const m={};list.forEach(function(p){(p.acc||[]).forEach(function(a){const k=a.name+"|"+a.unit,o=m[k]||(m[k]={name:a.name,unit:a.unit,qty:0,formula:"",stock:a.stock,short:0});o.qty+=a.qty;});});acc=Object.values(m);}
+  return{lines:lines,plans:plans,acc:acc,totals:{pcs:pcs,kg:kg,mats:Object.values(mm),colours:Object.values(cm)},programs:list};
+}
+function mouldItemTotalsHtml(lines,title){
+  const th='style="border:1px solid #444;padding:5px 8px;background:#e8eaf6;font-size:12px"',td='style="border:1px solid #444;padding:5px 8px;font-size:12px;text-align:center"',tt='style="border:1px solid #444;padding:5px 8px;font-size:12px;text-align:center;background:#ffeb3b;font-weight:700"';
+  const mn=[...new Set((lines||[]).flatMap(function(l){return(l.mats||[]).map(function(m){return m.name;});}))],items=mouldAggItems(lines);
+  const sum=function(f){return items.reduce(function(a,o){return a+f(o);},0);};
+  return`<h3 style="margin:12px 0 6px">${title||"Item-wise Total (sab colour mila kar)"}</h3><table style="border-collapse:collapse;width:100%;margin-bottom:14px"><thead><tr><th ${th}>Item</th><th ${th}>1 pc</th><th ${th}>Pcs</th>${mn.map(function(n){return`<th ${th}>${esc(n)} kg</th>`;}).join("")}<th ${th}>Colour pkt</th><th ${th}>Total kg</th></tr></thead><tbody>${items.map(function(o){return`<tr><td ${td}><b>${esc(o.itemName)}</b></td><td ${td}>${o.wtG} g</td><td ${tt}>${mldF(o.pcs,0)}</td>${mn.map(function(n){return`<td ${td}>${o.mats[n]?mldF(o.mats[n],3):"—"}</td>`;}).join("")}<td ${td}>${o.pkt?mldF(o.pkt,2):"—"}</td><td ${td}><b>${mldF(o.kg,3)}</b></td></tr>`;}).join("")}<tr><td ${th}><b>TOTAL</b></td><td ${th}></td><td ${th}><b>${mldF(sum(function(o){return o.pcs;}),0)}</b></td>${mn.map(function(n){return`<td ${th}><b>${mldF(sum(function(o){return o.mats[n]||0;}),3)}</b></td>`;}).join("")}<td ${th}><b>${mldF(sum(function(o){return o.pkt;}),2)}</b></td><td ${th}><b>${mldF(sum(function(o){return o.kg;}),3)}</b></td></tr></tbody></table>`;
+}
+function mouldCombinedHtml(list){
+  const c=mouldCombine(list),th='style="border:1px solid #444;padding:5px 8px;background:#e8eaf6;font-size:12px"',td='style="border:1px solid #444;padding:5px 8px;font-size:12px;text-align:center"';
+  const rows=list.map(function(p,i){const it=mouldAggItems(p.lines).map(function(o){return esc(o.itemName)+" "+mldF(o.pcs,0);}).join(", ");return`<tr><td ${td}>${i+1}</td><td ${td}>${esc(fmtDate?fmtDate(p.date):p.date)}</td><td ${td}>${esc(p.machine||"—")}</td><td ${td} style="text-align:left">${it}</td><td ${td}>${mldF(p.totals.pcs,0)}</td><td ${td}>${mldF(p.totals.kg,2)}</td></tr>`;}).join("");
+  return`<h2 style="margin:0 0 4px">🏭 Jimit Pet LLP — Moulding Programs (Combined)</h2><div style="font-size:13px;margin-bottom:10px">Programs: <b>${list.length}</b> &nbsp; Date: <b>${esc(list[0].date)}</b> se <b>${esc(list[list.length-1].date)}</b></div>
+  <table style="border-collapse:collapse;width:100%;margin-bottom:10px"><thead><tr><th ${th}>#</th><th ${th}>Date</th><th ${th}>Machine</th><th ${th}>Items (pcs)</th><th ${th}>Pcs</th><th ${th}>Kg</th></tr></thead><tbody>${rows}</tbody></table>
+  ${mouldItemTotalsHtml(c.lines,"Item-wise Total (sab colour aur sab programs mila kar)")}
+  ${c.plans.length?`<div style="font-size:13px;margin-bottom:10px"><b>📦 Product Plan (total):</b> ${c.plans.map(function(p){return esc(p.name)+" — "+p.cartons+" ctn ("+mldF(p.pcs,0)+" pcs)";}).join(" &nbsp;|&nbsp; ")}</div>`:""}
+  <h3 style="margin:0 0 6px">Total Requirement (sab programs ka)</h3>${mouldTotalsHtml(c,true)}`;
+}
+function mouldCombinedAoa(list){
+  const c=mouldCombine(list),mn=[...new Set(c.lines.flatMap(function(l){return(l.mats||[]).map(function(m){return m.name;});}))],items=mouldAggItems(c.lines);
+  const aoa=[["Jimit Pet LLP — Moulding Programs (Combined)"],["Programs",list.length,"Date",list[0].date+" se "+list[list.length-1].date],[],["#","Date","Machine","Items","Pcs","Kg"]];
+  list.forEach(function(p,i){aoa.push([i+1,p.date,p.machine||"",mouldAggItems(p.lines).map(function(o){return o.itemName+" "+o.pcs;}).join(", "),p.totals.pcs,+Number(p.totals.kg).toFixed(2)]);});
+  aoa.push([],["ITEM-WISE TOTAL"],["Item","1 pc (g)","Pcs"].concat(mn.map(function(n){return n+" kg";}),["Colour pkt","Total kg"]));
+  items.forEach(function(o){aoa.push([o.itemName,o.wtG,o.pcs].concat(mn.map(function(n){return+(o.mats[n]||0).toFixed(3);}),[+o.pkt.toFixed(2),+o.kg.toFixed(3)]));});
+  aoa.push(["TOTAL","",items.reduce(function(a,o){return a+o.pcs;},0)].concat(mn.map(function(n){return+items.reduce(function(a,o){return a+(o.mats[n]||0);},0).toFixed(3);}),[+items.reduce(function(a,o){return a+o.pkt;},0).toFixed(2),+items.reduce(function(a,o){return a+o.kg;},0).toFixed(3)]));
+  aoa.push([],["TOTAL REQUIREMENT"],["Material","KGS","BAGS"]);
+  c.totals.mats.forEach(function(m){aoa.push([m.name,+m.kg.toFixed(3),+(m.kg/m.bagKg).toFixed(3)]);});
+  c.totals.colours.forEach(function(x){aoa.push([x.name+(x.code?" ("+x.code+")":"")+" - colour packets",+x.pkt.toFixed(2),"Roundup: "+Math.ceil(x.pkt-1e-9)]);});
+  aoa.push(["TOTAL",+c.totals.kg.toFixed(3),"Pcs: "+c.totals.pcs]);
+  if(c.plans.length){aoa.push([],["PRODUCT PLAN (total)"],["Product","Cartons","Pcs"]);c.plans.forEach(function(p){aoa.push([p.name,p.cartons,p.pcs]);});}
+  if((c.acc||[]).length){aoa.push([],["ACCESSORIES REQUIRED (total)"],["Accessory","Required","Unit","Hisaab"]);c.acc.forEach(function(a){aoa.push([a.name,a.qty,a.unit,a.formula||""]);});}
+  return aoa;
 }
 function mouldSnapPrintHtml(s){
   const th='style="border:1px solid #444;padding:5px 8px;background:#e8eaf6;font-size:12px"',td='style="border:1px solid #444;padding:5px 8px;font-size:12px;text-align:center"';
   const mnames=[...new Set(s.lines.flatMap(l=>l.mats.map(m=>m.name)))];
   const rows=s.lines.map((l,i)=>`<tr><td ${td}>${i+1}</td><td ${td}><b>${esc(l.itemName)}</b></td><td ${td}>${esc(l.colour||"—")}</td><td ${td}>${mldF(l.pcs,0)}</td><td ${td}>${l.wtG} g</td><td ${td}>${l.wastePct}%</td>${mnames.map(n=>{const m=l.mats.find(x=>x.name===n);return `<td ${td}>${m?mldF(m.kg,3):"—"}</td>`;}).join("")}<td ${td}>${l.colPkt?mldF(l.colPkt,2):"—"}</td><td ${td}><b>${mldF(l.totKg,3)}</b></td></tr>`).join("");
+  const _sm=function(fn){return s.lines.reduce(function(a,l){return a+fn(l);},0);};
+  const totRow=`<tr style="background:#eee;font-weight:700"><td ${td} colspan="3"><b>TOTAL</b></td><td ${td}><b>${mldF(_sm(function(l){return l.pcs;}),0)}</b></td><td ${td}></td><td ${td}></td>${mnames.map(function(n){return`<td ${td}><b>${mldF(_sm(function(l){const m=l.mats.find(function(x){return x.name===n;});return m?m.kg:0;}),3)}</b></td>`;}).join("")}<td ${td}><b>${mldF(_sm(function(l){return l.colPkt||0;}),2)}</b></td><td ${td}><b>${mldF(_sm(function(l){return l.totKg;}),3)}</b></td></tr>`;
   return `<h2 style="margin:0 0 4px">🏭 Jimit Pet LLP — Moulding Program</h2><div style="font-size:13px;margin-bottom:10px">Date: <b>${esc(s.date)}</b> &nbsp; Machine: <b>${esc(s.machine||"—")}</b> ${s.note?`&nbsp; Note: ${esc(s.note)}`:""}</div>
-  <table style="border-collapse:collapse;width:100%;margin-bottom:14px"><thead><tr><th ${th}>#</th><th ${th}>Item</th><th ${th}>Colour</th><th ${th}>Pcs</th><th ${th}>1 pc</th><th ${th}>Waste</th>${mnames.map(n=>`<th ${th}>${esc(n)} kg</th>`).join("")}<th ${th}>Colour pkt</th><th ${th}>Total kg</th></tr></thead><tbody>${rows}</tbody></table>
+  <table style="border-collapse:collapse;width:100%;margin-bottom:14px"><thead><tr><th ${th}>#</th><th ${th}>Item</th><th ${th}>Colour</th><th ${th}>Pcs</th><th ${th}>1 pc</th><th ${th}>Waste</th>${mnames.map(n=>`<th ${th}>${esc(n)} kg</th>`).join("")}<th ${th}>Colour pkt</th><th ${th}>Total kg</th></tr></thead><tbody>${rows}${totRow}</tbody></table>${mouldItemTotalsHtml(s.lines)}
   ${(s.plans||[]).length?`<div style="font-size:13px;margin-bottom:10px"><b>📦 Product Plan:</b> ${s.plans.map(p=>esc(p.name)+" — "+p.cartons+" ctn ("+mldF(p.pcs,0)+" pcs)"+(p.colours.length?" ["+esc(p.colours.join(", "))+"]":"")).join(" &nbsp;|&nbsp; ")}</div>`:""}
   <h3 style="margin:0 0 6px">Total Requirement</h3>${mouldTotalsHtml(s,true)}`;
 }
@@ -5347,6 +5406,9 @@ const MouldApp={
     const aoa=[["Jimit Pet LLP — Moulding Program"],["Date",s.date,"Machine",s.machine||"","Note",s.note||""],[],
       ["#","Item","Colour","Pcs","1 pc (g)","Wastage %",...mnames.map(n=>n+" kg"),"Colour pkt","Total kg"]];
     s.lines.forEach((l,i)=>aoa.push([i+1,l.itemName,l.colour,l.pcs,l.wtG,l.wastePct,...mnames.map(n=>{const m=l.mats.find(x=>x.name===n);return m?+m.kg.toFixed(3):0;}),+(l.colPkt||0).toFixed(2),+l.totKg.toFixed(3)]));
+    aoa.push(["","TOTAL","",s.lines.reduce((a,l)=>a+l.pcs,0),"","",...mnames.map(n=>+s.lines.reduce((a,l)=>a+((l.mats.find(x=>x.name===n)||{kg:0}).kg),0).toFixed(3)),+s.lines.reduce((a,l)=>a+(l.colPkt||0),0).toFixed(2),+s.lines.reduce((a,l)=>a+l.totKg,0).toFixed(3)]);
+    aoa.push([],["ITEM-WISE TOTAL (sab colour mila kar)"],["Item","1 pc (g)","Pcs",...mnames.map(n=>n+" kg"),"Colour pkt","Total kg"]);
+    mouldAggItems(s.lines).forEach(o=>aoa.push([o.itemName,o.wtG,o.pcs,...mnames.map(n=>+(o.mats[n]||0).toFixed(3)),+o.pkt.toFixed(2),+o.kg.toFixed(3)]));
     aoa.push([],["TOTAL REQUIREMENT"],["Material","KGS","BAGS"]);
     s.totals.mats.forEach(m=>aoa.push([m.name,+m.kg.toFixed(3),+(m.kg/m.bagKg).toFixed(3)]));
     s.totals.colours.forEach(c=>aoa.push([c.name+(c.code?" ("+c.code+")":"")+" - colour packets",+c.pkt.toFixed(2),"Roundup: "+Math.ceil(c.pkt-1e-9)]));
@@ -5358,7 +5420,7 @@ const MouldApp={
   },
   mouldClose(){const o=document.getElementById("mouldModal");if(o)o.remove();renderTabContent();},
   // ── Programs
-  mouldOpenPrograms(){mouldSyncHead();mouldShowModal("📚 Saved Moulding Programs",mouldProgramsModalHtml());},
+  mouldOpenPrograms(){temp.mpSel=[];mouldSyncHead();mouldShowModal("📚 Saved Moulding Programs",mouldProgramsModalHtml());},
   mouldLoadProg(id){const p=state.mouldPrograms.find(x=>x.id===id);if(!p)return;
     const raw=(p.raw||[]).filter(l=>state.mouldItems.some(i=>i.id===l.itemId));
     if(raw.length<(p.raw||[]).length)alert("Kuch items ab Item Master me nahi hain, wo load nahi honge.");
@@ -8499,6 +8561,26 @@ const StoreV5App={
   async netSyncNow(){try{if(Cloud.session){Cloud.authLost=false;await Cloud.tick();}}catch(e){}netBadgeUpdate();App.closeNetDiag();showSyncPill(Cloud.status==="ok"?"ok":"err",Cloud.status==="ok"?"Sync ho gaya":"Abhi bhi sync nahi ho paya",3500);}
 };
 Object.assign(App,StoreV5App);
+
+const MouldV2App={
+  mouldSelToggle(id,on){temp.mpSel=temp.mpSel||[];const i=temp.mpSel.indexOf(id);if(on&&i<0)temp.mpSel.push(id);if(!on&&i>=0)temp.mpSel.splice(i,1);const e=document.getElementById("mpSelCount");if(e)e.textContent=temp.mpSel.length+" select";},
+  mouldSelAll(on){temp.mpSel=on?(state.mouldPrograms||[]).map(p=>p.id):[];document.querySelectorAll("#mouldModal .mpSel").forEach(c=>{c.checked=on;});const e=document.getElementById("mpSelCount");if(e)e.textContent=temp.mpSel.length+" select";},
+  _mouldSelList(){const ids=temp.mpSel||[];return(state.mouldPrograms||[]).filter(p=>ids.includes(p.id)).sort((a,b)=>String(a.date).localeCompare(String(b.date))||a.id-b.id);},
+  mouldPrintSel(){
+    const l=App._mouldSelList();if(!l.length){alert("Kam se kam ek program select karo");return;}
+    if(l.length===1){App.mouldPrint(l[0].id);return;}
+    const w=window.open("","_blank");if(!w){alert("Popup blocked!");return;}
+    w.document.write(`<html><head><title>Moulding Programs Combined</title><style>body{font-family:Arial,sans-serif;padding:16px}</style></head><body>${mouldCombinedHtml(l)}<script>window.onload=function(){window.print();}<\/script></body></html>`);w.document.close();
+  },
+  mouldExcelSel(){
+    if(typeof XLSX==="undefined"){alert("Excel library load nahi hui (internet chahiye)");return;}
+    const l=App._mouldSelList();if(!l.length){alert("Kam se kam ek program select karo");return;}
+    if(l.length===1){App.mouldExcel(l[0].id);return;}
+    const wb=XLSX.utils.book_new();XLSX.utils.book_append_sheet(wb,XLSX.utils.aoa_to_sheet(mouldCombinedAoa(l)),"Combined");
+    XLSX.writeFile(wb,"Moulding_Combined_"+l.length+"_programs.xlsx");
+  }
+};
+Object.assign(App,MouldV2App);
 
 // Audit: har App action ko wrap karo (sirf wahi log hota hai jisme data save hua)
 Object.keys(App).forEach(k=>{if(typeof App[k]==="function"&&k[0]!=="_"&&!/^render/.test(k))App[k]=_auditWrap(k,App[k]);});
