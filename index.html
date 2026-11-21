@@ -5357,7 +5357,6 @@ function mouldCombinedHtml(list){
   return`<h2 style="margin:0 0 4px">🏭 Jimit Pet LLP — Moulding Programs (Combined)</h2><div style="font-size:13px;margin-bottom:10px">Programs: <b>${list.length}</b> &nbsp; Date: <b>${esc(list[0].date)}</b> se <b>${esc(list[list.length-1].date)}</b></div>
   <table style="border-collapse:collapse;width:100%;margin-bottom:10px"><thead><tr><th ${th}>#</th><th ${th}>Date</th><th ${th}>Machine</th><th ${th}>Items (pcs)</th><th ${th}>Pcs</th><th ${th}>Kg</th></tr></thead><tbody>${rows}</tbody></table>
   ${mouldItemTotalsHtml(c.lines,"Item-wise Total (sab colour aur sab programs mila kar)")}
-  ${mouldColourTotalsHtml(c.lines,"🎨 Colour-wise Total (sab programs ka)")}
   ${c.plans.length?`<div style="font-size:13px;margin-bottom:10px"><b>📦 Product Plan (total):</b> ${c.plans.map(function(p){return esc(p.name)+" — "+p.cartons+" ctn ("+mldF(p.pcs,0)+" pcs)";}).join(" &nbsp;|&nbsp; ")}</div>`:""}
   <h3 style="margin:0 0 6px">Total Requirement (sab programs ka)</h3>${mouldTotalsHtml(c,true)}`;
 }
