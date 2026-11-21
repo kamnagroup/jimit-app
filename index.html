@@ -5028,9 +5028,9 @@ function mouldTotalsHtml(snap,pr){
   const td='style="border:1px solid #bbb;padding:6px 10px;text-align:center"';
   const ty='style="border:1px solid #bbb;padding:6px 10px;text-align:center;background:#ffeb3b;font-weight:700"';
   const tr='style="border:1px solid #bbb;padding:6px 10px;text-align:center;background:#ffcdd2;font-weight:700"';
-  return `<table style="border-collapse:collapse;width:100%;font-size:13px;margin-bottom:12px"><thead><tr><th ${th}>Material</th><th ${th}>KGS</th><th ${th}>BAGS</th></tr></thead><tbody>
-  ${t.mats.map(m=>`<tr><td ${td}><b>${esc(m.name)}</b></td><td ${ty}>${mldF(m.kg,3)}</td><td ${td}>${mouldBagTxt(m.kg,m.bagKg)}</td></tr>`).join("")}
-  <tr><td ${th}>TOTAL</td><td ${th}>${mldF(t.kg,3)} kg</td><td ${th}>${mldF(t.pcs,0)} moulded pcs</td></tr></tbody></table>
+  return `<table style="border-collapse:collapse;width:100%;font-size:13px;margin-bottom:12px"><thead><tr><th ${th}>Material</th><th ${th}>Powder %</th><th ${th}>KGS</th><th ${th}>BAGS</th></tr></thead><tbody>
+  ${t.mats.map(m=>`<tr><td ${td}><b>${esc(m.name)}</b></td><td ${td}>${mouldPct(m.kg,t.kg)}</td><td ${ty}>${mldF(m.kg,3)}</td><td ${td}>${mouldBagTxt(m.kg,m.bagKg)}</td></tr>`).join("")}
+  <tr><td ${th}>TOTAL</td><td ${th}>100%</td><td ${th}>${mldF(t.kg,3)} kg</td><td ${th}>${mldF(t.pcs,0)} moulded pcs</td></tr></tbody></table>
   ${t.colours.length?`<table style="border-collapse:collapse;width:100%;font-size:13px;margin-bottom:12px"><thead><tr><th ${th}>🎨 Colour</th><th ${th}>Code</th>${pr?"":`<th ${th}>Packets</th>`}<th ${th}>${pr?"Packets (Roundup)":"Roundup"}</th></tr></thead><tbody>
   ${t.colours.map(c=>`<tr><td ${td}><b>${esc(c.name)}</b></td><td ${td}>${esc(c.code||"—")}</td>${pr?"":`<td ${tr}>${mldF(c.pkt,2)} pkt</td>`}<td ${td}>${Math.ceil(c.pkt-1e-9)} pkt</td></tr>`).join("")}</tbody></table>`:""}
   ${mouldAccHtml(snap.acc,pr)}`;
@@ -5303,6 +5303,7 @@ function mouldProgramsModalHtml(){
 }
 
 // ══ v10: Moulding — column total, item-wise total, multi-program combined print ══
+function mouldPct(part,whole){return whole>0?(+(part/whole*100).toFixed(1))+"%":"";}
 function mouldKindOf(name){const t=String(name||"").trim().split(/\s+/);return(t[t.length-1]||"").toUpperCase();}
 function mouldAggItems(lines){
   const map={};
@@ -5347,7 +5348,7 @@ function mouldItemTotalsHtml(lines,title){
   const th='style="border:1px solid #444;padding:5px 8px;background:#e8eaf6;font-size:12px"',td='style="border:1px solid #444;padding:5px 8px;font-size:12px;text-align:center"',tt='style="border:1px solid #444;padding:5px 8px;font-size:12px;text-align:center;background:#ffeb3b;font-weight:700"';
   const mn=[...new Set((lines||[]).flatMap(function(l){return(l.mats||[]).map(function(m){return m.name;});}))],items=mouldAggItems(lines);
   const sum=function(f){return items.reduce(function(a,o){return a+f(o);},0);};
-  return`<h3 style="margin:12px 0 6px">${title||"Item-wise Total (sab colour mila kar)"}</h3><table style="border-collapse:collapse;width:100%;margin-bottom:14px"><thead><tr><th ${th}>Item</th><th ${th}>1 pc</th><th ${th}>Pcs</th>${mn.map(function(n){return`<th ${th}>${esc(n)} kg</th>`;}).join("")}<th ${th}>Colour pkt</th><th ${th}>Total kg</th></tr></thead><tbody>${items.map(function(o){return`<tr><td ${td}><b>${esc(o.itemName)}</b></td><td ${td}>${o.wtG} g</td><td ${tt}>${mldF(o.pcs,0)}</td>${mn.map(function(n){return`<td ${td}>${o.mats[n]?mldF(o.mats[n],3):"—"}</td>`;}).join("")}<td ${td}>${o.pkt?mldF(o.pkt,2):"—"}</td><td ${td}><b>${mldF(o.kg,3)}</b></td></tr>`;}).join("")}<tr><td ${th}><b>TOTAL</b></td><td ${th}></td><td ${th}><b>${mldF(sum(function(o){return o.pcs;}),0)}</b></td>${mn.map(function(n){return`<td ${th}><b>${mldF(sum(function(o){return o.mats[n]||0;}),3)}</b></td>`;}).join("")}<td ${th}><b>${mldF(sum(function(o){return o.pkt;}),2)}</b></td><td ${th}><b>${mldF(sum(function(o){return o.kg;}),3)}</b></td></tr></tbody></table>`;
+  return`<h3 style="margin:12px 0 6px">${title||"Item-wise Total (sab colour mila kar)"}</h3><table style="border-collapse:collapse;width:100%;margin-bottom:14px"><thead><tr><th ${th}>Item</th><th ${th}>1 pc</th><th ${th}>Pcs</th>${mn.map(function(n){return`<th ${th}>${esc(n)} kg</th>`;}).join("")}<th ${th}>Colour pkt</th><th ${th}>Total kg</th></tr></thead><tbody>${items.map(function(o){return`<tr><td ${td}><b>${esc(o.itemName)}</b></td><td ${td}>${o.wtG} g</td><td ${tt}>${mldF(o.pcs,0)}</td>${mn.map(function(n){return`<td ${td}>${o.mats[n]?mldF(o.mats[n],3)+'<div style="font-size:9px;color:#666">'+mouldPct(o.mats[n],o.kg)+'</div>':"—"}</td>`;}).join("")}<td ${td}>${o.pkt?mldF(o.pkt,2):"—"}</td><td ${td}><b>${mldF(o.kg,3)}</b></td></tr>`;}).join("")}<tr><td ${th}><b>TOTAL</b></td><td ${th}></td><td ${th}><b>${mldF(sum(function(o){return o.pcs;}),0)}</b></td>${mn.map(function(n){return`<td ${th}><b>${mldF(sum(function(o){return o.mats[n]||0;}),3)}</b></td>`;}).join("")}<td ${th}><b>${mldF(sum(function(o){return o.pkt;}),2)}</b></td><td ${th}><b>${mldF(sum(function(o){return o.kg;}),3)}</b></td></tr></tbody></table>`;
 }
 function mouldCombinedHtml(list){
   const c=mouldCombine(list),th='style="border:1px solid #444;padding:5px 8px;background:#e8eaf6;font-size:12px"',td='style="border:1px solid #444;padding:5px 8px;font-size:12px;text-align:center"';
@@ -5369,8 +5370,8 @@ function mouldCombinedAoa(list){
   aoa.push(["TOTAL","",items.reduce(function(a,o){return a+o.pcs;},0)].concat(mn.map(function(n){return+items.reduce(function(a,o){return a+(o.mats[n]||0);},0).toFixed(3);}),[+items.reduce(function(a,o){return a+o.pkt;},0).toFixed(2),+items.reduce(function(a,o){return a+o.kg;},0).toFixed(3)]));
   aoa.push([],["COLOUR-WISE TOTAL"],["Colour","Item","1 pc (g)","Pcs","Total kg","Colour pkt"]);
   mouldAggColours(c.lines).forEach(function(cw){cw.items.forEach(function(o){aoa.push([cw.colour,o.itemName,o.wtG,o.pcs,+o.kg.toFixed(3),+o.pkt.toFixed(2)]);});aoa.push([cw.colour+" — total","","",cw.pcs,+cw.kg.toFixed(3),+cw.pkt.toFixed(2)]);});
-  aoa.push([],["TOTAL REQUIREMENT"],["Material","KGS","BAGS"]);
-  c.totals.mats.forEach(function(m){aoa.push([m.name,+m.kg.toFixed(3),+(m.kg/m.bagKg).toFixed(3)]);});
+  aoa.push([],["TOTAL REQUIREMENT"],["Material","KGS","BAGS","Powder %"]);
+  c.totals.mats.forEach(function(m){aoa.push([m.name,+m.kg.toFixed(3),+(m.kg/m.bagKg).toFixed(3),mouldPct(m.kg,c.totals.kg)]);});
   c.totals.colours.forEach(function(x){aoa.push([x.name+(x.code?" ("+x.code+")":"")+" - colour packets",+x.pkt.toFixed(2),"Roundup: "+Math.ceil(x.pkt-1e-9)]);});
   aoa.push(["TOTAL",+c.totals.kg.toFixed(3),"Pcs: "+c.totals.pcs]);
   if(c.plans.length){aoa.push([],["PRODUCT PLAN (total)"],["Product","Cartons","Pcs"]);c.plans.forEach(function(p){aoa.push([p.name,p.cartons,p.pcs]);});}
@@ -5380,7 +5381,7 @@ function mouldCombinedAoa(list){
 function mouldSnapPrintHtml(s){
   const th='style="border:1px solid #444;padding:5px 8px;background:#e8eaf6;font-size:12px"',td='style="border:1px solid #444;padding:5px 8px;font-size:12px;text-align:center"';
   const mnames=[...new Set(s.lines.flatMap(l=>l.mats.map(m=>m.name)))];
-  const rows=s.lines.map((l,i)=>`<tr><td ${td}>${i+1}</td><td ${td}><b>${esc(l.itemName)}</b></td><td ${td}>${esc(l.colour||"—")}</td><td ${td}>${mldF(l.pcs,0)}</td><td ${td}>${l.wtG} g</td><td ${td}>${l.wastePct}%</td>${mnames.map(n=>{const m=l.mats.find(x=>x.name===n);return `<td ${td}>${m?mldF(m.kg,3):"—"}</td>`;}).join("")}<td ${td}>${l.colPkt?mldF(l.colPkt,2):"—"}</td><td ${td}><b>${mldF(l.totKg,3)}</b></td></tr>`).join("");
+  const rows=s.lines.map((l,i)=>`<tr><td ${td}>${i+1}</td><td ${td}><b>${esc(l.itemName)}</b></td><td ${td}>${esc(l.colour||"—")}</td><td ${td}>${mldF(l.pcs,0)}</td><td ${td}>${l.wtG} g</td><td ${td}>${l.wastePct}%</td>${mnames.map(n=>{const m=l.mats.find(x=>x.name===n);return `<td ${td}>${m?mldF(m.kg,3)+'<div style="font-size:9px;color:#666">'+mouldPct(m.kg,l.totKg)+'</div>':"—"}</td>`;}).join("")}<td ${td}>${l.colPkt?mldF(l.colPkt,2):"—"}</td><td ${td}><b>${mldF(l.totKg,3)}</b></td></tr>`).join("");
   const _sm=function(fn){return s.lines.reduce(function(a,l){return a+fn(l);},0);};
   const totRow=`<tr style="background:#eee;font-weight:700"><td ${td} colspan="3"><b>TOTAL</b></td><td ${td}><b>${mldF(_sm(function(l){return l.pcs;}),0)}</b></td><td ${td}></td><td ${td}></td>${mnames.map(function(n){return`<td ${td}><b>${mldF(_sm(function(l){const m=l.mats.find(function(x){return x.name===n;});return m?m.kg:0;}),3)}</b></td>`;}).join("")}<td ${td}><b>${mldF(_sm(function(l){return l.colPkt||0;}),2)}</b></td><td ${td}><b>${mldF(_sm(function(l){return l.totKg;}),3)}</b></td></tr>`;
   return `<h2 style="margin:0 0 4px">🏭 Jimit Pet LLP — Moulding Program</h2><div style="font-size:13px;margin-bottom:10px">Date: <b>${esc(s.date)}</b> &nbsp; Machine: <b>${esc(s.machine||"—")}</b> ${s.note?`&nbsp; Note: ${esc(s.note)}`:""}</div>
@@ -5428,8 +5429,8 @@ const MouldApp={
     aoa.push(["","TOTAL","",s.lines.reduce((a,l)=>a+l.pcs,0),"","",...mnames.map(n=>+s.lines.reduce((a,l)=>a+((l.mats.find(x=>x.name===n)||{kg:0}).kg),0).toFixed(3)),+s.lines.reduce((a,l)=>a+(l.colPkt||0),0).toFixed(2),+s.lines.reduce((a,l)=>a+l.totKg,0).toFixed(3)]);
     aoa.push([],["ITEM-WISE TOTAL (sab colour mila kar)"],["Item","1 pc (g)","Pcs",...mnames.map(n=>n+" kg"),"Colour pkt","Total kg"]);
     mouldAggItems(s.lines).forEach(o=>aoa.push([o.itemName,o.wtG,o.pcs,...mnames.map(n=>+(o.mats[n]||0).toFixed(3)),+o.pkt.toFixed(2),+o.kg.toFixed(3)]));
-    aoa.push([],["TOTAL REQUIREMENT"],["Material","KGS","BAGS"]);
-    s.totals.mats.forEach(m=>aoa.push([m.name,+m.kg.toFixed(3),+(m.kg/m.bagKg).toFixed(3)]));
+    aoa.push([],["TOTAL REQUIREMENT"],["Material","KGS","BAGS","Powder %"]);
+    s.totals.mats.forEach(m=>aoa.push([m.name,+m.kg.toFixed(3),+(m.kg/m.bagKg).toFixed(3),mouldPct(m.kg,s.totals.kg)]));
     s.totals.colours.forEach(c=>aoa.push([c.name+(c.code?" ("+c.code+")":"")+" - colour packets",+c.pkt.toFixed(2),"Roundup: "+Math.ceil(c.pkt-1e-9)]));
     aoa.push(["TOTAL",+s.totals.kg.toFixed(3),"Pcs: "+s.totals.pcs]);
     if((s.plans||[]).length){aoa.push([],["PRODUCT PLAN"],["Product","Cartons","Pcs","Colours"]);s.plans.forEach(p=>aoa.push([p.name,p.cartons,p.pcs,p.colours.join(", ")]));}
