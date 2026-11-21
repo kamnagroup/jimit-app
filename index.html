@@ -5028,9 +5028,9 @@ function mouldTotalsHtml(snap,pr){
   const td='style="border:1px solid #bbb;padding:6px 10px;text-align:center"';
   const ty='style="border:1px solid #bbb;padding:6px 10px;text-align:center;background:#ffeb3b;font-weight:700"';
   const tr='style="border:1px solid #bbb;padding:6px 10px;text-align:center;background:#ffcdd2;font-weight:700"';
-  return `<table style="border-collapse:collapse;width:100%;font-size:13px;margin-bottom:12px"><thead><tr><th ${th}>Material</th><th ${th}>Powder %</th><th ${th}>KGS</th><th ${th}>BAGS</th></tr></thead><tbody>
-  ${t.mats.map(m=>`<tr><td ${td}><b>${esc(m.name)}</b></td><td ${td}>${mouldPct(m.kg,t.kg)}</td><td ${ty}>${mldF(m.kg,3)}</td><td ${td}>${mouldBagTxt(m.kg,m.bagKg)}</td></tr>`).join("")}
-  <tr><td ${th}>TOTAL</td><td ${th}>100%</td><td ${th}>${mldF(t.kg,3)} kg</td><td ${th}>${mldF(t.pcs,0)} moulded pcs</td></tr></tbody></table>
+  return `<table style="border-collapse:collapse;width:100%;font-size:13px;margin-bottom:12px"><thead><tr><th ${th}>Material</th>${pr?"":`<th ${th}>Powder %</th>`}<th ${th}>KGS</th><th ${th}>BAGS</th></tr></thead><tbody>
+  ${t.mats.map(m=>`<tr><td ${td}><b>${esc(m.name)}</b></td>${pr?"":`<td ${td}>${mouldPct(m.kg,t.kg)}</td>`}<td ${ty}>${mldF(m.kg,3)}</td><td ${td}>${mouldBagTxt(m.kg,m.bagKg)}</td></tr>`).join("")}
+  <tr><td ${th}>TOTAL</td>${pr?"":`<td ${th}>100%</td>`}<td ${th}>${mldF(t.kg,3)} kg</td><td ${th}>${mldF(t.pcs,0)} moulded pcs</td></tr></tbody></table>
   ${t.colours.length?`<table style="border-collapse:collapse;width:100%;font-size:13px;margin-bottom:12px"><thead><tr><th ${th}>🎨 Colour</th><th ${th}>Code</th>${pr?"":`<th ${th}>Packets</th>`}<th ${th}>${pr?"Packets (Roundup)":"Roundup"}</th></tr></thead><tbody>
   ${t.colours.map(c=>`<tr><td ${td}><b>${esc(c.name)}</b></td><td ${td}>${esc(c.code||"—")}</td>${pr?"":`<td ${tr}>${mldF(c.pkt,2)} pkt</td>`}<td ${td}>${Math.ceil(c.pkt-1e-9)} pkt</td></tr>`).join("")}</tbody></table>`:""}
   ${mouldAccHtml(snap.acc,pr)}`;
@@ -5303,6 +5303,7 @@ function mouldProgramsModalHtml(){
 }
 
 // ══ v10: Moulding — column total, item-wise total, multi-program combined print ══
+function mouldOfficeBanner(){return`<div style="margin:18px 0 8px;border-top:2px dashed #555;padding-top:6px;text-align:center;font-weight:800;letter-spacing:3px;font-size:13px">OFFICE USE ONLY</div>`;}
 function mouldPct(part,whole){return whole>0?(+(part/whole*100).toFixed(1))+"%":"";}
 function mouldKindOf(name){const t=String(name||"").trim().split(/\s+/);return(t[t.length-1]||"").toUpperCase();}
 function mouldAggItems(lines){
@@ -5358,7 +5359,7 @@ function mouldCombinedHtml(list){
   return`<h2 style="margin:0 0 4px">🏭 Jimit Pet LLP — Moulding Programs (Combined)</h2><div style="font-size:13px;margin-bottom:10px">Programs: <b>${list.length}</b> &nbsp; Date: <b>${esc(list[0].date)}</b> se <b>${esc(list[list.length-1].date)}</b></div>
   <table style="border-collapse:collapse;width:100%;margin-bottom:10px"><thead><tr><th ${th}>#</th><th ${th}>Date</th><th ${th}>Machine</th><th ${th}>Items (pcs)</th><th ${th}>Pcs</th><th ${th}>Kg</th></tr></thead><tbody>${rows}</tbody></table>
   ${mouldItemTotalsHtml(c.lines,"Item-wise Total (sab colour aur sab programs mila kar)")}
-  ${c.plans.length?`<div style="font-size:13px;margin-bottom:10px"><b>📦 Product Plan (total):</b> ${c.plans.map(function(p){return esc(p.name)+" — "+p.cartons+" ctn ("+mldF(p.pcs,0)+" pcs)";}).join(" &nbsp;|&nbsp; ")}</div>`:""}
+  ${mouldOfficeBanner()}${c.plans.length?`<div style="font-size:13px;margin-bottom:10px"><b>📦 Product Plan (total):</b> ${c.plans.map(function(p){return esc(p.name)+" — "+p.cartons+" ctn ("+mldF(p.pcs,0)+" pcs)";}).join(" &nbsp;|&nbsp; ")}</div>`:""}
   <h3 style="margin:0 0 6px">Total Requirement (sab programs ka)</h3>${mouldTotalsHtml(c,true)}`;
 }
 function mouldCombinedAoa(list){
@@ -5370,8 +5371,8 @@ function mouldCombinedAoa(list){
   aoa.push(["TOTAL","",items.reduce(function(a,o){return a+o.pcs;},0)].concat(mn.map(function(n){return+items.reduce(function(a,o){return a+(o.mats[n]||0);},0).toFixed(3);}),[+items.reduce(function(a,o){return a+o.pkt;},0).toFixed(2),+items.reduce(function(a,o){return a+o.kg;},0).toFixed(3)]));
   aoa.push([],["COLOUR-WISE TOTAL"],["Colour","Item","1 pc (g)","Pcs","Total kg","Colour pkt"]);
   mouldAggColours(c.lines).forEach(function(cw){cw.items.forEach(function(o){aoa.push([cw.colour,o.itemName,o.wtG,o.pcs,+o.kg.toFixed(3),+o.pkt.toFixed(2)]);});aoa.push([cw.colour+" — total","","",cw.pcs,+cw.kg.toFixed(3),+cw.pkt.toFixed(2)]);});
-  aoa.push([],["TOTAL REQUIREMENT"],["Material","KGS","BAGS","Powder %"]);
-  c.totals.mats.forEach(function(m){aoa.push([m.name,+m.kg.toFixed(3),+(m.kg/m.bagKg).toFixed(3),mouldPct(m.kg,c.totals.kg)]);});
+  aoa.push([],["TOTAL REQUIREMENT"],["Material","KGS","BAGS"]);
+  c.totals.mats.forEach(function(m){aoa.push([m.name,+m.kg.toFixed(3),+(m.kg/m.bagKg).toFixed(3)]);});
   c.totals.colours.forEach(function(x){aoa.push([x.name+(x.code?" ("+x.code+")":"")+" - colour packets",+x.pkt.toFixed(2),"Roundup: "+Math.ceil(x.pkt-1e-9)]);});
   aoa.push(["TOTAL",+c.totals.kg.toFixed(3),"Pcs: "+c.totals.pcs]);
   if(c.plans.length){aoa.push([],["PRODUCT PLAN (total)"],["Product","Cartons","Pcs"]);c.plans.forEach(function(p){aoa.push([p.name,p.cartons,p.pcs]);});}
@@ -5386,7 +5387,7 @@ function mouldSnapPrintHtml(s){
   const totRow=`<tr style="background:#eee;font-weight:700"><td ${td} colspan="3"><b>TOTAL</b></td><td ${td}><b>${mldF(_sm(function(l){return l.pcs;}),0)}</b></td><td ${td}></td><td ${td}></td>${mnames.map(function(n){return`<td ${td}><b>${mldF(_sm(function(l){const m=l.mats.find(function(x){return x.name===n;});return m?m.kg:0;}),3)}</b></td>`;}).join("")}<td ${td}><b>${mldF(_sm(function(l){return l.colPkt||0;}),2)}</b></td><td ${td}><b>${mldF(_sm(function(l){return l.totKg;}),3)}</b></td></tr>`;
   return `<h2 style="margin:0 0 4px">🏭 Jimit Pet LLP — Moulding Program</h2><div style="font-size:13px;margin-bottom:10px">Date: <b>${esc(s.date)}</b> &nbsp; Machine: <b>${esc(s.machine||"—")}</b> ${s.note?`&nbsp; Note: ${esc(s.note)}`:""}</div>
   <table style="border-collapse:collapse;width:100%;margin-bottom:14px"><thead><tr><th ${th}>#</th><th ${th}>Item</th><th ${th}>Colour</th><th ${th}>Pcs</th><th ${th}>1 pc</th><th ${th}>Waste</th>${mnames.map(n=>`<th ${th}>${esc(n)} kg</th>`).join("")}<th ${th}>Colour pkt</th><th ${th}>Total kg</th></tr></thead><tbody>${rows}${totRow}</tbody></table>${mouldItemTotalsHtml(s.lines)}
-  ${(s.plans||[]).length?`<div style="font-size:13px;margin-bottom:10px"><b>📦 Product Plan:</b> ${s.plans.map(p=>esc(p.name)+" — "+p.cartons+" ctn ("+mldF(p.pcs,0)+" pcs)"+(p.colours.length?" ["+esc(p.colours.join(", "))+"]":"")).join(" &nbsp;|&nbsp; ")}</div>`:""}
+  ${mouldOfficeBanner()}${(s.plans||[]).length?`<div style="font-size:13px;margin-bottom:10px"><b>📦 Product Plan:</b> ${s.plans.map(p=>esc(p.name)+" — "+p.cartons+" ctn ("+mldF(p.pcs,0)+" pcs)"+(p.colours.length?" ["+esc(p.colours.join(", "))+"]":"")).join(" &nbsp;|&nbsp; ")}</div>`:""}
   <h3 style="margin:0 0 6px">Total Requirement</h3>${mouldTotalsHtml(s,true)}`;
 }
 // ── ACTIONS ────────────────────────────────────────────────────────────
@@ -5429,8 +5430,8 @@ const MouldApp={
     aoa.push(["","TOTAL","",s.lines.reduce((a,l)=>a+l.pcs,0),"","",...mnames.map(n=>+s.lines.reduce((a,l)=>a+((l.mats.find(x=>x.name===n)||{kg:0}).kg),0).toFixed(3)),+s.lines.reduce((a,l)=>a+(l.colPkt||0),0).toFixed(2),+s.lines.reduce((a,l)=>a+l.totKg,0).toFixed(3)]);
     aoa.push([],["ITEM-WISE TOTAL (sab colour mila kar)"],["Item","1 pc (g)","Pcs",...mnames.map(n=>n+" kg"),"Colour pkt","Total kg"]);
     mouldAggItems(s.lines).forEach(o=>aoa.push([o.itemName,o.wtG,o.pcs,...mnames.map(n=>+(o.mats[n]||0).toFixed(3)),+o.pkt.toFixed(2),+o.kg.toFixed(3)]));
-    aoa.push([],["TOTAL REQUIREMENT"],["Material","KGS","BAGS","Powder %"]);
-    s.totals.mats.forEach(m=>aoa.push([m.name,+m.kg.toFixed(3),+(m.kg/m.bagKg).toFixed(3),mouldPct(m.kg,s.totals.kg)]));
+    aoa.push([],["TOTAL REQUIREMENT"],["Material","KGS","BAGS"]);
+    s.totals.mats.forEach(m=>aoa.push([m.name,+m.kg.toFixed(3),+(m.kg/m.bagKg).toFixed(3)]));
     s.totals.colours.forEach(c=>aoa.push([c.name+(c.code?" ("+c.code+")":"")+" - colour packets",+c.pkt.toFixed(2),"Roundup: "+Math.ceil(c.pkt-1e-9)]));
     aoa.push(["TOTAL",+s.totals.kg.toFixed(3),"Pcs: "+s.totals.pcs]);
     if((s.plans||[]).length){aoa.push([],["PRODUCT PLAN"],["Product","Cartons","Pcs","Colours"]);s.plans.forEach(p=>aoa.push([p.name,p.cartons,p.pcs,p.colours.join(", ")]));}
