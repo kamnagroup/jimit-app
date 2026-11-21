@@ -5303,14 +5303,29 @@ function mouldProgramsModalHtml(){
 }
 
 // ══ v10: Moulding — column total, item-wise total, multi-program combined print ══
+function mouldKindOf(name){const t=String(name||"").trim().split(/\s+/);return(t[t.length-1]||"").toUpperCase();}
 function mouldAggItems(lines){
   const map={};
   (lines||[]).forEach(function(l){
-    const k=l.itemName+"|"+l.wtG,o=map[k]||(map[k]={itemName:l.itemName,wtG:l.wtG,pcs:0,kg:0,pkt:0,mats:{}});
+    const k=l.wtG+"|"+mouldKindOf(l.itemName),o=map[k]||(map[k]={names:[],wtG:l.wtG,pcs:0,kg:0,pkt:0,mats:{}});   // same weight + same type = ek hi item ginte hain
+    if(o.names.indexOf(l.itemName)<0)o.names.push(l.itemName);
     o.pcs+=Number(l.pcs)||0;o.kg+=Number(l.totKg)||0;o.pkt+=Number(l.colPkt)||0;
     (l.mats||[]).forEach(function(m){o.mats[m.name]=(o.mats[m.name]||0)+(Number(m.kg)||0);});
   });
-  return Object.values(map).sort(function(a,b){return String(a.itemName).localeCompare(String(b.itemName))||a.wtG-b.wtG;});
+  return Object.values(map).map(function(o){o.names.sort();o.itemName=o.names.join(" + ");return o;}).sort(function(a,b){return String(a.itemName).localeCompare(String(b.itemName))||a.wtG-b.wtG;});
+}
+function mouldAggColours(lines){
+  const map={};
+  (lines||[]).forEach(function(l){const c=l.colour||"(Colour nahi)";(map[c]=map[c]||[]).push(l);});
+  return Object.keys(map).sort().map(function(c){const it=mouldAggItems(map[c]);return{colour:c,code:mouldColCode(c==="(Colour nahi)"?"":c),items:it,pcs:it.reduce(function(a,o){return a+o.pcs;},0),kg:it.reduce(function(a,o){return a+o.kg;},0),pkt:it.reduce(function(a,o){return a+o.pkt;},0)};});
+}
+function mouldColourTotalsHtml(lines,title){
+  const th='style="border:1px solid #444;padding:5px 8px;background:#e8eaf6;font-size:12px"',td='style="border:1px solid #444;padding:5px 8px;font-size:12px;text-align:center"',ts='style="border:1px solid #444;padding:5px 8px;font-size:12px;text-align:center;background:#fff3cd;font-weight:700"';
+  const cols=mouldAggColours(lines);let gp=0,gk=0,gt=0;
+  const body=cols.map(function(c){gp+=c.pcs;gk+=c.kg;gt+=c.pkt;
+    return c.items.map(function(o,i){return`<tr><td ${td}>${i===0?`<b>${esc(c.colour)}</b>${c.code?`<div style="font-size:10px;color:#666">${esc(c.code)}</div>`:""}`:""}</td><td ${td}>${esc(o.itemName)}</td><td ${td}>${o.wtG} g</td><td ${td}>${mldF(o.pcs,0)}</td><td ${td}>${mldF(o.kg,3)}</td><td ${td}>${o.pkt?mldF(o.pkt,2):"—"}</td></tr>`;}).join("")
+     +`<tr><td ${ts} colspan="3">${esc(c.colour)} — total</td><td ${ts}>${mldF(c.pcs,0)}</td><td ${ts}>${mldF(c.kg,3)}</td><td ${ts}>${mldF(c.pkt,2)} <span style="font-weight:400;font-size:11px">(${Math.ceil(c.pkt-1e-9)} pkt)</span></td></tr>`;}).join("");
+  return`<h3 style="margin:12px 0 6px">${title||"🎨 Colour-wise Total"}</h3><table style="border-collapse:collapse;width:100%;margin-bottom:14px"><thead><tr><th ${th}>Colour</th><th ${th}>Item</th><th ${th}>1 pc</th><th ${th}>Pcs</th><th ${th}>Total kg</th><th ${th}>Colour pkt</th></tr></thead><tbody>${body}<tr><td ${th} colspan="3"><b>GRAND TOTAL</b></td><td ${th}><b>${mldF(gp,0)}</b></td><td ${th}><b>${mldF(gk,3)}</b></td><td ${th}><b>${mldF(gt,2)}</b></td></tr></tbody></table>`;
 }
 function mouldCombine(list){
   const lines=[],pm={},mm={},cm={};let pcs=0,kg=0;
@@ -5336,10 +5351,13 @@ function mouldItemTotalsHtml(lines,title){
 }
 function mouldCombinedHtml(list){
   const c=mouldCombine(list),th='style="border:1px solid #444;padding:5px 8px;background:#e8eaf6;font-size:12px"',td='style="border:1px solid #444;padding:5px 8px;font-size:12px;text-align:center"';
-  const rows=list.map(function(p,i){const it=mouldAggItems(p.lines).map(function(o){return esc(o.itemName)+" "+mldF(o.pcs,0);}).join(", ");return`<tr><td ${td}>${i+1}</td><td ${td}>${esc(fmtDate?fmtDate(p.date):p.date)}</td><td ${td}>${esc(p.machine||"—")}</td><td ${td} style="text-align:left">${it}</td><td ${td}>${mldF(p.totals.pcs,0)}</td><td ${td}>${mldF(p.totals.kg,2)}</td></tr>`;}).join("");
+  const rows=list.map(function(p,i){const byItem={};(p.lines||[]).forEach(function(l){(byItem[l.itemName]=byItem[l.itemName]||[]).push(l);});
+    const it=Object.keys(byItem).sort().map(function(n){const tot=byItem[n].reduce(function(a,l){return a+(Number(l.pcs)||0);},0);return`<div style="margin:1px 0"><b>${esc(n)}</b> ${mldF(tot,0)}${byItem[n].some(function(l){return l.colour;})?` <span style="color:#555">( ${byItem[n].map(function(l){return esc(l.colour||"—")+" "+mldF(l.pcs,0);}).join(" · ")} )</span>`:""}</div>`;}).join("");
+    return`<tr><td ${td}>${i+1}</td><td ${td}>${esc(fmtDate?fmtDate(p.date):p.date)}</td><td ${td}>${esc(p.machine||"—")}</td><td ${td} style="text-align:left">${it}</td><td ${td}>${mldF(p.totals.pcs,0)}</td><td ${td}>${mldF(p.totals.kg,2)}</td></tr>`;}).join("");
   return`<h2 style="margin:0 0 4px">🏭 Jimit Pet LLP — Moulding Programs (Combined)</h2><div style="font-size:13px;margin-bottom:10px">Programs: <b>${list.length}</b> &nbsp; Date: <b>${esc(list[0].date)}</b> se <b>${esc(list[list.length-1].date)}</b></div>
   <table style="border-collapse:collapse;width:100%;margin-bottom:10px"><thead><tr><th ${th}>#</th><th ${th}>Date</th><th ${th}>Machine</th><th ${th}>Items (pcs)</th><th ${th}>Pcs</th><th ${th}>Kg</th></tr></thead><tbody>${rows}</tbody></table>
   ${mouldItemTotalsHtml(c.lines,"Item-wise Total (sab colour aur sab programs mila kar)")}
+  ${mouldColourTotalsHtml(c.lines,"🎨 Colour-wise Total (sab programs ka)")}
   ${c.plans.length?`<div style="font-size:13px;margin-bottom:10px"><b>📦 Product Plan (total):</b> ${c.plans.map(function(p){return esc(p.name)+" — "+p.cartons+" ctn ("+mldF(p.pcs,0)+" pcs)";}).join(" &nbsp;|&nbsp; ")}</div>`:""}
   <h3 style="margin:0 0 6px">Total Requirement (sab programs ka)</h3>${mouldTotalsHtml(c,true)}`;
 }
@@ -5350,6 +5368,8 @@ function mouldCombinedAoa(list){
   aoa.push([],["ITEM-WISE TOTAL"],["Item","1 pc (g)","Pcs"].concat(mn.map(function(n){return n+" kg";}),["Colour pkt","Total kg"]));
   items.forEach(function(o){aoa.push([o.itemName,o.wtG,o.pcs].concat(mn.map(function(n){return+(o.mats[n]||0).toFixed(3);}),[+o.pkt.toFixed(2),+o.kg.toFixed(3)]));});
   aoa.push(["TOTAL","",items.reduce(function(a,o){return a+o.pcs;},0)].concat(mn.map(function(n){return+items.reduce(function(a,o){return a+(o.mats[n]||0);},0).toFixed(3);}),[+items.reduce(function(a,o){return a+o.pkt;},0).toFixed(2),+items.reduce(function(a,o){return a+o.kg;},0).toFixed(3)]));
+  aoa.push([],["COLOUR-WISE TOTAL"],["Colour","Item","1 pc (g)","Pcs","Total kg","Colour pkt"]);
+  mouldAggColours(c.lines).forEach(function(cw){cw.items.forEach(function(o){aoa.push([cw.colour,o.itemName,o.wtG,o.pcs,+o.kg.toFixed(3),+o.pkt.toFixed(2)]);});aoa.push([cw.colour+" — total","","",cw.pcs,+cw.kg.toFixed(3),+cw.pkt.toFixed(2)]);});
   aoa.push([],["TOTAL REQUIREMENT"],["Material","KGS","BAGS"]);
   c.totals.mats.forEach(function(m){aoa.push([m.name,+m.kg.toFixed(3),+(m.kg/m.bagKg).toFixed(3)]);});
   c.totals.colours.forEach(function(x){aoa.push([x.name+(x.code?" ("+x.code+")":"")+" - colour packets",+x.pkt.toFixed(2),"Roundup: "+Math.ceil(x.pkt-1e-9)]);});
