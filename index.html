@@ -3,6 +3,8 @@
 <html lang="en">
 <head>
 <meta charset="UTF-8">
+<meta name="robots" content="noindex,nofollow,noarchive">
+<script>/* clickjacking: kisi dusri site ke frame me ye app nahi khulega */if(window.top!==window.self){try{window.top.location=window.self.location;}catch(e){document.documentElement.style.display="none";}}</script>
 <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no">
 <title>Jimit Pet LLP</title>
 <meta name="description" content="Jimit Pet LLP Packing Management System">
@@ -260,10 +262,10 @@ const DEFAULT_CATS  = ["Jar","Bottle","Lunchbox","Diwali Item"];
 const INIT_USERS    = [{id:1,username:"admin",password:"admin123",role:"admin",name:"Admin User",
   permissions:{packing:true,pendingStock:true,stockSummary:true,dispatch:true,dispatchRegister:true,
     po:true,pendingOrder:true,mtPo:true,mtDispatch:true,mtPending:true,mtPacking:true,userManagement:true}}];
-const PERMS = ["gatePass","packing","pendingStock","stockSummary","dispatch","dispatchRegister","po","pendingOrder","orderVsAvailable","mtPo","mtDispatch","mtPending","mtPacking","mtVehReq","planner","store","inventoryStock","productionReport","mtPlanner","home","minStock","mtReport","mtSalesDashboard","programStock","canMake","accounts","invoice","mouldPlanner","approvePlan"];
+const PERMS = ["gatePass","packing","pendingStock","stockSummary","dispatch","dispatchRegister","po","pendingOrder","orderVsAvailable","mtPo","mtDispatch","mtPending","mtPacking","mtVehReq","planner","store","inventoryStock","productionReport","mtPlanner","home","minStock","mtReport","mtSalesDashboard","programStock","canMake","accounts","invoice","mouldPlanner"];
 const PERM_LABELS = {gatePass:"Gate Pass",packing:"Packing",pendingStock:"Pending Stock",stockSummary:"Stock Summary",dispatch:"Dispatch",
   dispatchRegister:"Dispatch Register",po:"Purchase Order",pendingOrder:"Pending Orders",orderVsAvailable:"Order vs Available",
-  mtPo:"MT PO",mtDispatch:"MT Dispatch",mtPending:"MT Pending",mtPacking:"MT Packing",mtVehReq:"MT Vehicle Req",planner:"Production Planner",store:"Store / Inventory",inventoryStock:"Inventory Stock",mtPlanner:"MT Production Planner",mtSalesDashboard:"MT Sales Dashboard",productionReport:"Production Report",home:"Home Dashboard",minStock:"Min Stock & Purchase List",mtReport:"MT Delivery Report",programStock:"Program Stock Check",canMake:"Can Make Report",accounts:"Accounts — Party, Bills, Payments, Reports",invoice:"Invoice (Dispatch)",mouldPlanner:"Moulding Planner",approvePlan:"Program Approve/Reject"};
+  mtPo:"MT PO",mtDispatch:"MT Dispatch",mtPending:"MT Pending",mtPacking:"MT Packing",mtVehReq:"MT Vehicle Req",planner:"Production Planner",store:"Store / Inventory",inventoryStock:"Inventory Stock",mtPlanner:"MT Production Planner",mtSalesDashboard:"MT Sales Dashboard",productionReport:"Production Report",home:"Home Dashboard",minStock:"Min Stock & Purchase List",mtReport:"MT Delivery Report",programStock:"Program Stock Check",canMake:"Can Make Report",accounts:"Accounts — Party, Bills, Payments, Reports",invoice:"Invoice (Dispatch)",mouldPlanner:"Moulding Planner"};
 
 // ── STATE ─────────────────────────────────────
 let state = {
@@ -280,7 +282,7 @@ let state = {
   lastPendingCategoryEmailDate:"",
   lastProductionReminderDate:"",
   itemMaster:[], dispatches:[], purchaseOrders:[], gatePasses:[],
-  mtItems:[], mtPos:[], mtDispatches:[], mtPackings:[], bomMaster:[], productionPlans:[], storeLedger:[], grns:[], mtBomMaster:[], mtProductionPlans:[], mtDivisions:["AVENUE","STYLE","VISHAL MEGA MART"], storeItems:[], storeQtyTypes:["Box","Pcs","Kgs"], storeCategories:[], auditLog:[], storeBatches:[],
+  mtItems:[], mtPos:[], mtDispatches:[], mtPackings:[], bomMaster:[], productionPlans:[], storeLedger:[], grns:[], mtBomMaster:[], mtProductionPlans:[], mtDivisions:["AVENUE","STYLE","VISHAL MEGA MART"], storeItems:[], storeQtyTypes:["Box","Pcs","Kgs"], storeCategories:[], auditLog:[], stockRequests:[], storeBatches:[],
   mouldItems:[], mouldMats:[], mouldColours:[], mouldPrograms:[], mouldProducts:[], mouldGroups:[], appSettings:{},
   activeTab:"packing"
 };
@@ -696,7 +698,7 @@ function auditEvent(act,det,u){
     const w=_audUser(u);
     _audQ.push({id:uid(),ts:Date.now(),at:nowStr(),user:w.user,role:w.role,dev:_audDev(),tab:(state.currentUser&&state.activeTab)||"",act:act,arg:"",det:det||""});
     clearTimeout(_audT);_audT=setTimeout(_audFlush,2500);
-    if(/Logout|FAIL|Lock/i.test(act))_audFlush();
+    if(/Logout|FAIL|Lock|Error|Failed/i.test(act))_audFlush();
   }catch(e){}
 }
 function _audFlush(){
@@ -754,6 +756,7 @@ function auditFiltered(){
     const d=new Date(e.ts),day=d.getFullYear()+"-"+String(d.getMonth()+1).padStart(2,"0")+"-"+String(d.getDate()).padStart(2,"0");
     if(f&&day<f)return false;if(t&&day>t)return false;if(u&&e.user!==u)return false;
     if(sec&&!/Login|Logout|Lock/i.test(e.act))return false;
+    if(temp.audErr&&!/Error|Failed/i.test(e.act))return false;
     if(q&&!JSON.stringify([e.user,e.act,e.arg,e.det,e.tab]).toLowerCase().includes(q))return false;
     return true;
   });
@@ -761,7 +764,7 @@ function auditFiltered(){
 function renderAuditLogTab(){
   if(!isAdminU())return`<div class="card"><div class="card-body">Ye tab sirf admin ke liye hai.</div></div>`;
   const all=auditFiltered(),list=all.slice(0,500),users=[...new Set(auditAll().map(function(e){return e.user;}))].sort();
-  const rows=list.map(function(e){const bad=/FAIL|Lock/i.test(e.act),ok=e.act==="Login";
+  const rows=list.map(function(e){const bad=/FAIL|Lock|Error|Failed/i.test(e.act),ok=e.act==="Login";
     return`<tr style="${bad?"background:#ffebee":""}"><td style="white-space:nowrap">${esc(e.at||"")}</td><td><b>${esc(e.user)}</b><div style="font-size:10px;color:#777">${esc(e.role)}</div></td><td style="font-size:11px;color:#777">${esc(e.dev||"")}</td><td style="font-size:11px">${esc(e.tab||"")}</td><td style="font-weight:700;color:${bad?"#c62828":ok?"#2e7d32":"#1a237e"}">${esc(e.act)}${e.arg?` <span style="color:#777;font-weight:400">(${esc(e.arg)})</span>`:""}</td><td style="font-size:12px">${esc(e.det)}</td></tr>`;}).join("")||`<tr><td colspan="6" style="text-align:center;color:#999;padding:20px">Koi entry nahi</td></tr>`;
   return`<div class="card"><div class="card-title">📜 Audit Log — kisne, kab, kya kiya</div><div class="card-body">
   <div style="display:flex;gap:8px;flex-wrap:wrap;align-items:flex-end;margin-bottom:12px">
@@ -770,6 +773,7 @@ function renderAuditLogTab(){
    <div><label class="lbl">From</label><input type="date" class="inp" value="${esc(temp.audFrom||"")}" style="width:145px;margin-bottom:0" onchange="App.setAud('audFrom',this.value)"></div>
    <div><label class="lbl">To</label><input type="date" class="inp" value="${esc(temp.audTo||"")}" style="width:145px;margin-bottom:0" onchange="App.setAud('audTo',this.value)"></div>
    <label style="font-size:13px;padding-bottom:8px;cursor:pointer"><input type="checkbox" ${temp.audSec?"checked":""} onchange="App.setAud('audSec',this.checked)"> Sirf Login/Security</label>
+   <label style="font-size:13px;padding-bottom:8px;cursor:pointer"><input type="checkbox" ${temp.audErr?"checked":""} onchange="App.setAud('audErr',this.checked)"> 🐞 Sirf Errors</label>
    ${reportBtns("aud")}
   </div>
   <div style="font-size:11px;color:#888;margin-bottom:6px">Latest ${list.length} / total ${all.length} entries dikh rahi hain. Poori list Excel/PDF me aayegi. (Sirf wahi kaam likhe jate hain jinse data badla ho.)</div>
@@ -877,7 +881,7 @@ function pendingProgramNeed(){
   (state.productionPlans||[]).concat(state.mtProductionPlans||[]).forEach(function(p){
     if(!p||p.status!=="pending"||!p.result||!p.result.accTotals)return;
     const w=p.result.wastage||{};
-    Object.keys(p.result.accTotals).forEach(function(n){const nd=Math.ceil(p.result.accTotals[n]*100)/100,pct=Number(w[n]||0);need[n]=(need[n]||0)+Math.ceil(nd*(1+pct/100));});
+    Object.keys(p.result.accTotals).forEach(function(n){const nd=Math.ceil(p.result.accTotals[n]*100)/100,pct=Number(w[n]||0);need[n]=(need[n]||0)+Math.ceil(nd*(1+pct/100)-1e-9);});
   });
   return need;
 }
@@ -1002,17 +1006,14 @@ function _polCheck(name){
   const u=state.currentUser;
   if(!u||u.role==="admin")return true;
   if(/^(delete|permanentlyDelete)/.test(name)){alert("🔒 Sirf admin delete kar sakta hai.");return false;}
-  if(/^(approveProgram|rejectProgram|approveMtProgram|rejectMtProgram)$/.test(name)){
-    if(isRO()||!can("approvePlan")){alert("🔒 Program Approve/Reject ki permission aapko nahi hai. Admin se 'Program Approve/Reject' permission lo.");return false;}
-    return true;
-  }
+  if(/^(approveProgram|rejectProgram|approveMtProgram|rejectMtProgram|approveDo|approveStockReq|rejectStockReq)$/.test(name)){alert("🔒 Approve / Reject sirf admin kar sakta hai.");return false;}
   if(_MUT_RO.test(name)&&!_MUT_EXC.has(name)&&isRO()){alert("🔒 Aapko sirf dekhne ki permission hai.");return false;}
   return true;
 }
 function _hideAdminOnly(){
   const u=state.currentUser;if(!u||u.role==="admin")return;
   document.querySelectorAll('[onclick*="App.delete"],[onclick*="App.permanentlyDelete"]').forEach(function(b){b.remove();});
-  if(isRO()||!can("approvePlan"))document.querySelectorAll('[onclick*="App.approveProgram"],[onclick*="App.rejectProgram"],[onclick*="App.approveMtProgram"],[onclick*="App.rejectMtProgram"]').forEach(function(b){b.remove();});
+  document.querySelectorAll('[onclick*="App.approveProgram"],[onclick*="App.rejectProgram"],[onclick*="App.approveMtProgram"],[onclick*="App.rejectMtProgram"],[onclick*="App.approveStockReq"],[onclick*="App.rejectStockReq"]').forEach(function(b){b.remove();});
 }
 let _hoT=null;
 function _polInit(){
@@ -1032,7 +1033,7 @@ function netBadgeInfo(){
   if(st==="error")return{t:"⚠️ Sync error",c:"#c62828"};
   return{t:"🟢 Online",c:"#2e7d32"};
 }
-function netBadgeUpdate(){try{const b=document.getElementById("netBadge");if(!b)return;const i=netBadgeInfo();b.textContent=i.t;b.style.background=i.c;}catch(e){}}
+function netBadgeUpdate(){try{const b=document.getElementById("netBadge");if(!b)return;const i=netBadgeInfo();b.textContent=i.t;b.style.background=i.c;const ch=document.getElementById("adminChips");if(ch)ch.innerHTML=adminChipsHtml();}catch(e){}}
 window.addEventListener("online",function(){netBadgeUpdate();try{if(Cloud.session)Cloud.tick();}catch(e){}});
 window.addEventListener("offline",netBadgeUpdate);
 setInterval(netBadgeUpdate,5000);
@@ -1041,6 +1042,142 @@ async function _netTry(url,opts){
   try{const r=await fetch(url,Object.assign({cache:"no-store",signal:ac.signal},opts||{}));clearTimeout(to);return{ok:true,status:r.status,ms:Date.now()-t0};}
   catch(e){clearTimeout(to);return{ok:false,err:String(e&&e.name==="AbortError"?"8 second me jawab nahi aaya":(e&&e.message)||e),ms:Date.now()-t0};}
 }
+// ══════════ v14: admin-only approve + stock requests + Today IN/OUT + error log + 2-step (TOTP) + searchable select ══════════
+const MFA_ROLES={admin:true,owner:false};   // owner ka code likha hua hai; chalu karna ho to owner:true kar do (jab bola jaye)
+function jwtAal(tok){try{const p=String(tok||"").split(".")[1].replace(/-/g,"+").replace(/_/g,"/");return JSON.parse(atob(p+"=".repeat((4-p.length%4)%4))).aal||"";}catch(e){return"";}}
+// ── Approve dialog (checkbox: store stock auto minus ya manual request) ──
+function _approveDlg(id,mt){
+  if(!isAdminU()){alert("🔒 Approve sirf admin kar sakta hai.");return;}
+  const arr=mt?state.mtProductionPlans:state.productionPlans,p=arr.find(function(x){return x.id===id;});
+  if(!p){alert("Program nahi mila");return;}
+  if(p.status!=="pending"){alert("Ye program pehle hi "+p.status+" ho chuka hai");return;}
+  const w=(p.result&&p.result.wastage)||{},acc=(p.result&&p.result.accTotals)||{};
+  const fq=function(n){const need=Math.ceil(acc[n]*100)/100,pct=Number(w[n]||0);return Math.ceil(need*(1+pct/100)-1e-9);};
+  const rows=Object.keys(acc).map(function(n){const q=fq(n),st=getStoreStock(n);return'<tr><td>'+esc(n)+'</td><td style="text-align:right">'+q+'</td><td style="text-align:right">'+st+'</td><td style="text-align:center">'+(st<q?'<span style="color:#c62828;font-weight:700">⚠️ kam</span>':'✅')+'</td></tr>';}).join("");
+  const old=document.getElementById("apDlg");if(old)old.remove();
+  const d=document.createElement("div");d.id="apDlg";d.style.cssText="position:fixed;inset:0;background:rgba(0,0,0,.5);z-index:9999;display:flex;align-items:center;justify-content:center;padding:14px";
+  d.innerHTML='<div style="background:#fff;border-radius:12px;max-width:520px;width:100%;max-height:92vh;overflow:auto;padding:16px"><div style="font-size:16px;font-weight:800;color:#1a237e;margin-bottom:8px">✅ Program '+esc(p.programNo)+' Approve</div>'
+   +(rows?'<table class="tbl" style="font-size:12px"><thead><tr style="background:#1a237e;color:#fff"><th>Accessory</th><th>Chahiye</th><th>Stock</th><th></th></tr></thead><tbody>'+rows+'</tbody></table>':'<div style="color:#777;font-size:13px">Is program me accessories nahi hain.</div>')
+   +'<label style="display:flex;gap:10px;align-items:flex-start;margin:14px 0 6px;padding:10px;border:2px solid #1a237e;border-radius:8px;background:#f3f4ff;cursor:pointer"><input type="checkbox" id="apDeduct" checked style="margin-top:3px;width:18px;height:18px"><span style="font-size:13px"><b>Store inventory se accessories abhi minus karo</b><br><span style="color:#555">Tick = approve hote hi stock apne aap minus.<br>Tick nahi = stock minus <b>nahi</b> hoga. Store wala user Manual Stock Adjust se item aur qty ki <b>request</b> bhejega, aur aap approve karoge tab hi stock minus hoga.</span></span></label>'
+   +'<div style="display:flex;gap:8px;margin-top:12px;justify-content:flex-end"><button class="btn btn-secondary" onclick="App.closeApproveDlg()">Cancel</button><button class="btn btn-success" onclick="App.approveDo('+id+','+(mt?"true":"false")+')">✅ Approve karo</button></div></div>';
+  document.body.appendChild(d);
+}
+// ── Stock requests (store user ki manual adjust request -> admin approve) ──
+function stockReqPending(){return(state.stockRequests||[]).filter(function(r){return r.status==="pending";});}
+function _srDelta(r,cur){return r.type==="set"?Math.round((Number(r.qty)-cur)*100)/100:(r.type==="add"?1:-1)*Math.abs(Number(r.qty)||0);}
+function _srTxt(r){return r.type==="set"?"Set = "+r.qty:(r.type==="add"?"+":"−")+Math.abs(Number(r.qty)||0);}
+function stockReqHtml(){
+  const u=state.currentUser;if(!u)return"";
+  const all=state.stockRequests||[],th='style="padding:6px 8px;background:#1a237e;color:#fff;font-size:12px"',td='style="padding:6px 8px;font-size:12px;border-bottom:1px solid #eee"';
+  const chip=function(s){return s==="pending"?'<span style="background:#fff3e0;color:#e65100;padding:2px 8px;border-radius:10px;font-weight:700">⏳ Pending</span>':s==="approved"?'<span style="background:#e8f5e9;color:#2e7d32;padding:2px 8px;border-radius:10px;font-weight:700">✅ Approved</span>':'<span style="background:#ffebee;color:#c62828;padding:2px 8px;border-radius:10px;font-weight:700">✖ Rejected</span>';};
+  if(isAdminU()){
+    const pend=all.filter(function(r){return r.status==="pending";}).sort(function(a,b){return a.ts-b.ts;});
+    const done=all.filter(function(r){return r.status!=="pending";}).sort(function(a,b){return(b.decidedTs||0)-(a.decidedTs||0);}).slice(0,15);
+    if(!pend.length&&!done.length)return"";
+    const prow=pend.map(function(r){const cur=getStoreStock(r.item),dl=_srDelta(r,cur),af=Math.round((cur+dl)*100)/100;return'<tr><td '+td+'>'+esc(r.date)+'</td><td '+td+'><b>'+esc(r.by)+'</b></td><td '+td+'><b>'+esc(r.item)+'</b></td><td '+td+'>'+esc(_srTxt(r))+'</td><td '+td+'>'+cur+' → <b style="color:'+(af<0?"#c62828":"#1b5e20")+'">'+af+'</b></td><td '+td+'>'+esc(r.reason||"")+'</td><td '+td+' style="white-space:nowrap"><button class="btn btn-sm btn-success" onclick="App.approveStockReq('+r.id+')">✅ Approve</button> <button class="btn btn-sm btn-danger" onclick="App.rejectStockReq('+r.id+')">✖ Reject</button></td></tr>';}).join("");
+    const drow=done.map(function(r){return'<tr><td '+td+'>'+esc(r.date)+'</td><td '+td+'>'+esc(r.by)+'</td><td '+td+'>'+esc(r.item)+'</td><td '+td+'>'+esc(_srTxt(r))+'</td><td '+td+'>'+chip(r.status)+'</td><td '+td+'>'+esc(r.note||r.reason||"")+'</td><td '+td+'>'+esc(r.decidedBy||"")+'</td></tr>';}).join("");
+    return'<div class="card" style="border:2px solid '+(pend.length?'#e65100':'#c5cae9')+'"><div class="card-title" style="background:'+(pend.length?'#e65100':'#37474f')+'">📥 Stock Requests (Store se) — '+pend.length+' pending</div><div class="card-body">'
+     +(pend.length?'<div style="font-size:12px;color:#555;margin-bottom:6px">Ye store ki manual stock adjust requests hain. <b>Approve</b> karne par hi stock badlega.</div><div style="overflow-x:auto"><table style="width:100%;border-collapse:collapse"><thead><tr><th '+th+'>Date</th><th '+th+'>Kisne</th><th '+th+'>Item</th><th '+th+'>Request</th><th '+th+'>Stock (abhi → baad me)</th><th '+th+'>Reason / Program</th><th '+th+'></th></tr></thead><tbody>'+prow+'</tbody></table></div>':'<div style="color:#2e7d32;font-size:13px">✅ Koi request pending nahi hai.</div>')
+     +(drow?'<details style="margin-top:10px"><summary style="cursor:pointer;font-size:12px;color:#555">Pichhli requests ('+done.length+')</summary><div style="overflow-x:auto;margin-top:6px"><table style="width:100%;border-collapse:collapse"><thead><tr><th '+th+'>Date</th><th '+th+'>Kisne</th><th '+th+'>Item</th><th '+th+'>Request</th><th '+th+'>Status</th><th '+th+'>Note</th><th '+th+'>Admin</th></tr></thead><tbody>'+drow+'</tbody></table></div></details>':'')+'</div></div>';
+  }
+  const mine=all.filter(function(r){return r.by===u.name;}).slice(-15).reverse();
+  if(!mine.length)return"";
+  return'<div class="card"><div class="card-title">📨 Meri Stock Requests</div><div class="card-body"><div style="font-size:12px;color:#555;margin-bottom:6px">Admin approve karega tab hi stock badlega.</div><div style="overflow-x:auto"><table style="width:100%;border-collapse:collapse"><thead><tr><th '+th+'>Date</th><th '+th+'>Item</th><th '+th+'>Request</th><th '+th+'>Status</th><th '+th+'>Note</th></tr></thead><tbody>'+mine.map(function(r){return'<tr><td '+td+'>'+esc(r.date)+'</td><td '+td+'>'+esc(r.item)+'</td><td '+td+'>'+esc(_srTxt(r))+'</td><td '+td+'>'+chip(r.status)+'</td><td '+td+'>'+esc(r.note||r.reason||"")+'</td></tr>';}).join("")+'</tbody></table></div></div></div>';
+}
+function adminChipsHtml(){
+  if(!isAdminU())return"";
+  const n=stockReqPending().length,today=new Date().toDateString();
+  const ne=auditAll().filter(function(e){return/Error|Failed/i.test(e.act)&&new Date(e.ts).toDateString()===today;}).length;
+  return(n?'<span onclick="App.goStockReq()" title="Store ki stock requests pending" style="cursor:pointer;font-size:11px;background:#e65100;padding:2px 8px;border-radius:20px;white-space:nowrap;margin-left:6px">📥 '+n+' request</span>':"")+(ne?'<span onclick="App.goErrors()" title="Aaj ke app errors" style="cursor:pointer;font-size:11px;background:#b71c1c;padding:2px 8px;border-radius:20px;white-space:nowrap;margin-left:6px">🐞 '+ne+' error</span>':"");
+}
+// ── Store: Today IN / OUT summary ──
+function storeDayData(day){
+  const c={grn:[],iin:[],ret:[],min:[],iout:[],mout:[],pout:[]};
+  (state.storeLedger||[]).forEach(function(l){
+    if(!l||l.date!==day)return;const q=Number(l.qty)||0;
+    if(l.type==="grn_in")c.grn.push(l);else if(l.type==="internal_receive")c.iin.push(l);else if(l.type==="return_in")c.ret.push(l);
+    else if(l.type==="internal_issue")c.iout.push(l);else if(l.type==="plan_out")c.pout.push(l);
+    else if(l.type==="manual_adjust"){if(q<0)c.mout.push(l);else c.min.push(l);}
+  });
+  const items={};
+  const add=function(arr,k,sign){arr.forEach(function(l){const n=l.itemName,o=items[n]||(items[n]={name:n,grn:0,iin:0,ret:0,min:0,iout:0,mout:0,pout:0});o[k]+=Math.abs(Number(l.qty)||0);});};
+  add(c.grn,"grn");add(c.iin,"iin");add(c.ret,"ret");add(c.min,"min");add(c.iout,"iout");add(c.mout,"mout");add(c.pout,"pout");
+  const rows=Object.values(items).map(function(o){o.tin=o.grn+o.iin+o.ret+o.min;o.tout=o.iout+o.mout+o.pout;o.net=Math.round((o.tin-o.tout)*100)/100;return o;}).sort(function(a,b){return String(a.name).localeCompare(String(b.name));});
+  return{c:c,rows:rows};
+}
+function storeTodayHtml(){
+  const day=temp.sdDay||todayStr(),d=storeDayData(day),c=d.c;
+  const th='style="padding:6px 8px;background:#e8eaf6;font-size:12px;border:1px solid #c5cae9"',td='style="padding:6px 8px;font-size:12px;border:1px solid #e0e0e0"';
+  const line=function(lab,arr){const n=new Set(arr.map(function(l){return l.itemName;})).size;return'<tr><td '+td+'>'+lab+'</td><td '+td+' style="text-align:center">'+arr.length+'</td><td '+td+' style="text-align:center">'+n+'</td></tr>';};
+  const tbl=function(title,color,lines){return'<div style="flex:1;min-width:260px"><div style="font-weight:800;color:'+color+';margin-bottom:4px">'+title+'</div><table style="width:100%;border-collapse:collapse"><thead><tr><th '+th+'>Type</th><th '+th+'>Entries</th><th '+th+'>Items</th></tr></thead><tbody>'+lines+'</tbody></table></div>';};
+  const inL=line("📥 GRN (Purchase)",c.grn)+line("🔁 Internal IN",c.iin)+line("↩️ Return from Plant",c.ret)+line("✋ Manual IN",c.min);
+  const outL=line("🚪 Internal OUT (Gate Pass / Challan)",c.iout)+line("✋ Manual OUT",c.mout)+line("🏭 Program OUT (Approve se)",c.pout);
+  const body=d.rows.map(function(o){return'<tr><td '+td+'><b>'+esc(o.name)+'</b></td><td '+td+' style="text-align:right;color:#1b5e20">'+(o.tin?'+'+Math.round(o.tin*100)/100:"—")+'</td><td '+td+' style="text-align:right;color:#c62828">'+(o.tout?'−'+Math.round(o.tout*100)/100:"—")+'</td><td '+td+' style="text-align:right"><b>'+o.net+'</b></td></tr>';}).join("");
+  return'<div class="card"><div class="card-title" style="display:flex;justify-content:space-between;align-items:center;flex-wrap:wrap;gap:8px"><span>📊 Store Today IN / OUT Summary</span><span style="display:flex;gap:8px;align-items:center;flex-wrap:wrap"><input type="date" class="inp" value="'+esc(day)+'" style="margin:0;width:150px" onchange="App.setStoreDay(this.value)">'+reportBtns("storeday")+'</span></div><div class="card-body">'
+   +'<div style="display:flex;gap:16px;flex-wrap:wrap;margin-bottom:12px">'+tbl("📥 IN","#1b5e20",inL)+tbl("📤 OUT","#c62828",outL)+'</div>'
+   +(d.rows.length?'<div style="max-height:300px;overflow:auto"><table style="width:100%;border-collapse:collapse"><thead><tr><th '+th+'>Item</th><th '+th+'>IN</th><th '+th+'>OUT</th><th '+th+'>Net</th></tr></thead><tbody>'+body+'</tbody></table></div>':'<div style="color:#999;text-align:center;padding:12px">Is din koi store entry nahi hui</div>')+'</div></div>';
+}
+// ── Error log (sirf admin ko Audit Log tab me dikhta hai) ──
+(function(){
+  let n=0;const seen={};
+  function rec(msg,where){
+    if(n>60)return;const k=msg+"|"+where,t=Date.now();if(seen[k]&&t-seen[k]<60000)return;seen[k]=t;n++;
+    try{auditEvent("App Error",String(msg).slice(0,200)+(where?" @ "+where:""));}catch(e){}
+  }
+  window.addEventListener("error",function(e){
+    if(!e||!e.message||/ResizeObserver|^Script error/i.test(e.message))return;
+    rec(e.message,(String(e.filename||"").split("/").pop()||"page")+":"+(e.lineno||0)+":"+(e.colno||0));
+  });
+  window.addEventListener("unhandledrejection",function(e){
+    const r=e&&e.reason,m=r&&r.message?r.message:String(r);
+    if(/Failed to fetch|NetworkError|Load failed|AbortError|aborted/i.test(m))return;
+    rec("Promise: "+m,"");
+  });
+})();
+// ── Searchable dropdown (Planner naam: type karte jao, suggestions chhote hote jayenge) ──
+const SX_SEL="#plannerItem,#mtPlannerItem,#mtPlannerPoSelect,#mpItem";
+function sxEnhance(sel){
+  if(!sel||sel.dataset.sx)return;sel.dataset.sx="1";
+  const wrap=document.createElement("div");wrap.className="sx-wrap";wrap.style.cssText="position:relative;width:100%";
+  const inp=document.createElement("input");inp.type="text";inp.className=sel.className;inp.setAttribute("autocomplete","off");inp.placeholder="🔍 Naam likho ya chuno...";inp.style.cssText=sel.getAttribute("style")||"";
+  const list=document.createElement("div");list.style.cssText="position:absolute;left:0;right:0;top:100%;z-index:10000;background:#fff;border:1px solid #9fa8da;border-radius:6px;max-height:260px;overflow:auto;box-shadow:0 6px 18px rgba(0,0,0,.2);display:none";
+  sel.parentNode.insertBefore(wrap,sel);wrap.appendChild(inp);wrap.appendChild(list);wrap.appendChild(sel);sel.style.display="none";
+  let items=[],act=-1;
+  const txt=function(o){return o.textContent.trim();};
+  const opts=function(){const out=[];Array.prototype.forEach.call(sel.children,function(c){if(c.tagName==="OPTGROUP")Array.prototype.forEach.call(c.children,function(o){out.push({o:o,grp:c.label});});else if(c.tagName==="OPTION")out.push({o:c,grp:""});});return out;};
+  const cur=function(){const o=sel.options[sel.selectedIndex];return o&&o.value!==""?txt(o):"";};
+  const hide=function(){list.style.display="none";};
+  const sync=function(){if(document.activeElement!==inp)inp.value=cur();};
+  const paint=function(){Array.prototype.forEach.call(list.querySelectorAll(".sx-i"),function(el){el.style.background=(+el.dataset.i===act)?"#e8eaf6":"";});};
+  const render=function(q){
+    const toks=q.toLowerCase().split(/\s+/).filter(Boolean);
+    items=opts().filter(function(x){if(x.o.value===""||x.o.disabled)return false;const t=txt(x.o).toLowerCase();return toks.every(function(k){return t.indexOf(k)>=0;});}).slice(0,150);
+    act=items.length?0:-1;let last=null,h="";
+    items.forEach(function(x,i){if(x.grp!==last){last=x.grp;if(x.grp)h+='<div style="padding:4px 8px;font-size:11px;color:#555;background:#eef">'+esc(x.grp)+'</div>';}h+='<div class="sx-i" data-i="'+i+'" style="padding:7px 10px;cursor:pointer;font-size:13px;border-bottom:1px solid #f0f0f0">'+esc(txt(x.o))+'</div>';});
+    list.innerHTML=h||'<div style="padding:10px;color:#999;font-size:13px">Koi naam nahi mila</div>';list.style.display="block";paint();
+  };
+  const pick=function(i){if(i<0||!items[i])return;sel.value=items[i].o.value;sel.dispatchEvent(new Event("change",{bubbles:true}));inp.value=txt(items[i].o);hide();inp.blur();};
+  inp.addEventListener("focus",function(){inp.select();render("");});
+  inp.addEventListener("input",function(){render(inp.value);});
+  inp.addEventListener("keydown",function(e){
+    if(e.key==="ArrowDown"){e.preventDefault();if(list.style.display==="none")render(inp.value);act=Math.min(items.length-1,act+1);paint();const el=list.querySelector('.sx-i[data-i="'+act+'"]');if(el&&el.scrollIntoView)el.scrollIntoView({block:"nearest"});}
+    else if(e.key==="ArrowUp"){e.preventDefault();act=Math.max(0,act-1);paint();const el=list.querySelector('.sx-i[data-i="'+act+'"]');if(el&&el.scrollIntoView)el.scrollIntoView({block:"nearest"});}
+    else if(e.key==="Enter"){e.preventDefault();pick(act>=0?act:0);}
+    else if(e.key==="Escape"){hide();inp.value=cur();}
+  });
+  list.addEventListener("mousedown",function(e){const el=e.target.closest?e.target.closest(".sx-i"):null;if(el){e.preventDefault();pick(+el.dataset.i);}});
+  inp.addEventListener("blur",function(){setTimeout(function(){hide();inp.value=cur();},120);});
+  inp._sync=sync;inp.value=cur();
+}
+function _sxScan(){Array.prototype.forEach.call(document.querySelectorAll(SX_SEL),sxEnhance);}
+function _sxInit(){
+  try{let t=null;new MutationObserver(function(){clearTimeout(t);t=setTimeout(_sxScan,30);}).observe(document.body,{childList:true,subtree:true});}catch(e){}
+  setInterval(function(){Array.prototype.forEach.call(document.querySelectorAll(".sx-wrap input"),function(i){if(i._sync)i._sync();});},600);
+  _sxScan();
+}
+
+const _rIst=renderInventoryStockTab;renderInventoryStockTab=function(){return stockReqHtml()+_rIst();};
+const _rSt=renderStoreTab;renderStoreTab=function(){return storeTodayHtml()+_rSt();};
 function _progDelete(id,mt){
   const arr=mt?state.mtProductionPlans:state.productionPlans;
   const p=arr.find(x=>x.id===id);if(!p)return;
@@ -1291,7 +1428,7 @@ function buildMtProductionProgramEmailBody(p){
   Object.entries(p.result.accTotals||{}).forEach(([name,qty])=>{
     const req=Math.ceil(qty*100)/100;
     const pct=Number(wastage[name]||0);
-    const finalQty=Math.ceil(req*(1+pct/100));
+    const finalQty=Math.ceil(req*(1+pct/100)-1e-9);
     const pb=Number(perBox[name]||0);
     const boxQty=pb>0?Math.ceil(finalQty/pb):null;
     lines.push(`  ${name} — Required: ${req} | Extra%: ${pct}% | Final Qty: ${finalQty}${boxQty!=null?` | Box Qty: ${boxQty}`:""}`);
@@ -1322,7 +1459,7 @@ function buildProductionProgramEmailBody(p){
     const unit=getAccessoryUnit(name);
     const req=Math.ceil(qty*100)/100;
     const pct=Number(wastage[name]||0);
-    const finalQty=Math.ceil(req*(1+pct/100));
+    const finalQty=Math.ceil(req*(1+pct/100)-1e-9);
     const pb=Number(perBox[name]||0);
     const boxQty=pb>0?Math.ceil(finalQty/pb):null;
     lines.push(`  ${name} — Required: ${req} ${unit} | Extra%: ${pct}% | Final Qty: ${finalQty} ${unit}${boxQty!=null?` | Box Qty: ${boxQty}`:""}`);
@@ -1548,7 +1685,7 @@ function backfillDispatchItemBatches(){
 function buildBackupData(){
   const map={users:"users",packings:"packings",categories:"categories",dispatches:"dispatches",
     purchaseOrders:"pos",mtPos:"mt_pos",mtDispatches:"mt_dispatches",batchOptions:"batch_options",
-    mtItems:"mt_items",mtPackings:"mt_packings",itemMaster:"item_master",bomMaster:"bom_master",productionPlans:"production_plans",storeLedger:"store_ledger",grns:"grns",mtBomMaster:"mt_bom_master",mouldItems:"mould_items",mouldMats:"mould_mats",mouldColours:"mould_colours",mouldPrograms:"mould_programs",mouldProducts:"mould_products",mouldGroups:"mould_groups",appSettings:"app_settings",mtProductionPlans:"mt_production_plans",mtDivisions:"mt_divisions",storeItems:"store_items",storeQtyTypes:"store_qty_types",storeCategories:"store_categories",auditLog:"audit_log",storeBatches:"store_batches",recycleBin:"recycle_bin",nextChallanOverride:"next_challan_override",partyEmails:"party_emails",autoTriggeredProducts:"auto_triggered_products",lastAutoBackupDate:"last_auto_backup_date",lastAutoEmailDate:"last_auto_email_date",lastMtAlertEmailDate:"last_mt_alert_email_date",lastPendingCategoryEmailDate:"last_pending_category_email_date",lastProductionReminderDate:"last_production_reminder_date",gatePasses:"gate_passes",parties:"parties",accBills:"acc_bills",accReceipts:"acc_receipts",invoices:"invoices",creditNotes:"credit_notes",debitNotes:"debit_notes",itemRates:"item_rates",company:"company"};
+    mtItems:"mt_items",mtPackings:"mt_packings",itemMaster:"item_master",bomMaster:"bom_master",productionPlans:"production_plans",storeLedger:"store_ledger",grns:"grns",mtBomMaster:"mt_bom_master",mouldItems:"mould_items",mouldMats:"mould_mats",mouldColours:"mould_colours",mouldPrograms:"mould_programs",mouldProducts:"mould_products",mouldGroups:"mould_groups",appSettings:"app_settings",mtProductionPlans:"mt_production_plans",mtDivisions:"mt_divisions",storeItems:"store_items",storeQtyTypes:"store_qty_types",storeCategories:"store_categories",auditLog:"audit_log",stockRequests:"stock_requests",storeBatches:"store_batches",recycleBin:"recycle_bin",nextChallanOverride:"next_challan_override",partyEmails:"party_emails",autoTriggeredProducts:"auto_triggered_products",lastAutoBackupDate:"last_auto_backup_date",lastAutoEmailDate:"last_auto_email_date",lastMtAlertEmailDate:"last_mt_alert_email_date",lastPendingCategoryEmailDate:"last_pending_category_email_date",lastProductionReminderDate:"last_production_reminder_date",gatePasses:"gate_passes",parties:"parties",accBills:"acc_bills",accReceipts:"acc_receipts",invoices:"invoices",creditNotes:"credit_notes",debitNotes:"debit_notes",itemRates:"item_rates",company:"company"};
   const backup={ _meta:{app:"JimitPetLLP",exportedAt:new Date().toISOString(),version:1}, data:{} };
   Object.entries(map).forEach(([sk,dbk])=>{ backup.data[dbk]=state[sk]; });
   backup.data.tombstones=Tombstone.get();
@@ -1637,7 +1774,7 @@ function shellHtml(){
   <div class="topbar">
     <div class="topbar-row">
       <div style="display:flex;align-items:center;gap:10px"><span style="font-size:20px;font-weight:800">🏭 Jimit Pet LLP</span>
-        <span id="netBadge" onclick="App.netDiag()" title="Dabao: connection check" style="cursor:pointer;font-size:11px;background:${netBadgeInfo().c};padding:2px 8px;border-radius:20px;white-space:nowrap">${netBadgeInfo().t}</span><input id="globalSearchInput" class="inp" placeholder="🔍 PO / Carton / Challan search" style="width:210px;margin:0;padding:5px 12px;font-size:12px;border-radius:20px" onkeydown="if(event.key==='Enter'){App.globalSearch(this.value)}"><button class="btn btn-sm" style="background:rgba(255,255,255,.2)" onclick="App.globalSearch(document.getElementById('globalSearchInput').value)">Search</button><span id="liveClock" style="font-size:12px;font-weight:700;background:rgba(255,255,255,.15);padding:3px 10px;border-radius:20px;white-space:nowrap"></span>
+        <span id="netBadge" onclick="App.netDiag()" title="Dabao: connection check" style="cursor:pointer;font-size:11px;background:${netBadgeInfo().c};padding:2px 8px;border-radius:20px;white-space:nowrap">${netBadgeInfo().t}</span><span id="adminChips">${adminChipsHtml()}</span><input id="globalSearchInput" class="inp" placeholder="🔍 PO / Carton / Challan search" style="width:210px;margin:0;padding:5px 12px;font-size:12px;border-radius:20px" onkeydown="if(event.key==='Enter'){App.globalSearch(this.value)}"><button class="btn btn-sm" style="background:rgba(255,255,255,.2)" onclick="App.globalSearch(document.getElementById('globalSearchInput').value)">Search</button><span id="liveClock" style="font-size:12px;font-weight:700;background:rgba(255,255,255,.15);padding:3px 10px;border-radius:20px;white-space:nowrap"></span>
       </div>
       <div style="display:flex;align-items:center;gap:8px">
         ${state.currentUser.role==="admin"
@@ -2221,7 +2358,7 @@ function renderPendingOrderTab(){
   const all=getPendingOrderRows();const allP=[...new Set(state.purchaseOrders.map(p=>p.partyName))];const allPr=[...new Set(state.purchaseOrders.flatMap(p=>(p.items||[]).map(i=>i.productName)))];const allT=[...new Set(state.purchaseOrders.map(p=>p.transport).filter(Boolean))];
   return`<div class="card"><div class="card-title">⏳ Pending Orders</div><div class="card-body"><div class="filters"><select class="inp" id="poFParty" onchange="App.filterPendingOrders()"><option value="">All Parties</option>${allP.map(p=>`<option>${esc(p)}</option>`).join("")}</select><select class="inp" id="poFProd" onchange="App.filterPendingOrders()"><option value="">All Products</option>${allPr.map(p=>`<option>${esc(p)}</option>`).join("")}</select><select class="inp" id="poFCat" onchange="App.filterPendingOrders()"><option value="">All Categories</option>${state.categories.map(c=>`<option>${esc(c)}</option>`).join("")}</select><select class="inp" id="poFBatch" onchange="App.filterPendingOrders()"><option value="">All Batches</option>${state.batchOptions.map(b=>`<option>${esc(b)}</option>`).join("")}</select><select class="inp" id="poFTrp" onchange="App.filterPendingOrders()"><option value="">All Transports</option>${allT.map(t=>`<option>${esc(t)}</option>`).join("")}</select><button class="btn btn-secondary" onclick="App.clearPendingOrderFilters()">Clear</button><button class="btn" style="background:${temp.poSortPartyAZ?"#4527a0":"#5e35b1"};color:#fff" onclick="App.togglePartySort()">🔤 Party A-Z ${temp.poSortPartyAZ?"✓":""}</button><button class="btn" style="background:${temp.poOnlyStock?"#1b5e20":"#2e7d32"};color:#fff" onclick="App.toggleOnlyStock()">📦 Only Avl Stock ${temp.poOnlyStock?"✓":""}</button><button class="btn btn-success" onclick="App.exportPendingOrders()">📥 Export</button><button class="btn" style="background:#37474f;color:#fff" onclick="App.printPendingOrders()">🖨️ Print</button><button class="btn" style="background:#0277bd;color:#fff" onclick="App.emailPendingOrders()">📧 Email</button><button class="btn" style="background:#25D366;color:#fff" onclick="App.whatsappPendingOrders()">📱 WhatsApp</button></div><div style="overflow-x:auto"><table class="tbl" id="poFTable"><thead><tr style="background:#1a237e;color:#fff">${["PO No","Party","Transport","Date","Product","Ordered","Dispatched","Pending Qty","Action"].map(h=>`<th>${h}</th>`).join("")}</tr></thead><tbody>${pendingOrderRowsHtml((()=>{let r=all;if(temp.poOnlyStock){const am=getAvailableStockMap();r=r.filter(x=>{const av=am[x.productName];return av&&(av.availQty>0||av.availCartons>0);});}if(temp.poSortPartyAZ)r=[...r].sort((a,b)=>String(a.party||"").localeCompare(String(b.party||"")));return r;})())}</tbody></table></div></div></div>`;
 }
-function pendingOrderRowsHtml(rows){const availMap=getAvailableStockMap();return rows.map(r=>{const pc=colorForString(r.party);const av=availMap[r.productName];const hasStock=av&&(av.availQty>0||av.availCartons>0);const rowStyle=hasStock?`background:#e8f5e9`:``;const stockBadge=hasStock?`<span title="Stock available: ${esc(av.availQty)} (${esc(av.availCartons)} Ctn)" style="margin-left:6px;font-size:11px;color:#2e7d32;font-weight:700">✅ In Stock</span>`:``;return`<tr style="${rowStyle}"><td>${esc(r.poNo)}</td><td><span style="background:${pc.bg};color:${pc.fg};font-weight:700;padding:3px 10px;border-radius:12px;font-size:12px;display:inline-block">${esc(r.party)}</span></td><td>${esc(r.transport)}</td><td>${esc(fmtDate(r.date))}</td><td>${esc(r.productName)}${stockBadge}</td><td>${esc(r.orderedQty)} ${esc(r.unit)}</td><td>${esc(r.dispatchedQty)}</td><td style="font-weight:700;color:#e65100">${esc(r.pendingQty)}</td><td><button class="btn btn-sm" style="background:#283593;color:#fff" onclick="App.printPendingPO('${esc(r.poNo)}')" title="Sirf is PO ke pending items print karo">🖨️ PO</button> ${!isRO()?`<button class="btn btn-sm btn-danger" onclick='App.cancelPendingQty(${r.poId},${JSON.stringify(r.itemIds||[r.itemId])},${r.pendingQty})'>Cancel Qty</button>`:"—"}</td></tr>`;}).join("")||`<tr><td colspan="9" style="text-align:center;color:#999;padding:24px">No pending orders</td></tr>`;}
+function pendingOrderRowsHtml(rows){const availMap=getAvailableStockMap();return rows.map(r=>{const pc=colorForString(r.party);const av=availMap[r.productName];const hasStock=av&&(av.availQty>0||av.availCartons>0);const rowStyle=hasStock?`background:#e8f5e9`:``;const stockBadge=hasStock?`<span title="Stock available: ${esc(av.availQty)} (${esc(av.availCartons)} Ctn)" style="margin-left:6px;font-size:11px;color:#2e7d32;font-weight:700">✅ In Stock</span>`:``;return`<tr style="${rowStyle}"><td>${esc(r.poNo)}</td><td><span style="background:${pc.bg};color:${pc.fg};font-weight:700;padding:3px 10px;border-radius:12px;font-size:12px;display:inline-block">${esc(r.party)}</span></td><td>${esc(r.transport)}</td><td>${esc(fmtDate(r.date))}</td><td>${esc(r.productName)}${stockBadge}</td><td>${esc(r.orderedQty)} ${esc(r.unit)}</td><td>${esc(r.dispatchedQty)}</td><td style="font-weight:700;color:#e65100">${esc(r.pendingQty)}</td><td><button class="btn btn-sm" style="background:#283593;color:#fff" onclick="App.printPendingPO(${esc(JSON.stringify(String(r.poNo)))})" title="Sirf is PO ke pending items print karo">🖨️ PO</button> ${!isRO()?`<button class="btn btn-sm btn-danger" onclick='App.cancelPendingQty(${r.poId},${JSON.stringify(r.itemIds||[r.itemId])},${r.pendingQty})'>Cancel Qty</button>`:"—"}</td></tr>`;}).join("")||`<tr><td colspan="9" style="text-align:center;color:#999;padding:24px">No pending orders</td></tr>`;}
 function itemWiseSummaryHtml(rows,opts={}){
   const{category,batch,diffFilter}=opts;const norm=s=>String(s||"").trim().toLowerCase();const catMap=buildProductCategoryMap();
   const itemSum={};rows.filter(r=>r.unit==="Cts").forEach(r=>{if(category&&norm(catMap[norm(r.productName)])!==norm(category))return;if(batch&&!productHasBatch(r.productName,batch))return;if(!itemSum[r.productName])itemSum[r.productName]={product:r.productName,pendingQty:0};itemSum[r.productName].pendingQty+=r.pendingQty;});
@@ -2469,12 +2606,12 @@ function plannerResultHtml(){
     const unit=getAccessoryUnit(name);
     const need=Math.ceil(qty*100)/100;
     const pct=Number(res.wastage[name]||0);
-    const final=Math.ceil(need*(1+pct/100));
+    const final=Math.ceil(need*(1+pct/100)-1e-9);
     const pbq=Number(res.perBoxQty[name]||0);
     const boxQty=pbq>0?Math.ceil(final/pbq):null;
     const stock=getStoreStock(name);
     const ok=stock>=final;
-    return`<tr><td><b>${esc(name)}</b> <span class="badge" style="background:#e0e0e0;color:#555">${esc(unit)}</span></td><td style="font-weight:700;color:#1565c0">${need} ${esc(unit)}</td><td><input class="inp" type="number" step="0.1" min="0" value="${pct}" style="width:80px;margin-bottom:0" onchange="App.updateWastagePct('${esc(name)}',this.value)"> %</td><td style="font-weight:800;color:#6a1b9a">${final} ${esc(unit)}</td><td><input class="inp" type="number" step="1" min="0" value="${pbq||""}" placeholder="e.g. 100" style="width:90px;margin-bottom:0" onchange="App.updatePerBoxQty('${esc(name)}',this.value)"></td><td style="font-weight:800;color:#00838f">${boxQty!=null?boxQty+" Box":"—"}</td><td>${stock} ${esc(unit)}</td><td>${ok?`<span style="color:#2e7d32;font-weight:700">✅ Available</span>`:`<span style="color:#c62828;font-weight:700">⚠️ Short by ${Math.round((final-stock)*100)/100} ${esc(unit)}</span>`}</td></tr>`;
+    return`<tr><td><b>${esc(name)}</b> <span class="badge" style="background:#e0e0e0;color:#555">${esc(unit)}</span></td><td style="font-weight:700;color:#1565c0">${need} ${esc(unit)}</td><td><input class="inp" type="number" step="0.1" min="0" value="${pct}" style="width:80px;margin-bottom:0" onchange="App.updateWastagePct(${esc(JSON.stringify(String(name)))},this.value)"> %</td><td style="font-weight:800;color:#6a1b9a">${final} ${esc(unit)}</td><td><input class="inp" type="number" step="1" min="0" value="${pbq||""}" placeholder="e.g. 100" style="width:90px;margin-bottom:0" onchange="App.updatePerBoxQty(${esc(JSON.stringify(String(name)))},this.value)"></td><td style="font-weight:800;color:#00838f">${boxQty!=null?boxQty+" Box":"—"}</td><td>${stock} ${esc(unit)}</td><td>${ok?`<span style="color:#2e7d32;font-weight:700">✅ Available</span>`:`<span style="color:#c62828;font-weight:700">⚠️ Short by ${Math.round((final-stock)*100)/100} ${esc(unit)}</span>`}</td></tr>`;
   }).join("");
   const missingHtml=res.missing.length?`<div style="background:#ffebee;border:1px solid #ef9a9a;border-radius:8px;padding:10px 14px;font-size:12px;color:#c62828;margin-top:12px">⚠️ In items ka BOM set nahi hai, inki calculation shamil nahi hui: ${res.missing.map(esc).join(", ")}</div>`:"";
   return`<div style="margin-top:20px"><b style="font-size:14px;color:#1a237e">📦 Total Accessories Required (Store Stock ke saath)</b><div style="font-size:11px;color:#888;margin-top:4px">💡 Kharab hone wali accessories ke liye 'Extra %' daalo. 'Per Box Qty' bharo to 'Box Qty' khud calculate ho jaayegi (Final Qty ÷ Per Box Qty)</div><table class="tbl" style="margin-top:8px"><thead><tr style="background:#37474f;color:#fff"><th>Accessory</th><th>Required Qty</th><th>Extra %</th><th>Final Qty</th><th>Per Box Qty</th><th>Box Qty</th><th>Current Store Stock</th><th>Status</th></tr></thead><tbody>${rows||`<tr><td colspan="8" style="text-align:center;color:#999;padding:12px">Koi accessory calculate nahi hui</td></tr>`}</tbody></table>${missingHtml}</div>`;
@@ -2676,7 +2813,7 @@ const PlannerApp={
     const p=state.productionPlans.find(x=>x.id===id);if(!p){alert("Program nahi mila");return;}
     if(p.status!=="pending"){alert("Ye program pehle hi "+p.status+" ho chuka hai");return;}
     const wastage=p.result.wastage||{};
-    const finalQty=name=>{const qty=p.result.accTotals[name];const need=Math.ceil(qty*100)/100;const pct=Number(wastage[name]||0);return Math.ceil(need*(1+pct/100));};
+    const finalQty=name=>{const qty=p.result.accTotals[name];const need=Math.ceil(qty*100)/100;const pct=Number(wastage[name]||0);return Math.ceil(need*(1+pct/100)-1e-9);};
     const shortages=[];
     Object.keys(p.result.accTotals||{}).forEach(name=>{const need=finalQty(name);const stock=getStoreStock(name);if(stock<need)shortages.push(`${name} (chahiye ${need}, stock ${stock})`);});
     if(shortages.length){if(!confirm(`⚠️ In accessories mein stock kam hai:\n${shortages.join("\n")}\n\nPhir bhi Approve karna hai? (stock negative ho jaayega)`))return;}
@@ -2710,7 +2847,7 @@ const PlannerApp={
   printProgramById(id){
     const p=state.productionPlans.find(x=>x.id===id);if(!p){alert("Program nahi mila");return;}
     const itemRows=(p.items||[]).map(pi=>`<tr><td>${esc(pi.productName)}</td><td style="text-align:right">${esc(pi.qty)}</td><td style="min-width:110px;height:38px"></td><td style="min-width:90px"></td></tr>`).join("");
-    const _w1=p.result.wastage||{};const _pb1=p.result.perBoxQty||{};const accRows=Object.entries(p.result.accTotals||{}).map(([name,qty])=>{const unit=getAccessoryUnit(name);const need=Math.ceil(qty*100)/100;const pct=Number(_w1[name]||0);const final=Math.ceil(need*(1+pct/100));const pbq=Number(_pb1[name]||0);const boxQty=pbq>0?Math.ceil(final/pbq):null;return `<tr><td>${esc(name)}</td><td>${esc(unit)}</td><!--np-cell--><td style="text-align:right;font-weight:700">${final}</td><td style="text-align:right">${boxQty!=null?boxQty+" Box":"—"}</td><td style="min-width:120px;height:38px"></td></tr>`;}).join("")||`<tr><td colspan="6">No data</td></tr>`;
+    const _w1=p.result.wastage||{};const _pb1=p.result.perBoxQty||{};const accRows=Object.entries(p.result.accTotals||{}).map(([name,qty])=>{const unit=getAccessoryUnit(name);const need=Math.ceil(qty*100)/100;const pct=Number(_w1[name]||0);const final=Math.ceil(need*(1+pct/100)-1e-9);const pbq=Number(_pb1[name]||0);const boxQty=pbq>0?Math.ceil(final/pbq):null;return `<tr><td>${esc(name)}</td><td>${esc(unit)}</td><!--np-cell--><td style="text-align:right;font-weight:700">${final}</td><td style="text-align:right">${boxQty!=null?boxQty+" Box":"—"}</td><td style="min-width:120px;height:38px"></td></tr>`;}).join("")||`<tr><td colspan="6">No data</td></tr>`;
     const w=window.open("","_blank");
     if(!w){alert("Popup blocked! Popup allow karo.");return;}
     w.document.write(`<!DOCTYPE html><html><head><title>Production Program ${esc(p.programNo)}</title><style>
@@ -2740,7 +2877,7 @@ const PlannerApp={
   printPlannerResult(){
     const res=temp.plannerResult;if(!res){alert("Pehle 'Plan Production' dabao");return;}
     const itemRows=temp.plannerItems.map(pi=>`<tr><td>${esc(pi.productName)}</td><td style="text-align:right">${esc(pi.qty)} Cts</td><td style="min-width:110px;height:38px"></td><td style="min-width:90px"></td></tr>`).join("");
-    const _w2=res.wastage||{};const _pb2=res.perBoxQty||{};const accRows=Object.entries(res.accTotals).map(([name,qty])=>{const unit=getAccessoryUnit(name);const need=Math.ceil(qty*100)/100;const pct=Number(_w2[name]||0);const final=Math.ceil(need*(1+pct/100));const pbq=Number(_pb2[name]||0);const boxQty=pbq>0?Math.ceil(final/pbq):null;return `<tr><td>${esc(name)}</td><td>${esc(unit)}</td><!--np-cell--><td style="text-align:right;font-weight:700">${final}</td><td style="text-align:right">${boxQty!=null?boxQty+" Box":"—"}</td><td style="min-width:120px;height:38px"></td></tr>`;}).join("")||`<tr><td colspan="6">No data</td></tr>`;
+    const _w2=res.wastage||{};const _pb2=res.perBoxQty||{};const accRows=Object.entries(res.accTotals).map(([name,qty])=>{const unit=getAccessoryUnit(name);const need=Math.ceil(qty*100)/100;const pct=Number(_w2[name]||0);const final=Math.ceil(need*(1+pct/100)-1e-9);const pbq=Number(_pb2[name]||0);const boxQty=pbq>0?Math.ceil(final/pbq):null;return `<tr><td>${esc(name)}</td><td>${esc(unit)}</td><!--np-cell--><td style="text-align:right;font-weight:700">${final}</td><td style="text-align:right">${boxQty!=null?boxQty+" Box":"—"}</td><td style="min-width:120px;height:38px"></td></tr>`;}).join("")||`<tr><td colspan="6">No data</td></tr>`;
     const w=window.open("","_blank");
     if(!w){alert("Popup blocked! Popup allow karo.");return;}
     w.document.write(`<!DOCTYPE html><html><head><title>Production Plan</title><style>
@@ -3190,12 +3327,12 @@ function mtPlannerResultHtml(){
   const rows=Object.entries(res.accTotals).map(([name,qty])=>{
     const need=Math.ceil(qty*100)/100;
     const pct=Number(res.wastage[name]||0);
-    const final=Math.ceil(need*(1+pct/100));
+    const final=Math.ceil(need*(1+pct/100)-1e-9);
     const pbq=Number(res.perBoxQty[name]||0);
     const boxQty=pbq>0?Math.ceil(final/pbq):null;
     const stock=getStoreStock(name);
     const ok=stock>=final;
-    return`<tr><td><b>${esc(name)}</b></td><td style="font-weight:700;color:#1565c0">${need}</td><td><input class="inp" type="number" step="0.1" min="0" value="${pct}" style="width:80px;margin-bottom:0" onchange="App.updateMtWastagePct('${esc(name)}',this.value)"> %</td><td style="font-weight:800;color:#6a1b9a">${final}</td><td><input class="inp" type="number" step="1" min="0" value="${pbq||""}" placeholder="e.g. 100" style="width:90px;margin-bottom:0" onchange="App.updateMtPerBoxQty('${esc(name)}',this.value)"></td><td style="font-weight:800;color:#00838f">${boxQty!=null?boxQty+" Box":"—"}</td><td>${stock}</td><td>${ok?`<span style="color:#2e7d32;font-weight:700">✅ Available</span>`:`<span style="color:#c62828;font-weight:700">⚠️ Short by ${Math.round((final-stock)*100)/100}</span>`}</td></tr>`;
+    return`<tr><td><b>${esc(name)}</b></td><td style="font-weight:700;color:#1565c0">${need}</td><td><input class="inp" type="number" step="0.1" min="0" value="${pct}" style="width:80px;margin-bottom:0" onchange="App.updateMtWastagePct(${esc(JSON.stringify(String(name)))},this.value)"> %</td><td style="font-weight:800;color:#6a1b9a">${final}</td><td><input class="inp" type="number" step="1" min="0" value="${pbq||""}" placeholder="e.g. 100" style="width:90px;margin-bottom:0" onchange="App.updateMtPerBoxQty(${esc(JSON.stringify(String(name)))},this.value)"></td><td style="font-weight:800;color:#00838f">${boxQty!=null?boxQty+" Box":"—"}</td><td>${stock}</td><td>${ok?`<span style="color:#2e7d32;font-weight:700">✅ Available</span>`:`<span style="color:#c62828;font-weight:700">⚠️ Short by ${Math.round((final-stock)*100)/100}</span>`}</td></tr>`;
   }).join("");
   const missingHtml=res.missing.length?`<div style="background:#ffebee;border:1px solid #ef9a9a;border-radius:8px;padding:10px 14px;font-size:12px;color:#c62828;margin-top:12px">⚠️ In items ka MT BOM set nahi hai, inki calculation shamil nahi hui: ${res.missing.map(esc).join(", ")}</div>`:"";
   return`<div style="margin-top:20px"><b style="font-size:14px;color:#1a237e">📦 Total Accessories Required (Store Stock ke saath)</b><div style="font-size:11px;color:#888;margin-top:4px">💡 Kharab hone wali accessories ke liye 'Extra %' daalo. 'Per Box Qty' bharo to 'Box Qty' khud calculate ho jaayegi (Final Qty ÷ Per Box Qty)</div><table class="tbl" style="margin-top:8px"><thead><tr style="background:#37474f;color:#fff"><th>Accessory</th><th>Required Qty</th><th>Extra %</th><th>Final Qty</th><th>Per Box Qty</th><th>Box Qty</th><th>Current Store Stock</th><th>Status</th></tr></thead><tbody>${rows||`<tr><td colspan="8" style="text-align:center;color:#999;padding:12px">Koi accessory calculate nahi hui</td></tr>`}</tbody></table>${missingHtml}</div>`;
@@ -3314,7 +3451,7 @@ const MtPlannerApp={
     const p=state.mtProductionPlans.find(x=>x.id===id);if(!p){alert("Program nahi mila");return;}
     if(p.status!=="pending"){alert("Ye program pehle hi "+p.status+" ho chuka hai");return;}
     const wastage=p.result.wastage||{};
-    const finalQty=name=>{const qty=p.result.accTotals[name];const need=Math.ceil(qty*100)/100;const pct=Number(wastage[name]||0);return Math.ceil(need*(1+pct/100));};
+    const finalQty=name=>{const qty=p.result.accTotals[name];const need=Math.ceil(qty*100)/100;const pct=Number(wastage[name]||0);return Math.ceil(need*(1+pct/100)-1e-9);};
     const shortages=[];
     Object.keys(p.result.accTotals||{}).forEach(name=>{const need=finalQty(name);const stock=getStoreStock(name);if(stock<need)shortages.push(`${name} (chahiye ${need}, stock ${stock})`);});
     if(shortages.length){if(!confirm(`⚠️ In accessories mein stock kam hai:\n${shortages.join("\n")}\n\nPhir bhi Approve karna hai? (stock negative ho jaayega)`))return;}
@@ -3340,7 +3477,7 @@ const MtPlannerApp={
   printMtPlannerResult(){
     const res=temp.mtPlannerResult;if(!res){alert("Pehle 'Plan Production' dabao");return;}
     const itemRows=temp.mtPlannerItems.map(pi=>`<tr><td>${esc(pi.itemDesc)}</td><td style="text-align:right">${esc(pi.qty)} Box</td><td style="min-width:110px;height:38px"></td><td style="min-width:90px"></td></tr>`).join("");
-    const _w3=res.wastage||{};const _pb3=res.perBoxQty||{};const accRows=Object.entries(res.accTotals).map(([name,qty])=>{const need=Math.ceil(qty*100)/100;const pct=Number(_w3[name]||0);const final=Math.ceil(need*(1+pct/100));const pbq=Number(_pb3[name]||0);const boxQty=pbq>0?Math.ceil(final/pbq):null;return `<tr><td>${esc(name)}</td><!--np-cell--><td style="text-align:right;font-weight:700">${final}</td><td style="text-align:right">${boxQty!=null?boxQty+" Box":"—"}</td><td style="min-width:120px;height:38px"></td></tr>`;}).join("")||`<tr><td colspan="5">No data</td></tr>`;
+    const _w3=res.wastage||{};const _pb3=res.perBoxQty||{};const accRows=Object.entries(res.accTotals).map(([name,qty])=>{const need=Math.ceil(qty*100)/100;const pct=Number(_w3[name]||0);const final=Math.ceil(need*(1+pct/100)-1e-9);const pbq=Number(_pb3[name]||0);const boxQty=pbq>0?Math.ceil(final/pbq):null;return `<tr><td>${esc(name)}</td><!--np-cell--><td style="text-align:right;font-weight:700">${final}</td><td style="text-align:right">${boxQty!=null?boxQty+" Box":"—"}</td><td style="min-width:120px;height:38px"></td></tr>`;}).join("")||`<tr><td colspan="5">No data</td></tr>`;
     const w=window.open("","_blank");
     if(!w){alert("Popup blocked! Popup allow karo.");return;}
     w.document.write(`<!DOCTYPE html><html><head><title>MT Production Plan</title><style>
@@ -3351,7 +3488,7 @@ const MtPlannerApp={
   printMtProgramById(id){
     const p=state.mtProductionPlans.find(x=>x.id===id);if(!p){alert("Program nahi mila");return;}
     const itemRows=(p.items||[]).map(pi=>`<tr><td>${esc(pi.itemDesc)}</td><td style="text-align:right;font-weight:800;color:#000">${esc(pi.qty)} Box</td><td style="min-width:110px;height:38px"></td><td style="min-width:90px"></td></tr>`).join("");
-    const _w4=p.result.wastage||{};const _pb4=p.result.perBoxQty||{};const accRows=Object.entries(p.result.accTotals||{}).map(([name,qty])=>{const need=Math.ceil(qty*100)/100;const pct=Number(_w4[name]||0);const final=Math.ceil(need*(1+pct/100));const pbq=Number(_pb4[name]||0);const boxQty=pbq>0?Math.ceil(final/pbq):null;return `<tr><td>${esc(name)}</td><!--np-cell--><td style="text-align:right;font-weight:800;color:#111">${final}</td><td style="text-align:right">${boxQty!=null?boxQty+" Box":"—"}</td><td style="min-width:120px;height:38px"></td></tr>`;}).join("")||`<tr><td colspan="5">No data</td></tr>`;
+    const _w4=p.result.wastage||{};const _pb4=p.result.perBoxQty||{};const accRows=Object.entries(p.result.accTotals||{}).map(([name,qty])=>{const need=Math.ceil(qty*100)/100;const pct=Number(_w4[name]||0);const final=Math.ceil(need*(1+pct/100)-1e-9);const pbq=Number(_pb4[name]||0);const boxQty=pbq>0?Math.ceil(final/pbq):null;return `<tr><td>${esc(name)}</td><!--np-cell--><td style="text-align:right;font-weight:800;color:#111">${final}</td><td style="text-align:right">${boxQty!=null?boxQty+" Box":"—"}</td><td style="min-width:120px;height:38px"></td></tr>`;}).join("")||`<tr><td colspan="5">No data</td></tr>`;
     const w=window.open("","_blank");
     if(!w){alert("Popup blocked! Popup allow karo.");return;}
     w.document.write(`<!DOCTYPE html><html><head><title>MT Production Program ${esc(p.programNo)}</title><style>
@@ -4705,7 +4842,7 @@ function challanSettingsCardHtml(){
 function emailSettingsCardHtml(){
   const cfg=getEmailConfig()||{};
   return`<div class="card"><div class="card-title">📧 Email Auto-Send Settings</div><div class="card-body">
-    <p style="font-size:12px;color:#666;margin-top:0">Isse "📧 Email" buttons dabaate hi mail seedha chala jaayega — koi mail app khulega nahi. Free account banao <a href="https://www.emailjs.com" target="_blank">emailjs.com</a> par, ek Email Service connect karo, ek Template banao jisme <b>{{subject}}</b>, <b>{{message}}</b> aur <b>{{to_email}}</b> variables ho, phir neeche unke IDs bharo.</p>
+    <p style="font-size:12px;color:#666;margin-top:0">Isse "📧 Email" buttons dabaate hi mail seedha chala jaayega — koi mail app khulega nahi. Free account banao <a href="https://www.emailjs.com" target="_blank" rel="noopener noreferrer">emailjs.com</a> par, ek Email Service connect karo, ek Template banao jisme <b>{{subject}}</b>, <b>{{message}}</b> aur <b>{{to_email}}</b> variables ho, phir neeche unke IDs bharo.</p>
     <div class="grid2">
       <div><label class="lbl">Service ID</label><input class="inp" id="emCfgService" value="${esc(cfg.serviceId||"")}" placeholder="service_xxxxxxx"></div>
       <div><label class="lbl">Template ID</label><input class="inp" id="emCfgTemplate" value="${esc(cfg.templateId||"")}" placeholder="template_xxxxxxx"></div>
@@ -5773,7 +5910,7 @@ const MtWhyApp={
 // ══════════════════════════════════════════════════════════════════════════
 const CLOUD_URL="https://hawuifhzjwvdaieowpkj.supabase.co";
 const CLOUD_KEY="sb_publishable_hnfEhQ7HBPEFLjYoXpQiMw_JePcUjuB";
-const CLOUD_PROP_OF={users:"users",packings:"packings",categories:"categories",dispatches:"dispatches",pos:"purchaseOrders",mt_pos:"mtPos",mt_dispatches:"mtDispatches",batch_options:"batchOptions",mt_items:"mtItems",mt_packings:"mtPackings",item_master:"itemMaster",bom_master:"bomMaster",production_plans:"productionPlans",store_ledger:"storeLedger",grns:"grns",mt_bom_master:"mtBomMaster",mould_items:"mouldItems",mould_mats:"mouldMats",mould_colours:"mouldColours",mould_programs:"mouldPrograms",mould_products:"mouldProducts",mould_groups:"mouldGroups",app_settings:"appSettings",mt_production_plans:"mtProductionPlans",mt_divisions:"mtDivisions",store_items:"storeItems",store_qty_types:"storeQtyTypes",store_categories:"storeCategories",audit_log:"auditLog",store_batches:"storeBatches",recycle_bin:"recycleBin",next_challan_override:"nextChallanOverride",party_emails:"partyEmails",auto_triggered_products:"autoTriggeredProducts",gate_passes:"gatePasses",parties:"parties",acc_bills:"accBills",acc_receipts:"accReceipts",invoices:"invoices",credit_notes:"creditNotes",debit_notes:"debitNotes",item_rates:"itemRates",company:"company"};
+const CLOUD_PROP_OF={users:"users",packings:"packings",categories:"categories",dispatches:"dispatches",pos:"purchaseOrders",mt_pos:"mtPos",mt_dispatches:"mtDispatches",batch_options:"batchOptions",mt_items:"mtItems",mt_packings:"mtPackings",item_master:"itemMaster",bom_master:"bomMaster",production_plans:"productionPlans",store_ledger:"storeLedger",grns:"grns",mt_bom_master:"mtBomMaster",mould_items:"mouldItems",mould_mats:"mouldMats",mould_colours:"mouldColours",mould_programs:"mouldPrograms",mould_products:"mouldProducts",mould_groups:"mouldGroups",app_settings:"appSettings",mt_production_plans:"mtProductionPlans",mt_divisions:"mtDivisions",store_items:"storeItems",store_qty_types:"storeQtyTypes",store_categories:"storeCategories",audit_log:"auditLog",stock_requests:"stockRequests",store_batches:"storeBatches",recycle_bin:"recycleBin",next_challan_override:"nextChallanOverride",party_emails:"partyEmails",auto_triggered_products:"autoTriggeredProducts",gate_passes:"gatePasses",parties:"parties",acc_bills:"accBills",acc_receipts:"accReceipts",invoices:"invoices",credit_notes:"creditNotes",debit_notes:"debitNotes",item_rates:"itemRates",company:"company"};
 function cloudStable(v){
   if(v===undefined||v===null)return "null";
   if(typeof v!=="object")return JSON.stringify(v);
@@ -5865,9 +6002,44 @@ const Cloud={
     if(!res.ok)throw new Error((j&&(j.error_description||j.msg||j.message))||("Login fail ("+res.status+")"));
     const role=((j.user||{}).app_metadata||{}).jpl_role;
     if(role!=="admin"&&role!=="owner")throw new Error("Is account ko role nahi mila (SQL ka role wala step chalao).");
-    this.saveSession(j);this.authLost=false;
+    if(MFA_ROLES[role]===true){
+      let fs=(j.user||{}).factors;
+      if(!Array.isArray(fs)){try{const uu=await this._mfaCall("GET","user",j.access_token);fs=uu.factors||[];}catch(e){fs=[];}}
+      fs=fs.filter(function(x){return x.factor_type==="totp"&&x.status==="verified";});
+      if(fs.length&&jwtAal(j.access_token)!=="aal2"){this.mfaPending={j:j,factorId:fs[0].id,role:role};return"mfa";}
+    }
+    this.mfaPending=null;this.saveSession(j);this.authLost=false;
     return role;
   },
+  async _mfaCall(method,path,tok,body){
+    const res=await cloudFetch(CLOUD_URL+"/auth/v1/"+path,{method:method,headers:{apikey:CLOUD_KEY,Authorization:"Bearer "+tok,"Content-Type":"application/json"},body:body==null?undefined:JSON.stringify(body)});
+    const t=await res.text();let j=null;try{j=JSON.parse(t);}catch(e){}
+    if(!res.ok){const e=new Error((j&&(j.msg||j.message||j.error_description||j.error))||("HTTP "+res.status));e.status=res.status;throw e;}
+    return j;
+  },
+  async _mfaChallengeVerify(factorId,tok,code){
+    code=String(code||"").replace(/\D/g,"");if(code.length!==6)throw new Error("6 digit ka code daalo");
+    const ch=await this._mfaCall("POST","factors/"+factorId+"/challenge",tok,{});
+    try{return await this._mfaCall("POST","factors/"+factorId+"/verify",tok,{challenge_id:ch.id,code:code});}
+    catch(e){if(e.status===400||e.status===422||/invalid|expired|code/i.test(e.message))e.message="Code galat ya purana hai — authenticator me abhi ka naya 6 digit code daalo";throw e;}
+  },
+  async mfaVerify(code){
+    const p=this.mfaPending;if(!p)throw new Error("Pehle naam aur password se login karo");
+    const j=await this._mfaChallengeVerify(p.factorId,p.j.access_token,code);
+    j.user=Object.assign({},p.j.user||{},j.user||{});
+    this.saveSession(j);this.mfaPending=null;this.authLost=false;return p.role;
+  },
+  async mfaFactors(){const u=await this._mfaCall("GET","user",await this.token());return(u.factors||[]).filter(function(f){return f.factor_type==="totp";});},
+  async mfaEnroll(){
+    const r=await this._mfaCall("POST","factors",await this.token(),{factor_type:"totp",friendly_name:"Jimit "+this.role+" "+Date.now().toString(36),issuer:"Jimit Pet LLP"});
+    return{id:r.id,uri:r.totp&&r.totp.uri,secret:r.totp&&r.totp.secret};
+  },
+  async mfaFinish(factorId,code){
+    const j=await this._mfaChallengeVerify(factorId,await this.token(),code);
+    j.user=Object.assign({app_metadata:{jpl_role:this.role},email:this.session.email},j.user||{});
+    this.saveSession(j);return true;
+  },
+  async mfaUnenroll(id){await this._mfaCall("DELETE","factors/"+id,await this.token());return true;},
   async refresh(){
     if(this._refreshing)return this._refreshing;
     this._refreshing=(async()=>{
@@ -6255,17 +6427,20 @@ function cloudConnectedView(){
     ${Cloud.role==="admin"?`<details style="margin-top:12px"><summary style="cursor:pointer;font-size:12px;color:#555">Upload / Download (agar pehla upload beech me ruk gaya)</summary><div style="margin-top:8px;display:flex;gap:8px;flex-wrap:wrap"><button class="btn btn-sm btn-success" onclick="App.cloudUploadAgain()">⬆️ Is device ka poora data cloud par (dobara) daalo</button></div><div style="font-size:11px;color:#777;margin-top:4px">Ye safe hai: jo cloud me pehle se hai wo sirf update hota hai, kuch double nahi hota. Is device ka data nahi badalta.</div><div id="cdMsg" style="margin-top:8px;font-size:13px"></div></details>`:""}
     ${Cloud.role==="admin"?`<div style="margin-top:12px"><button class="btn btn-sm btn-secondary" onclick="App.cloudMigrateFiles()">📎 Purani attachments Storage me bhejo</button><div id="cdFiles" style="margin-top:8px;font-size:12px"></div></div>`:""}
     <div style="margin-top:12px"><button class="btn btn-sm btn-secondary" onclick="App.cloudDiag()">🔍 Jaanch (numbers dekho)</button> <button class="btn btn-sm btn-success" onclick="App.cloudReconcile()">🔄 Poora check + kami poori karo</button><div id="cdDiag" style="margin-top:8px;font-size:12px"></div></div>
-    <div style="font-size:12px;color:#777;margin-top:12px">Entry pehle isi device par save hoti hai, phir cloud me jati hai. Internet na ho to bhi kaam chalta rahega.</div>`);
+    <div style="font-size:12px;color:#777;margin-top:12px">Entry pehle isi device par save hoti hai, phir cloud me jati hai. Internet na ho to bhi kaam chalta rahega.</div>
+    ${MFA_ROLES[Cloud.role]===true?`<div id="cdMfa" style="margin-top:14px;padding:10px;border:1px solid #c5cae9;border-radius:8px;background:#f8f9ff;font-size:13px">⏳ 2-Step check ho raha hai...</div>`:""}`);
+  setTimeout(function(){App.cloudMfaRender();},0);
 }
 const CloudApp={
   cloudOpen(){mouldSyncHeadSafe();if(Cloud.session)cloudConnectedView();else cloudLoginView();},
   cloudClose(){const o=document.getElementById("cloudModal");if(o)o.remove();},
-  async cloudConnect(){
+  async cloudConnect(skip){
     const u=mldV("cdUser").trim(),p=mldV("cdPass");
-    if(!u||!p){cloudMsg("Naam aur password dono daalo","#c62828");return;}
+    if(!skip&&(!u||!p)){cloudMsg("Naam aur password dono daalo","#c62828");return;}
     cloudMsg("⏳ Connect ho raha hai...");
     try{
-      const role=await Cloud.signIn(u,p);
+      const role=skip===true?Cloud.role:await Cloud.signIn(u,p);
+      if(role==="mfa"){App.cloudMfaPrompt();return;}
       if(role==="owner"){
         cloudMsg("⏳ Data utar raha hai...");
         await Cloud.downloadAll(false,n=>cloudMsg("⏳ Data utar raha hai... "+n));
@@ -6502,7 +6677,7 @@ function getProgramStockCheck(p){
   return Object.entries((p.result&&p.result.accTotals)||{}).map(([name,qty])=>{
     const need=Math.ceil(qty*100)/100;
     const pct=Number(wastage[name]||0);
-    const final=Math.ceil(need*(1+pct/100));
+    const final=Math.ceil(need*(1+pct/100)-1e-9);
     const stock=getStoreStock(name);
     return{name,unit:getAccessoryUnit(name),final,stock,ok:stock>=final};
   });
@@ -6848,7 +7023,7 @@ function lotPlannedAcc(p){
   const isGeneral=state.productionPlans.some(x=>x.id===p.id);
   return Object.entries((p.result&&p.result.accTotals)||{}).map(([name,qty])=>{
     const need=Math.ceil(qty*100)/100;const pct=Number(wastage[name]||0);
-    return{name,planned:Math.ceil(need*(1+pct/100)),unit:isGeneral?getAccessoryUnit(name):""};
+    return{name,planned:Math.ceil(need*(1+pct/100)-1e-9),unit:isGeneral?getAccessoryUnit(name):""};
   });
 }
 function lotEnsureAcc(p){
@@ -6881,7 +7056,7 @@ function lotAccessoryPrintHtml(lot){
 }
 function lotApplyStockAdjust(p){
   const lot=p.lotReport;
-  if(!lot||!lot.acc||p.status!=="approved")return false;
+  if(!lot||!lot.acc||p.status!=="approved"||p.stockDeducted===false)return false;
   let changed=false;
   lot.acc.forEach(a=>{
     if(a.issued===""||a.issued==null)return;
@@ -8303,7 +8478,7 @@ function renderYearEndTab(){
   const done=temp.yeDone;
   const box=(t,n,sub,col)=>`<div style="flex:1;min-width:160px;background:#fff;border:1px solid #e0e0e0;border-left:4px solid ${col};border-radius:8px;padding:10px 14px"><div style="font-size:11px;color:#777">${t}</div><div style="font-size:22px;font-weight:800;color:${col}">${n}</div><div style="font-size:11px;color:#888">${sub}</div></div>`;
   return`<div class="card"><div class="card-title">📅 Year End Process</div><div class="card-body">
-    ${done?`<div style="background:#e8f5e9;border:2px solid #2e7d32;border-radius:10px;padding:14px 18px;margin-bottom:16px"><div style="font-weight:800;color:#1b5e20;font-size:15px">✅ FY ${esc(done.tgt)} ${done.rerun?"refresh ho gaya":"ban gaya"}</div><div style="font-size:12px;color:#37474f;margin:6px 0 10px">Opening stock aur pending orders naye year me aa gaye hain. Naye year me carton number 1 se shuru hoga (jaise 1/${esc(fyShort(done.tgt))}), aur purane cartons apne purane year ke number ke saath (jaise 947/${esc(fyShort(done.src))}) dikhenge. FY ${esc(done.src)} ka data jyon ka tyon hai.</div><button class="btn btn-success" onclick="fyChoose('${esc(done.tgt)}')">▶️ FY ${esc(done.tgt)} me jao</button></div>`:""}
+    ${done?`<div style="background:#e8f5e9;border:2px solid #2e7d32;border-radius:10px;padding:14px 18px;margin-bottom:16px"><div style="font-weight:800;color:#1b5e20;font-size:15px">✅ FY ${esc(done.tgt)} ${done.rerun?"refresh ho gaya":"ban gaya"}</div><div style="font-size:12px;color:#37474f;margin:6px 0 10px">Opening stock aur pending orders naye year me aa gaye hain. Naye year me carton number 1 se shuru hoga (jaise 1/${esc(fyShort(done.tgt))}), aur purane cartons apne purane year ke number ke saath (jaise 947/${esc(fyShort(done.src))}) dikhenge. FY ${esc(done.src)} ka data jyon ka tyon hai.</div><button class="btn btn-success" onclick="fyChoose(${esc(JSON.stringify(String(done.tgt)))})">▶️ FY ${esc(done.tgt)} me jao</button></div>`:""}
     <div style="background:#e3f2fd;border:1px solid #90caf9;border-radius:8px;padding:10px 14px;font-size:12px;color:#0d47a1;margin-bottom:14px;line-height:1.6">ℹ️ Ek click me <b>FY ${esc(c.src)}</b> ka closing stock aur pending orders <b>naye year</b> me opening ban kar chale jate hain. Purane year ka data waisa hi rehta hai (login par year chun kar dekh sakte ho). Ye dobara chalane par sirf carry-forward wali entries naye hisaab se badalti hain, naye year ki apni entries nahi chhuti.</div>
     <div style="display:flex;gap:14px;flex-wrap:wrap;align-items:flex-end;margin-bottom:12px"><div><label class="lbl">Chalu Year</label><div style="padding:9px 14px;background:#eceff1;border-radius:6px;font-weight:800;color:#1a237e">FY ${esc(c.src)}</div></div><div><label class="lbl">Naya Year (aise likho: 2027-28)</label><input class="inp" style="width:150px;margin-bottom:0" value="${esc(c.tgt)}" onchange="App.yeSet('yeTarget',this.value)"></div><label style="font-size:12px;cursor:pointer;padding-bottom:10px"><input type="checkbox" ${c.zeroNeg?"checked":""} onchange="App.yeSet('yeZeroNeg',this.checked)"> Minus (negative) accessory stock zero se shuru karo${c.negCount?` <b style="color:#c62828">(${c.negCount} items minus)</b>`:""}</label></div>
     ${bad?`<div style="color:#c62828;font-size:12px;margin-bottom:10px">⚠️ Naya year ka format sahi nahi ya ${esc(c.src)} se aage ka nahi hai.</div>`:(ex?`<div style="color:#e65100;font-size:12px;margin-bottom:10px">ℹ️ FY ${esc(c.tgt)} pehle se bana hua hai — dobara chalane par sirf opening stock aur pending orders refresh honge.</div>`:"")}
@@ -8385,6 +8560,15 @@ const StoreV2App={
     const signed=type==="add"?Math.abs(q):type==="reduce"?-Math.abs(q):Math.round((q-cur)*100)/100;
     if(!signed){alert("Koi change nahi hai (stock pehle se hi wahi hai)");return;}
     const after=Math.round((cur+signed)*100)/100;
+    if(!isAdminU()){
+      if(!confirm(itemName+"\nAbhi ka stock: "+cur+"\nRequest: "+(signed>0?"+":"")+signed+"  (→ "+after+")\nReason: "+reason+"\n\n⚠️ Ye sirf REQUEST hai. Admin approve karega tab hi stock badlega.\n\nRequest bhejni hai?"))return;
+      state.stockRequests=state.stockRequests||[];
+      state.stockRequests.push({id:uid(),at:nowStr(),ts:Date.now(),date:date,by:state.currentUser.name,item:itemName,type:type,qty:q,delta:signed,reason:reason,status:"pending"});
+      persist("stock_requests",state.stockRequests);
+      App.closeManualStockAdjust();renderTabContent();
+      showSyncPill("ok","📨 Request admin ko bhej di — approve hone par hi stock badlega",4500);
+      return;
+    }
     if(!confirm(itemName+"\nAbhi ka stock: "+cur+"\nChange: "+(signed>0?"+":"")+signed+"\nNaya stock: "+after+"\n\nReason: "+reason+"\n\nSave karna hai?"))return;
     state.storeLedger=state.storeLedger||[];
     state.storeLedger.push({id:uid(),type:"manual_adjust",itemName,qty:signed,date,party:"Manual Adjustment",location:"",refNo:reason,remark:reason,savedBy:state.currentUser.name,savedAt:nowStr(),_ts:Date.now()});
@@ -8436,6 +8620,11 @@ const StoreV2App={
       rows=purchaseListRows().map(r=>[r.supplier||"(Supplier nahi)",r.name,r.stock,r.min,r.pending,r.order]);
       sub+=" | Order Qty = Minimum + pending programs ki zaroorat - current stock";
       if(!rows.length){alert("✅ Abhi kuch mangwane ki zaroorat nahi hai");return;}
+    }else if(kind==="storeday"){
+      const day=temp.sdDay||todayStr(),dd=storeDayData(day),r2=function(x){return Math.round(x*100)/100;};
+      title="Jimit Pet LLP - Store IN/OUT Summary";fname="store_in_out";sub+=" | Date: "+day;
+      headers=["Item","GRN","Internal IN","Return from Plant","Manual IN","Internal OUT (Gate Pass/Challan)","Manual OUT","Program OUT","Total IN","Total OUT","Net"];
+      rows=dd.rows.map(function(o){return[o.name,r2(o.grn),r2(o.iin),r2(o.ret),r2(o.min),r2(o.iout),r2(o.mout),r2(o.pout),r2(o.tin),r2(o.tout),o.net];});
     }else if(kind==="aud"){
       title="Jimit Pet LLP - Audit Log";fname="audit_log";
       headers=["Time","User","Role","Device","Tab","Action","Ref","Detail"];
@@ -8603,9 +8792,92 @@ const MouldV2App={
 };
 Object.assign(App,MouldV2App);
 
+const StoreV6App={
+  approveProgram(id){_approveDlg(id,false);},
+  approveMtProgram(id){_approveDlg(id,true);},
+  closeApproveDlg(){const d=document.getElementById("apDlg");if(d)d.remove();},
+  approveDo(id,mt){
+    if(!isAdminU()){alert("🔒 Approve sirf admin kar sakta hai.");return;}
+    const deduct=!!(document.getElementById("apDeduct")||{}).checked;
+    const arr=mt?state.mtProductionPlans:state.productionPlans,p=arr.find(function(x){return x.id===id;});
+    if(!p){alert("Program nahi mila");return;}
+    if(p.status!=="pending"){alert("Ye program pehle hi "+p.status+" ho chuka hai");return;}
+    const w=(p.result&&p.result.wastage)||{},acc=(p.result&&p.result.accTotals)||{};
+    const fq=function(n){const need=Math.ceil(acc[n]*100)/100,pct=Number(w[n]||0);return Math.ceil(need*(1+pct/100)-1e-9);};
+    if(deduct){
+      const sh=Object.keys(acc).filter(function(n){return getStoreStock(n)<fq(n);}).map(function(n){return n+" (chahiye "+fq(n)+", stock "+getStoreStock(n)+")";});
+      if(sh.length&&!confirm("⚠️ In accessories me stock kam hai:\n"+sh.join("\n")+"\n\nPhir bhi Approve karna hai? (stock negative ho jayega)"))return;
+      const date=todayStr();
+      Object.keys(acc).forEach(function(n){state.storeLedger.push({id:uid(),date:date,type:"plan_out",itemName:n,qty:fq(n),refNo:p.programNo,remark:(mt?"MT ":"")+"Production Plan Approved",savedBy:state.currentUser.name,_ts:Date.now()});});
+      persist("store_ledger",state.storeLedger);
+    }
+    p.status="approved";p.approvedAt=nowStr();p.approvedBy=state.currentUser.name;p.stockDeducted=deduct;
+    persist(mt?"mt_production_plans":"production_plans",arr);
+    App.closeApproveDlg();
+    alert(deduct?"✅ Program "+p.programNo+" Approved! Stock minus ho gaya.":"✅ Program "+p.programNo+" Approved. Stock abhi minus NAHI hua — store se Manual Stock request aayegi, aap approve karoge tab minus hoga.");
+    renderTabContent();
+  },
+  approveStockReq(id){
+    if(!isAdminU())return;
+    const r=(state.stockRequests||[]).find(function(x){return x.id===id;});if(!r||r.status!=="pending")return;
+    const cur=getStoreStock(r.item),dl=_srDelta(r,cur),af=Math.round((cur+dl)*100)/100;
+    if(!dl){alert("Is request se stock me koi change nahi hoga (stock pehle se wahi hai).");}
+    if(af<0&&!confirm(r.item+": stock "+cur+" se "+af+" ho jayega (minus). Phir bhi approve karna hai?"))return;
+    let lid=null;
+    if(dl){lid=uid();state.storeLedger.push({id:lid,type:"manual_adjust",itemName:r.item,qty:dl,date:todayStr(),party:"Stock Request",location:"",refNo:r.reason||"",remark:"Request by "+r.by+": "+(r.reason||""),reqId:r.id,savedBy:state.currentUser.name,_ts:Date.now()});persist("store_ledger",state.storeLedger);}
+    r.status="approved";r.decidedBy=state.currentUser.name;r.decidedTs=Date.now();r.ledgerId=lid;r.appliedDelta=dl;
+    persist("stock_requests",state.stockRequests);renderTabContent();
+  },
+  rejectStockReq(id){
+    if(!isAdminU())return;
+    const r=(state.stockRequests||[]).find(function(x){return x.id===id;});if(!r||r.status!=="pending")return;
+    const note=prompt("Reject ka karan likho (optional):");if(note===null)return;
+    r.status="rejected";r.note=note||"";r.decidedBy=state.currentUser.name;r.decidedTs=Date.now();
+    persist("stock_requests",state.stockRequests);renderTabContent();
+  },
+  goStockReq(){App.switchTab("inventoryStock");},
+  goErrors(){temp.audErr=true;App.switchTab("auditLog");},
+  setStoreDay(v){temp.sdDay=v||todayStr();renderTabContent();},
+  cloudMfaPrompt(){
+    cloudShowModal("🔐 2-Step Code",'<div style="font-size:13px;line-height:1.6;margin-bottom:10px">Phone ki <b>Authenticator app</b> (Google / Microsoft Authenticator) kholo aur "Jimit Pet LLP" ka <b>6 digit code</b> yahan daalo.</div><input class="inp" id="cdCode" inputmode="numeric" maxlength="6" autocomplete="one-time-code" placeholder="123456" style="letter-spacing:6px;font-size:22px;text-align:center" onkeydown="if(event.key===\'Enter\')App.cloudMfaSubmit()"><button class="btn btn-primary" onclick="App.cloudMfaSubmit()">✅ Verify</button><div id="cdMsg" style="margin-top:10px;font-size:13px"></div>');
+    setTimeout(function(){const i=document.getElementById("cdCode");if(i)i.focus();},50);
+  },
+  async cloudMfaSubmit(){
+    try{cloudMsg("⏳ Check ho raha hai...");await Cloud.mfaVerify(mldV("cdCode"));cloudMsg("✅ Code sahi hai","#2e7d32");await App.cloudConnect(true);}
+    catch(e){cloudMsg(String(e&&e.message||e),"#c62828");}
+  },
+  async cloudMfaRender(){
+    const box=document.getElementById("cdMfa");if(!box)return;
+    try{
+      const ver=(await Cloud.mfaFactors()).filter(function(f){return f.status==="verified";}),aal=jwtAal(Cloud.session&&Cloud.session.access_token);
+      box.innerHTML=ver.length
+       ?'<b>🔐 2-Step Login:</b> <span style="color:#2e7d32;font-weight:700">Chalu ✅</span><div style="font-size:12px;color:#666;margin:4px 0">Naye device par connect karte waqt authenticator ka 6 digit code lagega.'+(aal!=="aal2"?' <b style="color:#e65100">Ye session abhi code ke bina hai — Disconnect karke code ke saath dobara connect karo.</b>':'')+'</div><button class="btn btn-sm btn-danger" onclick="App.cloudMfaOff()">2-Step band karo</button>'
+       :'<b>🔐 2-Step Login:</b> <span style="color:#c62828;font-weight:700">Band ❌</span><div style="font-size:12px;color:#666;margin:4px 0">Phone ki authenticator app se 6 digit code. Password chori ho jaye tab bhi andar nahi ja sakega.</div><button class="btn btn-sm btn-primary" onclick="App.cloudMfaStart()">🔐 Chalu karo</button>';
+    }catch(e){box.innerHTML='🔐 2-Step ka status nahi mila: '+esc(e.message);}
+  },
+  async cloudMfaStart(){
+    const box=document.getElementById("cdMfa");if(!box)return;
+    try{
+      box.textContent="⏳ ...";const r=await Cloud.mfaEnroll();temp._mfaFactor=r.id;
+      box.innerHTML='<b>Step 1:</b> Phone me <b>Google Authenticator</b> ya <b>Microsoft Authenticator</b> kholo → "+" → "Scan QR code".<div style="margin:8px 0;text-align:center">'+qrSvg(r.uri,200)+'</div><div style="font-size:11px;color:#555;word-break:break-all">QR scan na ho to ye chaabi haath se daalo: <b>'+esc(r.secret)+'</b></div><div style="margin:8px 0"><b>Step 2:</b> App me jo 6 digit code dikh raha hai wo yahan daalo:</div><input class="inp" id="cdMfaCode" inputmode="numeric" maxlength="6" placeholder="123456" style="width:160px;letter-spacing:4px;text-align:center;font-size:18px"> <button class="btn btn-sm btn-success" onclick="App.cloudMfaConfirm()">✅ Verify</button><div id="cdMfaMsg" style="margin-top:6px"></div><div style="font-size:11px;color:#b71c1c;margin-top:6px">⚠️ Ye QR/chaabi kisi ko mat dikhana. Ek aur bharosemand phone me bhi isi QR ko scan karke rakho (phone kho jaye to kaam aayega).</div>';
+    }catch(e){box.innerHTML='❌ '+esc(e.message)+' <button class="btn btn-sm btn-secondary" onclick="App.cloudMfaRender()">Wapas</button>';}
+  },
+  async cloudMfaConfirm(){
+    const m=document.getElementById("cdMfaMsg");
+    try{await Cloud.mfaFinish(temp._mfaFactor,mldV("cdMfaCode"));temp._mfaFactor=null;auditEvent("2-Step ON","Authenticator chalu kiya ("+Cloud.role+")");if(m)m.innerHTML='<span style="color:#2e7d32">✅ 2-Step chalu ho gaya!</span>';setTimeout(function(){App.cloudMfaRender();},900);}
+    catch(e){if(m)m.innerHTML='<span style="color:#c62828">'+esc(e.message)+'</span>';}
+  },
+  async cloudMfaOff(){
+    if(!confirm("2-Step band karna hai? Phir sirf password se connect hoga."))return;
+    try{const fs=await Cloud.mfaFactors();for(const f of fs)await Cloud.mfaUnenroll(f.id);auditEvent("2-Step OFF","Authenticator band kiya ("+Cloud.role+")");App.cloudMfaRender();}
+    catch(e){alert("Band nahi hua: "+e.message+"\n(Shayad is session me code nahi diya tha — Disconnect karke code ke saath dobara connect karo.)");}
+  }
+};
+Object.assign(App,StoreV6App);
+
 // Audit: har App action ko wrap karo (sirf wahi log hota hai jisme data save hua)
 Object.keys(App).forEach(k=>{if(typeof App[k]==="function"&&k[0]!=="_"&&!/^render/.test(k))App[k]=_auditWrap(k,App[k]);});
-_idleInit();_polInit();
+_idleInit();_polInit();_sxInit();
 
 
 
@@ -8630,7 +8902,7 @@ window.App=App; window.AC=AC;
   try{sessionStorage.setItem("jpl_fy",FY.label);}catch(e){}
   const map={users:"users",packings:"packings",categories:"categories",dispatches:"dispatches",
     purchaseOrders:"pos",mtPos:"mt_pos",mtDispatches:"mt_dispatches",batchOptions:"batch_options",
-    mtItems:"mt_items",mtPackings:"mt_packings",itemMaster:"item_master",bomMaster:"bom_master",productionPlans:"production_plans",storeLedger:"store_ledger",grns:"grns",mtBomMaster:"mt_bom_master",mouldItems:"mould_items",mouldMats:"mould_mats",mouldColours:"mould_colours",mouldPrograms:"mould_programs",mouldProducts:"mould_products",mouldGroups:"mould_groups",appSettings:"app_settings",mtProductionPlans:"mt_production_plans",mtDivisions:"mt_divisions",storeItems:"store_items",storeQtyTypes:"store_qty_types",storeCategories:"store_categories",auditLog:"audit_log",storeBatches:"store_batches",recycleBin:"recycle_bin",nextChallanOverride:"next_challan_override",partyEmails:"party_emails",autoTriggeredProducts:"auto_triggered_products",lastAutoBackupDate:"last_auto_backup_date",lastAutoEmailDate:"last_auto_email_date",lastMtAlertEmailDate:"last_mt_alert_email_date",lastPendingCategoryEmailDate:"last_pending_category_email_date",lastProductionReminderDate:"last_production_reminder_date",gatePasses:"gate_passes",parties:"parties",accBills:"acc_bills",accReceipts:"acc_receipts",invoices:"invoices",creditNotes:"credit_notes",debitNotes:"debit_notes",itemRates:"item_rates",company:"company"};
+    mtItems:"mt_items",mtPackings:"mt_packings",itemMaster:"item_master",bomMaster:"bom_master",productionPlans:"production_plans",storeLedger:"store_ledger",grns:"grns",mtBomMaster:"mt_bom_master",mouldItems:"mould_items",mouldMats:"mould_mats",mouldColours:"mould_colours",mouldPrograms:"mould_programs",mouldProducts:"mould_products",mouldGroups:"mould_groups",appSettings:"app_settings",mtProductionPlans:"mt_production_plans",mtDivisions:"mt_divisions",storeItems:"store_items",storeQtyTypes:"store_qty_types",storeCategories:"store_categories",auditLog:"audit_log",stockRequests:"stock_requests",storeBatches:"store_batches",recycleBin:"recycle_bin",nextChallanOverride:"next_challan_override",partyEmails:"party_emails",autoTriggeredProducts:"auto_triggered_products",lastAutoBackupDate:"last_auto_backup_date",lastAutoEmailDate:"last_auto_email_date",lastMtAlertEmailDate:"last_mt_alert_email_date",lastPendingCategoryEmailDate:"last_pending_category_email_date",lastProductionReminderDate:"last_production_reminder_date",gatePasses:"gate_passes",parties:"parties",accBills:"acc_bills",accReceipts:"acc_receipts",invoices:"invoices",creditNotes:"credit_notes",debitNotes:"debit_notes",itemRates:"item_rates",company:"company"};
   for(const [sk,dbk] of Object.entries(map)){ const d=await DB.get(dbk); if(d)state[sk]=d; }
   await migratePlaintextPasswords();
   backfillDispatchBatches();
