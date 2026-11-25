@@ -282,7 +282,7 @@ let state = {
   lastPendingCategoryEmailDate:"",
   lastProductionReminderDate:"",
   itemMaster:[], dispatches:[], purchaseOrders:[], gatePasses:[],
-  mtItems:[], mtPos:[], mtDispatches:[], mtPackings:[], bomMaster:[], productionPlans:[], storeLedger:[], grns:[], mtBomMaster:[], mtProductionPlans:[], mtDivisions:["AVENUE","STYLE","VISHAL MEGA MART"], storeItems:[], storeQtyTypes:["Box","Pcs","Kgs"], storeCategories:[], auditLog:[], stockRequests:[], storeBatches:[],
+  mtItems:[], mtPos:[], mtDispatches:[], mtPackings:[], bomMaster:[], productionPlans:[], storeLedger:[], grns:[], mtBomMaster:[], mtProductionPlans:[], mtDivisions:["AVENUE","STYLE","VISHAL MEGA MART"], storeItems:[], storeQtyTypes:["Box","Pcs","Kgs"], storeCategories:[], auditLog:[], stockRequests:[], storeGatePasses:[], storeBatches:[],
   mouldItems:[], mouldMats:[], mouldColours:[], mouldPrograms:[], mouldProducts:[], mouldGroups:[], appSettings:{},
   activeTab:"packing"
 };
@@ -1090,33 +1090,6 @@ function adminChipsHtml(){
   const ne=auditAll().filter(function(e){return/Error|Failed/i.test(e.act)&&new Date(e.ts).toDateString()===today;}).length;
   return(n?'<span onclick="App.goStockReq()" title="Store ki stock requests pending" style="cursor:pointer;font-size:11px;background:#e65100;padding:2px 8px;border-radius:20px;white-space:nowrap;margin-left:6px">📥 '+n+' request</span>':"")+(ne?'<span onclick="App.goErrors()" title="Aaj ke app errors" style="cursor:pointer;font-size:11px;background:#b71c1c;padding:2px 8px;border-radius:20px;white-space:nowrap;margin-left:6px">🐞 '+ne+' error</span>':"");
 }
-// ── Store: Today IN / OUT summary ──
-function storeDayData(day){
-  const c={grn:[],iin:[],ret:[],min:[],iout:[],mout:[],pout:[]};
-  (state.storeLedger||[]).forEach(function(l){
-    if(!l||l.date!==day)return;const q=Number(l.qty)||0;
-    if(l.type==="grn_in")c.grn.push(l);else if(l.type==="internal_receive")c.iin.push(l);else if(l.type==="return_in")c.ret.push(l);
-    else if(l.type==="internal_issue")c.iout.push(l);else if(l.type==="plan_out")c.pout.push(l);
-    else if(l.type==="manual_adjust"){if(q<0)c.mout.push(l);else c.min.push(l);}
-  });
-  const items={};
-  const add=function(arr,k,sign){arr.forEach(function(l){const n=l.itemName,o=items[n]||(items[n]={name:n,grn:0,iin:0,ret:0,min:0,iout:0,mout:0,pout:0});o[k]+=Math.abs(Number(l.qty)||0);});};
-  add(c.grn,"grn");add(c.iin,"iin");add(c.ret,"ret");add(c.min,"min");add(c.iout,"iout");add(c.mout,"mout");add(c.pout,"pout");
-  const rows=Object.values(items).map(function(o){o.tin=o.grn+o.iin+o.ret+o.min;o.tout=o.iout+o.mout+o.pout;o.net=Math.round((o.tin-o.tout)*100)/100;return o;}).sort(function(a,b){return String(a.name).localeCompare(String(b.name));});
-  return{c:c,rows:rows};
-}
-function storeTodayHtml(){
-  const day=temp.sdDay||todayStr(),d=storeDayData(day),c=d.c;
-  const th='style="padding:6px 8px;background:#e8eaf6;font-size:12px;border:1px solid #c5cae9"',td='style="padding:6px 8px;font-size:12px;border:1px solid #e0e0e0"';
-  const line=function(lab,arr){const n=new Set(arr.map(function(l){return l.itemName;})).size;return'<tr><td '+td+'>'+lab+'</td><td '+td+' style="text-align:center">'+arr.length+'</td><td '+td+' style="text-align:center">'+n+'</td></tr>';};
-  const tbl=function(title,color,lines){return'<div style="flex:1;min-width:260px"><div style="font-weight:800;color:'+color+';margin-bottom:4px">'+title+'</div><table style="width:100%;border-collapse:collapse"><thead><tr><th '+th+'>Type</th><th '+th+'>Entries</th><th '+th+'>Items</th></tr></thead><tbody>'+lines+'</tbody></table></div>';};
-  const inL=line("📥 GRN (Purchase)",c.grn)+line("🔁 Internal IN",c.iin)+line("↩️ Return from Plant",c.ret)+line("✋ Manual IN",c.min);
-  const outL=line("🚪 Internal OUT (Gate Pass / Challan)",c.iout)+line("✋ Manual OUT",c.mout)+line("🏭 Program OUT (Approve se)",c.pout);
-  const body=d.rows.map(function(o){return'<tr><td '+td+'><b>'+esc(o.name)+'</b></td><td '+td+' style="text-align:right;color:#1b5e20">'+(o.tin?'+'+Math.round(o.tin*100)/100:"—")+'</td><td '+td+' style="text-align:right;color:#c62828">'+(o.tout?'−'+Math.round(o.tout*100)/100:"—")+'</td><td '+td+' style="text-align:right"><b>'+o.net+'</b></td></tr>';}).join("");
-  return'<div class="card"><div class="card-title" style="display:flex;justify-content:space-between;align-items:center;flex-wrap:wrap;gap:8px"><span>📊 Store Today IN / OUT Summary</span><span style="display:flex;gap:8px;align-items:center;flex-wrap:wrap"><input type="date" class="inp" value="'+esc(day)+'" style="margin:0;width:150px" onchange="App.setStoreDay(this.value)">'+reportBtns("storeday")+'</span></div><div class="card-body">'
-   +'<div style="display:flex;gap:16px;flex-wrap:wrap;margin-bottom:12px">'+tbl("📥 IN","#1b5e20",inL)+tbl("📤 OUT","#c62828",outL)+'</div>'
-   +(d.rows.length?'<div style="max-height:300px;overflow:auto"><table style="width:100%;border-collapse:collapse"><thead><tr><th '+th+'>Item</th><th '+th+'>IN</th><th '+th+'>OUT</th><th '+th+'>Net</th></tr></thead><tbody>'+body+'</tbody></table></div>':'<div style="color:#999;text-align:center;padding:12px">Is din koi store entry nahi hui</div>')+'</div></div>';
-}
 // ── Error log (sirf admin ko Audit Log tab me dikhta hai) ──
 (function(){
   let n=0;const seen={};
@@ -1177,7 +1150,136 @@ function _sxInit(){
 }
 
 const _rIst=renderInventoryStockTab;renderInventoryStockTab=function(){return stockReqHtml()+_rIst();};
-const _rSt=renderStoreTab;renderStoreTab=function(){return storeTodayHtml()+_rSt();};
+const _rSt=renderStoreTab;renderStoreTab=function(){if(temp.grnMode==="gatepass")return storeTodayHtml()+storeGatePassHtml();return storeTodayHtml()+_rSt();};
+// ══════════ v15: Store Gate Pass (Returnable / Non-Returnable) + Today IN/OUT print (packing jaisa) ══════════
+function genSgpNo(type){
+  const pre=type==="returnable"?"RGP":"NGP";let max=0;
+  (state.storeGatePasses||[]).forEach(function(g){if(String(g.gpNo||"").indexOf(pre+"-")===0)max=Math.max(max,parseInt(String(g.gpNo).slice(4),10)||0);});
+  return pre+"-"+String(max+1).padStart(4,"0");
+}
+function sgpTotals(g){const q=(g.items||[]).reduce(function(a,i){return a+(Number(i.qty)||0);},0),r=(g.items||[]).reduce(function(a,i){return a+(Number(i.retQty)||0);},0);return{q:q,r:r};}
+function sgpDaysOpen(g){return Math.max(0,Math.floor((new Date(todayStr())-new Date(g.date))/86400000));}
+function sgpStatusChip(g){
+  const c=function(bg,fg,t){return'<span style="background:'+bg+';color:'+fg+';padding:2px 8px;border-radius:10px;font-weight:700;font-size:11px;white-space:nowrap">'+t+'</span>';};
+  if(g.type==="returnable"){
+    if(g.status==="returned")return c("#e8f5e9","#2e7d32","✅ Wapas aa gaya");
+    const od=g.expectedReturn&&g.expectedReturn<todayStr();
+    return g.status==="partial"?c("#fff3e0","#e65100","🟠 Partial wapas"+(od?" · overdue":"")):c(od?"#ffebee":"#fff3e0",od?"#c62828":"#e65100",od?"⏰ Wapas nahi aaya · overdue":"🔴 Wapas nahi aaya");
+  }
+  return g.status==="closed"?c("#e8f5e9","#2e7d32","✅ Khatam (finish entry)"):c("#fff3e0","#e65100","🟠 Job work chalu — finish entry baaki");
+}
+function sgpFiltered(){
+  const t=temp.sgpFType||"",st=temp.sgpFStatus||"pending",q=(temp.sgpFQ||"").trim().toLowerCase();
+  return (state.storeGatePasses||[]).slice().reverse().filter(function(g){
+    if(t&&g.type!==t)return false;
+    const done=g.status==="returned"||g.status==="closed";
+    if(st==="pending"&&done)return false;if(st==="done"&&!done)return false;
+    if(q&&!JSON.stringify([g.gpNo,g.party,g.vehicle,g.purpose,(g.items||[]).map(function(i){return i.name;})]).toLowerCase().includes(q))return false;
+    return true;
+  });
+}
+function sgpItemsRowsHtml(){
+  return(temp.sgpItems||[]).map(function(r,i){return'<tr><td>'+esc(r.name)+'</td><td>'+esc(r.qty)+'</td><td><button class="btn btn-sm btn-danger" onclick="App.removeSgpItem('+i+')">✕</button></td></tr>';}).join("")||'<tr><td colspan="3" style="text-align:center;color:#999;padding:10px">Koi item add nahi kiya abhi</td></tr>';
+}
+function storeGatePassHtml(){
+  const type=temp.sgpType||"returnable",ro=isRO();
+  const all=state.storeGatePasses||[];
+  const pendR=all.filter(function(g){return g.type==="returnable"&&g.status!=="returned";}),od=pendR.filter(function(g){return g.expectedReturn&&g.expectedReturn<todayStr();}),pendN=all.filter(function(g){return g.type==="nonreturnable"&&g.status!=="closed";});
+  const parties=[...new Set(all.map(function(g){return g.party;}).filter(Boolean))].sort();
+  const names=[...new Set(getAllStoreItemNames().concat(all.flatMap(function(g){return(g.items||[]).map(function(i){return i.name;});})))].sort();
+  const list=sgpFiltered().slice(0,200);
+  const th='style="padding:6px 8px;background:#1a237e;color:#fff;font-size:12px"',td='style="padding:6px 8px;font-size:12px;border-bottom:1px solid #eee;vertical-align:top"';
+  const rows=list.map(function(g){
+    const tt=sgpTotals(g),isR=g.type==="returnable",done=g.status==="returned"||g.status==="closed";
+    const badge=isR?'<span class="badge" style="background:#6a1b9a">🔁 Returnable</span>':'<span class="badge" style="background:#e65100">➡️ Non-Returnable</span>';
+    const items=(g.items||[]).map(function(i){return esc(i.name)+' <b>'+esc(i.qty)+'</b>'+(isR&&Number(i.retQty)?' <span style="color:#2e7d32">(wapas '+i.retQty+')</span>':'');}).join(", ");
+    const info=isR?(g.expectedReturn?'Expected: '+esc(fmtDate(g.expectedReturn)):'')+(!done?' · '+sgpDaysOpen(g)+' din se bahar':''):(!done?sgpDaysOpen(g)+' din se job work par':(g.closeRemark?esc(g.closeRemark):''));
+    const act=(!ro&&!done?(isR?'<button class="btn btn-sm btn-success" onclick="App.openSgpReturn('+g.id+')">↩️ Wapas aaya</button> ':'<button class="btn btn-sm btn-success" onclick="App.openSgpClose('+g.id+')">✅ Khatam karo</button> '):'')+'<button class="btn btn-sm btn-primary" onclick="App.printSgp('+g.id+')">🖨️</button> '+((g.returns||[]).length?'<button class="btn btn-sm btn-secondary" onclick="App.showSgpHistory('+g.id+')">📜</button> ':'')+(isAdminU()?'<button class="btn btn-sm btn-danger" onclick="App.deleteStoreGatePass('+g.id+')">Del</button>':'');
+    return'<tr><td '+td+'><b>'+esc(g.gpNo)+'</b><div>'+badge+'</div></td><td '+td+'>'+esc(fmtDate(g.date))+'</td><td '+td+'><b>'+esc(g.party)+'</b>'+(g.vehicle?'<div style="font-size:11px;color:#666">'+esc(g.vehicle)+'</div>':'')+'</td><td '+td+'>'+items+(g.purpose?'<div style="font-size:11px;color:#666">'+esc(g.purpose)+'</div>':'')+'</td><td '+td+'>'+sgpStatusChip(g)+'<div style="font-size:11px;color:#666;margin-top:3px">'+info+'</div></td><td '+td+' style="white-space:nowrap">'+act+'</td></tr>';
+  }).join("")||'<tr><td colspan="6" style="text-align:center;color:#999;padding:24px">Koi gate pass nahi mila</td></tr>';
+  const rb=function(v,lab,desc){return'<label style="flex:1;min-width:230px;display:flex;gap:8px;align-items:flex-start;padding:10px;border:2px solid '+(type===v?'#1a237e':'#cfd8dc')+';border-radius:8px;background:'+(type===v?'#f3f4ff':'#fff')+';cursor:pointer"><input type="radio" name="sgpType" value="'+v+'" '+(type===v?'checked':'')+' onchange="App.setSgpType(\''+v+'\')" style="margin-top:3px"><span style="font-size:13px"><b>'+lab+'</b><br><span style="color:#555">'+desc+'</span></span></label>';};
+  return`${roBanner()}
+  <div class="card"><div class="card-title">🚪 Store Gate Pass</div><div class="card-body">
+   <div style="display:flex;gap:10px;margin-bottom:16px;flex-wrap:wrap"><button class="btn btn-secondary" onclick="App.setGrnMode('purchase')">📥 GRN (Purchase)</button><button class="btn btn-secondary" onclick="App.setGrnMode('internal')">🔄 Internal In/Out</button><button class="btn btn-primary" style="background:#6a1b9a">🚪 Gate Pass</button></div>
+   ${ro?"":`<div style="display:flex;gap:10px;flex-wrap:wrap;margin-bottom:14px">${rb("returnable","🔁 Returnable","Repairing / mould job work — wapas aana hai. Sirf record rahega, stock minus nahi hoga.")}${rb("nonreturnable","➡️ Non-Returnable","Job work ke liye item diye — stock se minus hoga. Ready hokar finish entry ke baad khatam karenge.")}</div>
+   <div class="grid2">
+    <div><label class="lbl">Date</label><input class="inp" type="date" id="sgpDate" value="${todayStr()}"></div>
+    <div><label class="lbl">Party / Job Worker *</label><input class="inp" id="sgpParty" list="sgpParties" placeholder="Kis ko diya" autocomplete="off"><datalist id="sgpParties">${parties.map(function(p){return`<option value="${esc(p)}">`;}).join("")}</datalist></div>
+    <div><label class="lbl">Vehicle / Person</label><input class="inp" id="sgpVehicle" placeholder="Optional"></div>
+    ${type==="returnable"?`<div><label class="lbl">Expected Return Date</label><input class="inp" type="date" id="sgpExpected"></div>`:`<div></div>`}
+    <div style="grid-column:1/-1"><label class="lbl">Purpose / Remark</label><input class="inp" id="sgpPurpose" placeholder="${type==="returnable"?"jaise: Mould repair, polishing":"jaise: Job work — assembly"}"></div>
+   </div>
+   <div style="margin-top:6px;font-weight:700;font-size:13px">Items</div>
+   <div style="display:flex;gap:8px;flex-wrap:wrap;align-items:flex-end;margin:6px 0"><div style="flex:2;min-width:200px"><input class="inp" id="sgpItemName" list="sgpItemList" placeholder="${type==="returnable"?"Item / Mould ka naam":"Store ka item (stock se minus hoga)"}" style="margin-bottom:0" autocomplete="off"><datalist id="sgpItemList">${names.map(function(n){return`<option value="${esc(n)}">`;}).join("")}</datalist></div><div style="width:110px"><input class="inp" type="number" id="sgpItemQty" placeholder="Qty" min="0" step="any" style="margin-bottom:0"></div><button class="btn btn-primary" onclick="App.addSgpItem()">+ Add</button></div>
+   <table class="tbl" style="margin-bottom:10px"><thead><tr><th>Item</th><th>Qty</th><th></th></tr></thead><tbody id="sgpItemsBody">${sgpItemsRowsHtml()}</tbody></table>
+   <div style="display:flex;gap:10px;flex-wrap:wrap"><button class="btn btn-primary" onclick="App.saveSgp(false)">💾 Save Gate Pass</button><button class="btn btn-success" onclick="App.saveSgp(true)">🖨️ Save & Print</button></div>`}
+  </div></div>
+  <div class="card"><div class="card-title" style="display:flex;justify-content:space-between;align-items:center;flex-wrap:wrap;gap:8px"><span>📋 Gate Pass Register</span><span style="display:flex;gap:6px;flex-wrap:wrap;align-items:center"><span style="background:${od.length?'#c62828':'rgba(255,255,255,.2)'};padding:3px 10px;border-radius:12px;font-size:12px">🔁 Wapas nahi aaye: <b>${pendR.length}</b>${od.length?` (⏰ ${od.length} overdue)`:""}</span><span style="background:rgba(255,255,255,.2);padding:3px 10px;border-radius:12px;font-size:12px">➡️ Job work chalu: <b>${pendN.length}</b></span></span></div><div class="card-body">
+   <div style="display:flex;gap:8px;flex-wrap:wrap;align-items:flex-end;margin-bottom:10px">
+    <div><label class="lbl">Type</label><select class="inp" style="margin-bottom:0;width:170px" onchange="App.setSgpFilter('sgpFType',this.value)"><option value="">Sab</option><option value="returnable" ${temp.sgpFType==="returnable"?"selected":""}>🔁 Returnable</option><option value="nonreturnable" ${temp.sgpFType==="nonreturnable"?"selected":""}>➡️ Non-Returnable</option></select></div>
+    <div><label class="lbl">Status</label><select class="inp" style="margin-bottom:0;width:190px" onchange="App.setSgpFilter('sgpFStatus',this.value)"><option value="pending" ${(temp.sgpFStatus||"pending")==="pending"?"selected":""}>⏳ Baaki (wapas / finish)</option><option value="done" ${temp.sgpFStatus==="done"?"selected":""}>✅ Khatam</option><option value="all" ${temp.sgpFStatus==="all"?"selected":""}>Sab</option></select></div>
+    <div><label class="lbl">Search</label><input class="inp" id="sgpSearch" value="${esc(temp.sgpFQ||"")}" placeholder="GP no / party / item" style="margin-bottom:0;width:200px" oninput="App.onSgpSearch(this.value)"></div>
+   </div>
+   <div style="overflow-x:auto"><table style="width:100%;border-collapse:collapse"><thead><tr><th ${th}>GP No</th><th ${th}>Date</th><th ${th}>Party</th><th ${th}>Items</th><th ${th}>Status</th><th ${th}></th></tr></thead><tbody>${rows}</tbody></table></div>
+  </div></div>`;
+}
+function _sgpModal(id,html){
+  const old=document.getElementById(id);if(old)old.remove();
+  const d=document.createElement("div");d.id=id;d.style.cssText="position:fixed;inset:0;background:rgba(0,0,0,.5);z-index:9999;display:flex;align-items:center;justify-content:center;padding:14px";
+  d.onclick=function(e){if(e.target===d)d.remove();};
+  d.innerHTML='<div style="background:#fff;border-radius:12px;max-width:520px;width:100%;max-height:92vh;overflow:auto;padding:16px">'+html+'</div>';document.body.appendChild(d);
+}
+function printSgpSlip(g){
+  const w=window.open("","_blank","width=760,height=680");if(!w){alert("Popup blocked!");return;}
+  const isR=g.type==="returnable";
+  const rows=(g.items||[]).map(function(i,n){return'<tr><td>'+(n+1)+'</td><td><b>'+esc(i.name)+'</b></td><td style="text-align:right">'+esc(i.qty)+'</td></tr>';}).join("");
+  w.document.write('<!DOCTYPE html><html><head><title>Gate Pass '+esc(g.gpNo)+'</title><style>@media print{.np{display:none!important}body{margin:0}}body{font-family:Arial;padding:20px;background:#fff}h2{text-align:center;color:#1a237e;margin:0 0 4px}.sub{text-align:center;font-size:13px;color:#555;margin-bottom:10px}.tag{display:block;width:max-content;margin:0 auto 12px;padding:4px 18px;border:2px solid #000;font-weight:800;letter-spacing:2px}table{width:100%;border-collapse:collapse}th,td{border:1px solid #333;padding:7px 10px;font-size:13px;text-align:left}th{background:#1a237e;color:#fff}.meta td{border:none;padding:3px 6px}.sign{display:flex;justify-content:space-between;margin-top:50px;font-size:12px}.sign div{border-top:1px solid #333;padding-top:4px;width:28%;text-align:center}.btn{margin:5px;padding:8px 20px;background:#1a237e;color:#fff;border:none;border-radius:4px;cursor:pointer;font-size:14px}</style></head><body><div class="np" style="text-align:center;margin-bottom:10px"><button class="btn" onclick="window.print()">🖨️ Print</button><button class="btn" style="background:#555" onclick="window.close()">✕ Close</button></div>'
+   +'<h2>Jimit Pet LLP — GATE PASS</h2><div class="sub">Store Gate Pass</div><span class="tag">'+(isR?"RETURNABLE":"NON-RETURNABLE")+'</span>'
+   +'<table class="meta"><tr><td><b>GP No:</b> '+esc(g.gpNo)+'</td><td><b>Date:</b> '+esc(fmtDate(g.date))+'</td></tr><tr><td><b>Party / Job Worker:</b> '+esc(g.party)+'</td><td><b>Vehicle / Person:</b> '+esc(g.vehicle||"—")+'</td></tr><tr><td colspan="2"><b>Purpose:</b> '+esc(g.purpose||"—")+'</td></tr>'+(isR?'<tr><td colspan="2"><b>Wapas aane ki date:</b> '+esc(g.expectedReturn?fmtDate(g.expectedReturn):"—")+' &nbsp; <span style="font-size:12px">(Ye maal wapas factory me aana hai)</span></td></tr>':'<tr><td colspan="2" style="font-size:12px">Ye maal job work ke liye diya gaya hai (stock se minus). Ready hokar finish entry ke saath wapas aayega.</td></tr>')+'</table>'
+   +'<table style="margin-top:10px"><thead><tr><th>#</th><th>Item</th><th style="text-align:right">Qty</th></tr></thead><tbody>'+rows+'</tbody></table>'
+   +'<div class="sign"><div>Prepared by</div><div>Security</div><div>Receiver</div></div><div style="margin-top:24px;font-size:11px;color:#666;text-align:center">Printed: '+esc(nowStr())+' | By: '+esc(g.savedBy||"")+'</div></body></html>');
+  w.document.close();
+}
+// ── Store Today IN/OUT: packing ke "Today's Packing Print" jaisa popup ──
+function storeDayData(day){
+  const c={grn:[],iin:[],ret:[],min:[],iout:[],gpout:[],mout:[],pout:[]};
+  (state.storeLedger||[]).forEach(function(l){
+    if(!l||l.date!==day)return;const q=Number(l.qty)||0;
+    if(l.type==="grn_in")c.grn.push(l);else if(l.type==="internal_receive")c.iin.push(l);else if(l.type==="return_in")c.ret.push(l);
+    else if(l.type==="internal_issue"){(l.gpId?c.gpout:c.iout).push(l);}else if(l.type==="plan_out")c.pout.push(l);
+    else if(l.type==="manual_adjust"){if(q<0)c.mout.push(l);else c.min.push(l);}
+  });
+  const items={};
+  const add=function(arr,k){arr.forEach(function(l){const n=l.itemName,o=items[n]||(items[n]={name:n,grn:0,iin:0,ret:0,min:0,iout:0,gpout:0,mout:0,pout:0});o[k]+=Math.abs(Number(l.qty)||0);});};
+  Object.keys(c).forEach(function(k){add(c[k],k);});
+  const rows=Object.values(items).map(function(o){o.tin=o.grn+o.iin+o.ret+o.min;o.tout=o.iout+o.gpout+o.mout+o.pout;o.net=Math.round((o.tin-o.tout)*100)/100;return o;}).sort(function(a,b){return String(a.name).localeCompare(String(b.name));});
+  return{c:c,rows:rows};
+}
+function storeTodayHtml(){
+  return'<div style="display:flex;justify-content:flex-end;align-items:center;gap:8px;flex-wrap:wrap;margin-bottom:12px"><button class="btn" style="background:#2e7d32;color:#fff" onclick="App.printTodayStore()">🖨️ Today\'s Store IN/OUT Print</button><span style="font-size:12px;color:#555">ya Date select karo:</span><input type="date" class="inp" id="sdPick" value="'+esc(temp.sdDay||"")+'" style="margin-bottom:0;width:150px" onchange="temp.sdDay=this.value"><button class="btn btn-sm" style="background:#2e7d32;color:#fff" onclick="App.printTodayStore(document.getElementById(\'sdPick\').value)">🖨️ Print</button></div>';
+}
+function printTodayStoreWin(day){
+  day=day||todayStr();const d=storeDayData(day),c=d.c;
+  const gps=state.storeGatePasses||[];
+  const rOut=gps.filter(function(g){return g.type==="returnable"&&g.date===day;}).length;
+  const rBack=gps.reduce(function(a,g){return a+(g.returns||[]).filter(function(r){return r.date===day;}).length;},0);
+  if(!d.rows.length&&!rOut&&!rBack){alert("⚠️ "+(day===todayStr()?"Aaj":fmtDate(day)+" ko")+" koi store entry nahi hui hai");return;}
+  const meta={};(state.storeItems||[]).forEach(function(i){meta[i.name]=i;});
+  const q=function(v,n){return v?v+(meta[n]&&meta[n].qtyType?" "+esc(meta[n].qtyType):""):"—";};
+  const tIn=d.rows.reduce(function(a,o){return a+o.tin;},0),tOut=d.rows.reduce(function(a,o){return a+o.tout;},0);
+  const body=d.rows.map(function(o,i){return'<tr><td>'+(i+1)+'</td><td><b>'+esc(o.name)+'</b></td><td>'+esc((meta[o.name]&&meta[o.name].category)||"")+'</td><td style="text-align:right;font-weight:700;color:#1b5e20">'+q(Math.round(o.tin*100)/100,o.name)+'</td><td style="text-align:right;font-weight:700;color:#c62828">'+q(Math.round(o.tout*100)/100,o.name)+'</td><td style="text-align:right;font-weight:700">'+o.net+'</td></tr>';}).join("");
+  const ln=function(lab,arr){return arr.length?'<tr><td>'+lab+'</td><td style="text-align:right">'+arr.length+'</td><td style="text-align:right">'+new Set(arr.map(function(l){return l.itemName;})).size+'</td></tr>':"";};
+  const inT=ln("📥 GRN (Purchase)",c.grn)+ln("🔁 Internal IN",c.iin)+ln("✋ Manual IN",c.min)+ln("↩️ Return from Plant (purani entry)",c.ret);
+  const outT=ln("➡️ Internal OUT",c.iout)+ln("🚪 Gate Pass OUT (Non-Returnable)",c.gpout)+ln("✋ Manual OUT",c.mout)+ln("🏭 Program OUT (Approve se)",c.pout);
+  const w=window.open("","_blank","width=760,height=680");if(!w){alert("Popup blocked!");return;}
+  w.document.write('<!DOCTYPE html><html><head><title>Today\'s Store IN/OUT Summary</title><style>@media print{.np{display:none!important}body{margin:0}}body{font-family:Arial;padding:20px;background:#fff}h2{text-align:center;color:#1a237e;margin-bottom:4px}h3{color:#1a237e;margin:18px 0 6px;font-size:14px}.sub{text-align:center;font-size:13px;color:#555;margin-bottom:16px}table{width:100%;border-collapse:collapse}th,td{border:1px solid #333;padding:8px 10px;font-size:13px;text-align:left}th{background:#1a237e;color:#fff}tr:nth-child(even){background:#f5f5f5}tfoot td{font-weight:800;background:#e3e3e3}.ft{margin-top:20px;font-size:12px;color:#666;text-align:center;border-top:1px dashed #ccc;padding-top:8px}.btn{margin:5px;padding:8px 20px;background:#1a237e;color:#fff;border:none;border-radius:4px;cursor:pointer;font-size:14px}</style></head><body><div class="np" style="text-align:center;margin-bottom:10px"><button class="btn" onclick="window.print()">🖨️ Print</button><button class="btn" style="background:#555" onclick="window.close()">✕ Close</button></div>'
+   +'<h2>Jimit Pet LLP — Today\'s Store IN/OUT Summary</h2><div class="sub">Date: '+esc(fmtDate(day))+' | Item-wise Aggregated</div>'
+   +(d.rows.length?'<table><thead><tr><th>#</th><th>Item</th><th>Category</th><th style="text-align:right">Total IN</th><th style="text-align:right">Total OUT</th><th style="text-align:right">Net</th></tr></thead><tbody>'+body+'</tbody><tfoot><tr><td colspan="3" style="text-align:right">GRAND TOTAL</td><td style="text-align:right">'+Math.round(tIn*100)/100+'</td><td style="text-align:right">'+Math.round(tOut*100)/100+'</td><td style="text-align:right">'+Math.round((tIn-tOut)*100)/100+'</td></tr></tfoot></table>':'<div style="text-align:center;color:#777;padding:10px">Aaj stock IN/OUT ki koi entry nahi hui.</div>')
+   +(inT||outT?'<h3>Type-wise (entries)</h3><table><thead><tr><th>Type</th><th style="text-align:right">Entries</th><th style="text-align:right">Items</th></tr></thead><tbody>'+(inT?'<tr><td colspan="3" style="background:#e8f5e9;font-weight:700">IN</td></tr>'+inT:'')+(outT?'<tr><td colspan="3" style="background:#ffebee;font-weight:700">OUT</td></tr>'+outT:'')+'</tbody></table>':'')
+   +(rOut||rBack?'<h3>Returnable Gate Pass</h3><table><tbody><tr><td>🔁 Aaj bahar gaye</td><td style="text-align:right">'+rOut+'</td></tr><tr><td>↩️ Aaj wapas aaye (entry)</td><td style="text-align:right">'+rBack+'</td></tr><tr><td>🔴 Abhi tak wapas nahi aaye (kul)</td><td style="text-align:right">'+gps.filter(function(g){return g.type==="returnable"&&g.status!=="returned";}).length+'</td></tr></tbody></table>':'')
+   +'<div class="ft">Printed: '+esc(nowStr())+'</div></body></html>');
+  w.document.close();
+}
 function _progDelete(id,mt){
   const arr=mt?state.mtProductionPlans:state.productionPlans;
   const p=arr.find(x=>x.id===id);if(!p)return;
@@ -1685,7 +1787,7 @@ function backfillDispatchItemBatches(){
 function buildBackupData(){
   const map={users:"users",packings:"packings",categories:"categories",dispatches:"dispatches",
     purchaseOrders:"pos",mtPos:"mt_pos",mtDispatches:"mt_dispatches",batchOptions:"batch_options",
-    mtItems:"mt_items",mtPackings:"mt_packings",itemMaster:"item_master",bomMaster:"bom_master",productionPlans:"production_plans",storeLedger:"store_ledger",grns:"grns",mtBomMaster:"mt_bom_master",mouldItems:"mould_items",mouldMats:"mould_mats",mouldColours:"mould_colours",mouldPrograms:"mould_programs",mouldProducts:"mould_products",mouldGroups:"mould_groups",appSettings:"app_settings",mtProductionPlans:"mt_production_plans",mtDivisions:"mt_divisions",storeItems:"store_items",storeQtyTypes:"store_qty_types",storeCategories:"store_categories",auditLog:"audit_log",stockRequests:"stock_requests",storeBatches:"store_batches",recycleBin:"recycle_bin",nextChallanOverride:"next_challan_override",partyEmails:"party_emails",autoTriggeredProducts:"auto_triggered_products",lastAutoBackupDate:"last_auto_backup_date",lastAutoEmailDate:"last_auto_email_date",lastMtAlertEmailDate:"last_mt_alert_email_date",lastPendingCategoryEmailDate:"last_pending_category_email_date",lastProductionReminderDate:"last_production_reminder_date",gatePasses:"gate_passes",parties:"parties",accBills:"acc_bills",accReceipts:"acc_receipts",invoices:"invoices",creditNotes:"credit_notes",debitNotes:"debit_notes",itemRates:"item_rates",company:"company"};
+    mtItems:"mt_items",mtPackings:"mt_packings",itemMaster:"item_master",bomMaster:"bom_master",productionPlans:"production_plans",storeLedger:"store_ledger",grns:"grns",mtBomMaster:"mt_bom_master",mouldItems:"mould_items",mouldMats:"mould_mats",mouldColours:"mould_colours",mouldPrograms:"mould_programs",mouldProducts:"mould_products",mouldGroups:"mould_groups",appSettings:"app_settings",mtProductionPlans:"mt_production_plans",mtDivisions:"mt_divisions",storeItems:"store_items",storeQtyTypes:"store_qty_types",storeCategories:"store_categories",auditLog:"audit_log",stockRequests:"stock_requests",storeGatePasses:"store_gate_passes",storeBatches:"store_batches",recycleBin:"recycle_bin",nextChallanOverride:"next_challan_override",partyEmails:"party_emails",autoTriggeredProducts:"auto_triggered_products",lastAutoBackupDate:"last_auto_backup_date",lastAutoEmailDate:"last_auto_email_date",lastMtAlertEmailDate:"last_mt_alert_email_date",lastPendingCategoryEmailDate:"last_pending_category_email_date",lastProductionReminderDate:"last_production_reminder_date",gatePasses:"gate_passes",parties:"parties",accBills:"acc_bills",accReceipts:"acc_receipts",invoices:"invoices",creditNotes:"credit_notes",debitNotes:"debit_notes",itemRates:"item_rates",company:"company"};
   const backup={ _meta:{app:"JimitPetLLP",exportedAt:new Date().toISOString(),version:1}, data:{} };
   Object.entries(map).forEach(([sk,dbk])=>{ backup.data[dbk]=state[sk]; });
   backup.data.tombstones=Tombstone.get();
@@ -3120,7 +3222,7 @@ const StoreItemApp={
 // ── STORE / INVENTORY (GRN + Return + Stock Ledger) ─────────
 function renderStoreTab(){
   if(!temp.grnItems)temp.grnItems=[];
-  const mode=temp.grnMode||"purchase"; // purchase | return | internal
+  const mode=temp.grnMode==="return"?"purchase":(temp.grnMode||"purchase"); // purchase | internal  (Return from Plant hata diya)
   const internalType=temp.internalType||"issue"; // issue | receive
   const itemNames=getAllStoreItemNames();
   const suppliers=[...new Set(state.grns.filter(g=>g.kind==="purchase").map(g=>g.supplier).filter(Boolean))].sort();
@@ -3132,7 +3234,7 @@ function renderStoreTab(){
   const modeTitle=mode==="purchase"?"📥 New GRN (Stock In — Purchase)":mode==="return"?"↩️ Return from Plant (Stock In)":internalType==="issue"?"➡️ Internal Issue (Stock Out)":"⬅️ Internal Receive (Stock In)";
   return`${roBanner()}<div style="display:flex;justify-content:flex-end;margin-bottom:12px"><button class="btn btn-primary" onclick="App.openStoreItemModal()">📋 Store Item Master (${storeItemCount()})</button></div>
   <div class="card"><div class="card-title">${modeTitle}</div><div class="card-body">
-    <div style="display:flex;gap:10px;margin-bottom:16px;flex-wrap:wrap"><button class="btn ${mode==="purchase"?"btn-primary":"btn-secondary"}" onclick="App.setGrnMode('purchase')">📥 GRN (Purchase)</button><button class="btn ${mode==="return"?"btn-primary":"btn-secondary"}" onclick="App.setGrnMode('return')">↩️ Return from Plant</button><button class="btn ${mode==="internal"?"btn-primary":"btn-secondary"}" style="${mode==="internal"?"background:#e65100":""}" onclick="App.setGrnMode('internal')">🔄 Internal In/Out</button></div>
+    <div style="display:flex;gap:10px;margin-bottom:16px;flex-wrap:wrap"><button class="btn ${mode==="purchase"?"btn-primary":"btn-secondary"}" onclick="App.setGrnMode('purchase')">📥 GRN (Purchase)</button><button class="btn btn-secondary" onclick="App.setGrnMode('gatepass')">🚪 Gate Pass</button><button class="btn ${mode==="internal"?"btn-primary":"btn-secondary"}" style="${mode==="internal"?"background:#e65100":""}" onclick="App.setGrnMode('internal')">🔄 Internal In/Out</button></div>
     ${mode==="internal"?`<div style="display:flex;gap:10px;margin-bottom:14px"><label style="font-size:13px;cursor:pointer"><input type="radio" name="internalType" value="issue" ${internalType==="issue"?"checked":""} onchange="App.setInternalType('issue')"> ➡️ Issue (Stock Out)</label><label style="font-size:13px;cursor:pointer"><input type="radio" name="internalType" value="receive" ${internalType==="receive"?"checked":""} onchange="App.setInternalType('receive')"> ⬅️ Receive (Stock In)</label></div>`:""}
     <div class="grid2">
       ${mode==="internal"?`<div><label class="lbl">Factory Challan No. *</label><input class="inp" id="grnChallanNo" placeholder="Challan No type karo"></div>`:`<div><label class="lbl">${mode==="purchase"?"GRN No (Auto)":"Return No (Auto)"}</label><input class="inp" value="${mode==="purchase"?genGrnNo():genReturnNo()}" readonly style="background:#f5f5f5;font-weight:700"></div>`}
@@ -3157,7 +3259,7 @@ function renderStoreTab(){
   <div class="card"><div class="card-title" style="display:flex;justify-content:space-between;align-items:center;flex-wrap:wrap;gap:8px"><span>📋 GRN / Return History</span><div style="display:flex;gap:6px;align-items:center"><input type="date" class="inp" title="Date From" value="${esc(temp.grnFrom||"")}" style="margin-bottom:0;width:140px" onchange="App.setGrnFilter('grnFrom',this.value)"><input type="date" class="inp" title="Date To" value="${esc(temp.grnTo||"")}" style="margin-bottom:0;width:140px" onchange="App.setGrnFilter('grnTo',this.value)"><input class="inp" id="grnSearchInput" placeholder="🔍 GRN no / item / bill..." value="${esc(temp.grnSearch||"")}" style="margin-bottom:0;width:170px" oninput="App.onGrnSearch(this.value)">${(temp.grnFrom||temp.grnTo||temp.grnSearch||temp.grnPartyFilter)?`<button class="btn btn-sm btn-secondary" onclick="App.clearGrnFilters()">Clear</button>`:""}${reportBtns("grn")}<button class="btn" style="background:#6a1b9a;color:#fff" onclick="App.openPurchaseReport()">💰 Purchase Report</button><span style="font-size:12px;color:#fff;font-weight:400">Party:</span><select class="inp" style="margin-bottom:0;width:200px" onchange="App.filterGrnByParty(this.value)"><option value="">All Suppliers</option>${suppliers.map(s=>`<option value="${esc(s)}" ${partyFilter===s?"selected":""}>${esc(s)}</option>`).join("")}</select></div></div><div class="card-body" style="overflow-x:auto"><div style="max-height:600px;overflow-y:auto;border:1px solid #e0e0e0;border-radius:6px"><table class="tbl" style="margin:0"><thead><tr style="background:#1a237e;color:#fff;position:sticky;top:0;z-index:10"><th>Type</th><th>No.</th><th>Date</th><th>Supplier/Program</th><th>Items</th><th>By</th><th>Actions</th></tr></thead><tbody>${historyRows}</tbody></table></div>${grnTotal>300?`<div style="font-size:11px;color:#888;margin-top:6px">Sirf latest 300 entries dikhayi ja rahi hain (total ${grnTotal}). Poori list Excel/PDF me aayegi.</div>`:""}</div></div>`;
 }
 const StoreApp={
-  setGrnMode(m){temp.grnMode=m;temp.grnItems=[];renderTabContent();},
+  setGrnMode(m){if(m==="return")m="purchase";temp.grnMode=m;temp.grnItems=[];renderTabContent();},
   setInternalType(t){temp.internalType=t;renderTabContent();},
   addGrnItem(){if(denyAction("store"))return;const _rn=resolveItemName(document.getElementById("grnItemName").value);if(_rn===null)return;const name=_rn;const qty=Number(document.getElementById("grnItemQty").value);const location=document.getElementById("grnItemLocation").value.trim();if(!name){alert("Item Name required");return;}if(!qty||qty<=0){alert("Sahi Qty daalo");return;}if(!temp.grnItems)temp.grnItems=[];temp.grnItems.push({name,qty,location,rate:Number((document.getElementById("grnItemRate")||{}).value)||0});document.getElementById("grnItemName").value="";document.getElementById("grnItemQty").value="";document.getElementById("grnItemLocation").value="";renderTabContent();setTimeout(()=>document.getElementById("grnItemName")?.focus(),0);},
   filterGrnByParty(val){temp.grnPartyFilter=val;renderTabContent();},
@@ -5910,7 +6012,7 @@ const MtWhyApp={
 // ══════════════════════════════════════════════════════════════════════════
 const CLOUD_URL="https://hawuifhzjwvdaieowpkj.supabase.co";
 const CLOUD_KEY="sb_publishable_hnfEhQ7HBPEFLjYoXpQiMw_JePcUjuB";
-const CLOUD_PROP_OF={users:"users",packings:"packings",categories:"categories",dispatches:"dispatches",pos:"purchaseOrders",mt_pos:"mtPos",mt_dispatches:"mtDispatches",batch_options:"batchOptions",mt_items:"mtItems",mt_packings:"mtPackings",item_master:"itemMaster",bom_master:"bomMaster",production_plans:"productionPlans",store_ledger:"storeLedger",grns:"grns",mt_bom_master:"mtBomMaster",mould_items:"mouldItems",mould_mats:"mouldMats",mould_colours:"mouldColours",mould_programs:"mouldPrograms",mould_products:"mouldProducts",mould_groups:"mouldGroups",app_settings:"appSettings",mt_production_plans:"mtProductionPlans",mt_divisions:"mtDivisions",store_items:"storeItems",store_qty_types:"storeQtyTypes",store_categories:"storeCategories",audit_log:"auditLog",stock_requests:"stockRequests",store_batches:"storeBatches",recycle_bin:"recycleBin",next_challan_override:"nextChallanOverride",party_emails:"partyEmails",auto_triggered_products:"autoTriggeredProducts",gate_passes:"gatePasses",parties:"parties",acc_bills:"accBills",acc_receipts:"accReceipts",invoices:"invoices",credit_notes:"creditNotes",debit_notes:"debitNotes",item_rates:"itemRates",company:"company"};
+const CLOUD_PROP_OF={users:"users",packings:"packings",categories:"categories",dispatches:"dispatches",pos:"purchaseOrders",mt_pos:"mtPos",mt_dispatches:"mtDispatches",batch_options:"batchOptions",mt_items:"mtItems",mt_packings:"mtPackings",item_master:"itemMaster",bom_master:"bomMaster",production_plans:"productionPlans",store_ledger:"storeLedger",grns:"grns",mt_bom_master:"mtBomMaster",mould_items:"mouldItems",mould_mats:"mouldMats",mould_colours:"mouldColours",mould_programs:"mouldPrograms",mould_products:"mouldProducts",mould_groups:"mouldGroups",app_settings:"appSettings",mt_production_plans:"mtProductionPlans",mt_divisions:"mtDivisions",store_items:"storeItems",store_qty_types:"storeQtyTypes",store_categories:"storeCategories",audit_log:"auditLog",stock_requests:"stockRequests",store_gate_passes:"storeGatePasses",store_batches:"storeBatches",recycle_bin:"recycleBin",next_challan_override:"nextChallanOverride",party_emails:"partyEmails",auto_triggered_products:"autoTriggeredProducts",gate_passes:"gatePasses",parties:"parties",acc_bills:"accBills",acc_receipts:"accReceipts",invoices:"invoices",credit_notes:"creditNotes",debit_notes:"debitNotes",item_rates:"itemRates",company:"company"};
 function cloudStable(v){
   if(v===undefined||v===null)return "null";
   if(typeof v!=="object")return JSON.stringify(v);
@@ -8623,8 +8725,8 @@ const StoreV2App={
     }else if(kind==="storeday"){
       const day=temp.sdDay||todayStr(),dd=storeDayData(day),r2=function(x){return Math.round(x*100)/100;};
       title="Jimit Pet LLP - Store IN/OUT Summary";fname="store_in_out";sub+=" | Date: "+day;
-      headers=["Item","GRN","Internal IN","Return from Plant","Manual IN","Internal OUT (Gate Pass/Challan)","Manual OUT","Program OUT","Total IN","Total OUT","Net"];
-      rows=dd.rows.map(function(o){return[o.name,r2(o.grn),r2(o.iin),r2(o.ret),r2(o.min),r2(o.iout),r2(o.mout),r2(o.pout),r2(o.tin),r2(o.tout),o.net];});
+      headers=["Item","GRN","Internal IN","Return from Plant","Manual IN","Internal OUT","Gate Pass OUT (Non-Returnable)","Manual OUT","Program OUT","Total IN","Total OUT","Net"];
+      rows=dd.rows.map(function(o){return[o.name,r2(o.grn),r2(o.iin),r2(o.ret),r2(o.min),r2(o.iout),r2(o.gpout),r2(o.mout),r2(o.pout),r2(o.tin),r2(o.tout),o.net];});
     }else if(kind==="aud"){
       title="Jimit Pet LLP - Audit Log";fname="audit_log";
       headers=["Time","User","Role","Device","Tab","Action","Ref","Detail"];
@@ -8875,6 +8977,102 @@ const StoreV6App={
 };
 Object.assign(App,StoreV6App);
 
+const StoreV7App={
+  setSgpType(t){temp.sgpType=t;temp.sgpItems=[];renderTabContent();},
+  addSgpItem(){
+    if(denyAction("store"))return;
+    const type=temp.sgpType||"returnable",raw=document.getElementById("sgpItemName").value,qty=Number(document.getElementById("sgpItemQty").value);
+    if(!String(raw).trim()){alert("Item ka naam daalo");return;}
+    if(!(qty>0)){alert("Qty 0 se zyada daalo");return;}
+    let name=String(raw).trim().replace(/\s+/g," ");
+    if(type==="nonreturnable"){const rn=resolveItemName(raw);if(rn===null)return;name=rn;}
+    else{const hit=getAllStoreItemNames().find(function(n){return normItemKey(n)===normItemKey(name);});if(hit)name=hit;}
+    temp.sgpItems=temp.sgpItems||[];
+    const ex=temp.sgpItems.find(function(i){return i.name===name;});
+    if(ex)ex.qty=Math.round((ex.qty+qty)*1000)/1000;else temp.sgpItems.push({name:name,qty:qty});
+    document.getElementById("sgpItemName").value="";document.getElementById("sgpItemQty").value="";
+    document.getElementById("sgpItemsBody").innerHTML=sgpItemsRowsHtml();document.getElementById("sgpItemName").focus();
+  },
+  removeSgpItem(i){(temp.sgpItems||[]).splice(i,1);const b=document.getElementById("sgpItemsBody");if(b)b.innerHTML=sgpItemsRowsHtml();},
+  saveSgp(andPrint){
+    if(denyAction("store"))return;
+    const type=temp.sgpType||"returnable";
+    const pn=((document.getElementById("sgpItemName")||{}).value||"").trim(),pq=Number((document.getElementById("sgpItemQty")||{}).value);
+    if(pn&&pq>0){
+      if(!confirm('"'+pn+'" ('+pq+') abhi list me add nahi hua hai.\n\nIsse bhi add karke save karna hai?'))return;
+      App.addSgpItem();if(((document.getElementById("sgpItemName")||{}).value||"").trim())return;
+    }
+    const party=document.getElementById("sgpParty").value.trim().replace(/\s+/g," ");
+    if(!party){alert("Party / Job Worker ka naam daalo");return;}
+    if(!(temp.sgpItems||[]).length){alert("Kam se kam ek item add karo");return;}
+    const date=document.getElementById("sgpDate").value||todayStr();
+    if(type==="nonreturnable"){
+      const sh=temp.sgpItems.filter(function(i){return getStoreStock(i.name)<i.qty;}).map(function(i){return i.name+" (chahiye "+i.qty+", stock "+getStoreStock(i.name)+")";});
+      if(sh.length&&!confirm("⚠️ In items ka stock kam hai:\n"+sh.join("\n")+"\n\nPhir bhi gate pass banana hai? (stock minus ho jayega)"))return;
+    }
+    const g={id:uid(),gpNo:genSgpNo(type),type:type,date:date,party:party,vehicle:(document.getElementById("sgpVehicle").value||"").trim(),purpose:(document.getElementById("sgpPurpose").value||"").trim(),expectedReturn:type==="returnable"?((document.getElementById("sgpExpected")||{}).value||""):"",items:temp.sgpItems.map(function(i){return{name:i.name,qty:i.qty,retQty:0};}),status:"open",returns:[],savedBy:state.currentUser.name,savedAt:nowStr()};
+    state.storeGatePasses=state.storeGatePasses||[];state.storeGatePasses.push(g);persist("store_gate_passes",state.storeGatePasses);
+    if(type==="nonreturnable"){
+      g.items.forEach(function(i){state.storeLedger.push({id:uid(),type:"internal_issue",itemName:i.name,qty:i.qty,date:date,party:party,location:"",refNo:g.gpNo,remark:"Gate Pass (Non-Returnable) — "+(g.purpose||"job work"),gpId:g.id,savedBy:state.currentUser.name,_ts:Date.now()});});
+      persist("store_ledger",state.storeLedger);
+    }
+    temp.sgpItems=[];
+    if(andPrint)printSgpSlip(g);
+    renderTabContent();
+    showSyncPill("ok","✅ Gate Pass "+g.gpNo+" ban gaya"+(type==="nonreturnable"?" — stock minus hua":""),3500);
+  },
+  openSgpReturn(id){
+    const g=(state.storeGatePasses||[]).find(function(x){return x.id===id;});if(!g||g.type!=="returnable")return;
+    const rows=g.items.map(function(i,k){const rem=Math.round((i.qty-(i.retQty||0))*1000)/1000;return'<tr><td>'+esc(i.name)+'</td><td style="text-align:right">'+i.qty+'</td><td style="text-align:right">'+rem+'</td><td><input class="inp" type="number" min="0" step="any" id="sgpRet'+k+'" value="'+rem+'" '+(rem<=0?'disabled':'')+' style="margin:0;width:90px"></td></tr>';}).join("");
+    _sgpModal("sgpRetModal",'<div style="font-size:16px;font-weight:800;color:#1a237e;margin-bottom:8px">↩️ Wapas aaya — '+esc(g.gpNo)+'</div><div style="font-size:12px;color:#555;margin-bottom:8px">'+esc(g.party)+' se kitna maal wapas aaya, wo daalo (aadha aaya ho to utna hi).</div><table class="tbl" style="font-size:12px"><thead><tr><th>Item</th><th>Gaya</th><th>Baaki</th><th>Aaj wapas</th></tr></thead><tbody>'+rows+'</tbody></table><div class="grid2" style="margin-top:8px"><div><label class="lbl">Wapas aane ki date</label><input class="inp" type="date" id="sgpRetDate" value="'+todayStr()+'"></div><div><label class="lbl">Remark</label><input class="inp" id="sgpRetRemark" placeholder="Optional (jaise: repair ho gaya)"></div></div><div style="display:flex;gap:8px;justify-content:flex-end;margin-top:10px"><button class="btn btn-secondary" onclick="document.getElementById(\'sgpRetModal\').remove()">Cancel</button><button class="btn btn-success" onclick="App.saveSgpReturn('+id+')">✅ Save</button></div>');
+  },
+  saveSgpReturn(id){
+    if(denyAction("store"))return;
+    const g=(state.storeGatePasses||[]).find(function(x){return x.id===id;});if(!g||g.type!=="returnable")return;
+    const items=[];
+    for(let k=0;k<g.items.length;k++){
+      const i=g.items[k],rem=Math.round((i.qty-(i.retQty||0))*1000)/1000,el=document.getElementById("sgpRet"+k),v=el?(Number(el.value)||0):0;
+      if(v<0||v>rem+1e-9){alert(i.name+": baaki sirf "+rem+" hai, usse zyada wapas nahi aa sakta");return;}
+      if(v>0)items.push({name:i.name,qty:v});
+    }
+    if(!items.length){alert("Kitna maal wapas aaya wo daalo");return;}
+    items.forEach(function(x){const it=g.items.find(function(i){return i.name===x.name;});it.retQty=Math.round(((it.retQty||0)+x.qty)*1000)/1000;});
+    g.returns=g.returns||[];g.returns.push({date:document.getElementById("sgpRetDate").value||todayStr(),by:state.currentUser.name,remark:(document.getElementById("sgpRetRemark").value||"").trim(),items:items});
+    g.status=g.items.every(function(i){return(i.retQty||0)>=i.qty-1e-9;})?"returned":"partial";
+    persist("store_gate_passes",state.storeGatePasses);
+    const m=document.getElementById("sgpRetModal");if(m)m.remove();renderTabContent();
+    showSyncPill("ok",g.status==="returned"?"✅ Sab maal wapas aa gaya":"↩️ Partial wapas entry ho gayi",3000);
+  },
+  openSgpClose(id){
+    const g=(state.storeGatePasses||[]).find(function(x){return x.id===id;});if(!g||g.type!=="nonreturnable")return;
+    _sgpModal("sgpCloseModal",'<div style="font-size:16px;font-weight:800;color:#1a237e;margin-bottom:8px">✅ Khatam karo — '+esc(g.gpNo)+'</div><div style="font-size:12px;color:#555;margin-bottom:8px">'+esc(g.party)+' ka job work ready hokar finish me entry ho gayi ho, tab hi khatam karo.</div><div class="grid2"><div><label class="lbl">Date</label><input class="inp" type="date" id="sgpClDate" value="'+todayStr()+'"></div><div><label class="lbl">Finish entry ref / Remark</label><input class="inp" id="sgpClRemark" placeholder="jaise: Packing carton 245 me entry li"></div></div><div style="display:flex;gap:8px;justify-content:flex-end;margin-top:10px"><button class="btn btn-secondary" onclick="document.getElementById(\'sgpCloseModal\').remove()">Cancel</button><button class="btn btn-success" onclick="App.saveSgpClose('+id+')">✅ Khatam</button></div>');
+  },
+  saveSgpClose(id){
+    if(denyAction("store"))return;
+    const g=(state.storeGatePasses||[]).find(function(x){return x.id===id;});if(!g||g.type!=="nonreturnable")return;
+    g.status="closed";g.closedAt=document.getElementById("sgpClDate").value||todayStr();g.closeRemark=(document.getElementById("sgpClRemark").value||"").trim();g.closedBy=state.currentUser.name;
+    persist("store_gate_passes",state.storeGatePasses);
+    const m=document.getElementById("sgpCloseModal");if(m)m.remove();renderTabContent();
+  },
+  showSgpHistory(id){
+    const g=(state.storeGatePasses||[]).find(function(x){return x.id===id;});if(!g)return;
+    const rows=(g.returns||[]).map(function(r){return'<div style="padding:6px 0;border-bottom:1px solid #eee;font-size:13px"><b>'+esc(fmtDate(r.date))+'</b> — '+r.items.map(function(i){return esc(i.name)+' '+i.qty;}).join(", ")+(r.remark?' <span style="color:#555">('+esc(r.remark)+')</span>':'')+' <span style="color:#888;font-size:11px">by '+esc(r.by)+'</span></div>';}).join("")||'<div style="color:#999">Koi wapas entry nahi</div>';
+    _sgpModal("sgpHistModal",'<div style="font-size:16px;font-weight:800;color:#1a237e;margin-bottom:8px">📜 '+esc(g.gpNo)+' — wapas ki history</div>'+rows+'<div style="text-align:right;margin-top:10px"><button class="btn btn-secondary" onclick="document.getElementById(\'sgpHistModal\').remove()">Close</button></div>');
+  },
+  printSgp(id){const g=(state.storeGatePasses||[]).find(function(x){return x.id===id;});if(g)printSgpSlip(g);},
+  deleteStoreGatePass(id){
+    if(!isAdminU())return;
+    const g=(state.storeGatePasses||[]).find(function(x){return x.id===id;});if(!g)return;
+    if(!confirm(g.gpNo+" delete karna hai?"+(g.type==="nonreturnable"?"\nIska stock minus wapas jud jayega.":"")))return;
+    if(g.type==="nonreturnable"){state.storeLedger=state.storeLedger.filter(function(l){return l.gpId!==id;});persist("store_ledger",state.storeLedger);}
+    state.storeGatePasses=state.storeGatePasses.filter(function(x){return x.id!==id;});persist("store_gate_passes",state.storeGatePasses);renderTabContent();
+  },
+  setSgpFilter(k,v){temp[k]=v;renderTabContent();},
+  onSgpSearch(v){temp.sgpFQ=v;clearTimeout(temp._sgT);temp._sgT=setTimeout(function(){renderTabContent();const el=document.getElementById("sgpSearch");if(el){el.focus();el.setSelectionRange(el.value.length,el.value.length);}},250);},
+  printTodayStore(day){printTodayStoreWin(day||"");}
+};
+Object.assign(App,StoreV7App);
+
 // Audit: har App action ko wrap karo (sirf wahi log hota hai jisme data save hua)
 Object.keys(App).forEach(k=>{if(typeof App[k]==="function"&&k[0]!=="_"&&!/^render/.test(k))App[k]=_auditWrap(k,App[k]);});
 _idleInit();_polInit();_sxInit();
@@ -8902,7 +9100,7 @@ window.App=App; window.AC=AC;
   try{sessionStorage.setItem("jpl_fy",FY.label);}catch(e){}
   const map={users:"users",packings:"packings",categories:"categories",dispatches:"dispatches",
     purchaseOrders:"pos",mtPos:"mt_pos",mtDispatches:"mt_dispatches",batchOptions:"batch_options",
-    mtItems:"mt_items",mtPackings:"mt_packings",itemMaster:"item_master",bomMaster:"bom_master",productionPlans:"production_plans",storeLedger:"store_ledger",grns:"grns",mtBomMaster:"mt_bom_master",mouldItems:"mould_items",mouldMats:"mould_mats",mouldColours:"mould_colours",mouldPrograms:"mould_programs",mouldProducts:"mould_products",mouldGroups:"mould_groups",appSettings:"app_settings",mtProductionPlans:"mt_production_plans",mtDivisions:"mt_divisions",storeItems:"store_items",storeQtyTypes:"store_qty_types",storeCategories:"store_categories",auditLog:"audit_log",stockRequests:"stock_requests",storeBatches:"store_batches",recycleBin:"recycle_bin",nextChallanOverride:"next_challan_override",partyEmails:"party_emails",autoTriggeredProducts:"auto_triggered_products",lastAutoBackupDate:"last_auto_backup_date",lastAutoEmailDate:"last_auto_email_date",lastMtAlertEmailDate:"last_mt_alert_email_date",lastPendingCategoryEmailDate:"last_pending_category_email_date",lastProductionReminderDate:"last_production_reminder_date",gatePasses:"gate_passes",parties:"parties",accBills:"acc_bills",accReceipts:"acc_receipts",invoices:"invoices",creditNotes:"credit_notes",debitNotes:"debit_notes",itemRates:"item_rates",company:"company"};
+    mtItems:"mt_items",mtPackings:"mt_packings",itemMaster:"item_master",bomMaster:"bom_master",productionPlans:"production_plans",storeLedger:"store_ledger",grns:"grns",mtBomMaster:"mt_bom_master",mouldItems:"mould_items",mouldMats:"mould_mats",mouldColours:"mould_colours",mouldPrograms:"mould_programs",mouldProducts:"mould_products",mouldGroups:"mould_groups",appSettings:"app_settings",mtProductionPlans:"mt_production_plans",mtDivisions:"mt_divisions",storeItems:"store_items",storeQtyTypes:"store_qty_types",storeCategories:"store_categories",auditLog:"audit_log",stockRequests:"stock_requests",storeGatePasses:"store_gate_passes",storeBatches:"store_batches",recycleBin:"recycle_bin",nextChallanOverride:"next_challan_override",partyEmails:"party_emails",autoTriggeredProducts:"auto_triggered_products",lastAutoBackupDate:"last_auto_backup_date",lastAutoEmailDate:"last_auto_email_date",lastMtAlertEmailDate:"last_mt_alert_email_date",lastPendingCategoryEmailDate:"last_pending_category_email_date",lastProductionReminderDate:"last_production_reminder_date",gatePasses:"gate_passes",parties:"parties",accBills:"acc_bills",accReceipts:"acc_receipts",invoices:"invoices",creditNotes:"credit_notes",debitNotes:"debit_notes",itemRates:"item_rates",company:"company"};
   for(const [sk,dbk] of Object.entries(map)){ const d=await DB.get(dbk); if(d)state[sk]=d; }
   await migratePlaintextPasswords();
   backfillDispatchBatches();
