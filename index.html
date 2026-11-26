@@ -499,7 +499,8 @@ function readFileAsDataURL(file){return new Promise((res,rej)=>{const r=new File
 if(window.pdfjsLib)pdfjsLib.GlobalWorkerOptions.workerSrc="https://cdnjs.cloudflare.com/ajax/libs/pdf.js/3.11.174/pdf.worker.min.js";
 async function extractTextFromPdfDataUrl(dataUrl){
   if(CloudFiles.isMarker(dataUrl)){try{dataUrl=await CloudFiles.toDataUrl(dataUrl.slice(8));}catch(e){return "";}}
-  if(!dataUrl||!dataUrl.startsWith("data:application/pdf")||!window.pdfjsLib)return"";
+  if(!dataUrl||!dataUrl.startsWith("data:application/pdf"))return"";
+  if(!window.pdfjsLib&&!(await ensureLib("pdfjs")))return"";
   try{
     const base64=dataUrl.split(",")[1];
     const binary=atob(base64);
@@ -1279,6 +1280,26 @@ function printTodayStoreWin(day){
    +(rOut||rBack?'<h3>Returnable Gate Pass</h3><table><tbody><tr><td>🔁 Aaj bahar gaye</td><td style="text-align:right">'+rOut+'</td></tr><tr><td>↩️ Aaj wapas aaye (entry)</td><td style="text-align:right">'+rBack+'</td></tr><tr><td>🔴 Abhi tak wapas nahi aaye (kul)</td><td style="text-align:right">'+gps.filter(function(g){return g.type==="returnable"&&g.status!=="returned";}).length+'</td></tr></tbody></table>':'')
    +'<div class="ft">Printed: '+esc(nowStr())+'</div></body></html>');
   w.document.close();
+}
+// ══ v16: bahari libraries (pdf.js) load na ho to doosre server se try ══
+const LIB_FALLBACK={
+  pdfjs:{test:function(){return window.pdfjsLib;},urls:["https://cdnjs.cloudflare.com/ajax/libs/pdf.js/3.11.174/pdf.min.js","https://cdn.jsdelivr.net/npm/pdfjs-dist@3.11.174/build/pdf.min.js"],
+    after:function(u){try{window.pdfjsLib.GlobalWorkerOptions.workerSrc=/jsdelivr/.test(u)?"https://cdn.jsdelivr.net/npm/pdfjs-dist@3.11.174/build/pdf.worker.min.js":"https://cdnjs.cloudflare.com/ajax/libs/pdf.js/3.11.174/pdf.worker.min.js";}catch(e){}}}
+};
+function _loadScript(url,ms){
+  return new Promise(function(res,rej){
+    const sc=document.createElement("script");let done=false;
+    const t=setTimeout(function(){if(!done){done=true;sc.remove();rej(new Error("timeout"));}},ms||15000);
+    sc.src=url;sc.onload=function(){if(!done){done=true;clearTimeout(t);res();}};
+    sc.onerror=function(){if(!done){done=true;clearTimeout(t);sc.remove();rej(new Error("load fail"));}};
+    document.head.appendChild(sc);
+  });
+}
+async function ensureLib(key){
+  const L=LIB_FALLBACK[key];if(!L)return false;
+  if(L.test())return true;
+  for(let i=0;i<L.urls.length;i++){try{await _loadScript(L.urls[i]);if(L.test()){if(L.after)L.after(L.urls[i]);return true;}}catch(e){}}
+  return !!L.test();
 }
 function _progDelete(id,mt){
   const arr=mt?state.mtProductionPlans:state.productionPlans;
@@ -3825,7 +3846,8 @@ function mtPoListRows(){
   </tr>`;}).join("")||`<tr><td colspan="9" style="text-align:center;color:#999;padding:24px">No MT POs yet</td></tr>`)+pgMoreRow("mtpo",_all.length,list.length,9);}
 // ── MT PO: PDF se auto-fill (Sync Data) ──
 async function extractMtPoPdfItems(dataUrl){
-  if(!dataUrl||!dataUrl.startsWith("data:application/pdf")||!window.pdfjsLib)throw new Error("PDF reader load nahi hua ya file PDF nahi hai (photo/scan nahi chalegi)");
+  if(!dataUrl||!dataUrl.startsWith("data:application/pdf"))throw new Error("Ye file PDF nahi hai (photo/scan nahi chalegi)");
+  if(!window.pdfjsLib&&!(await ensureLib("pdfjs")))throw new Error("PDF reader internet se load nahi ho paya — internet check karke 'Sync Data' dobara dabao (ya page refresh karo)");
   const base64=dataUrl.split(",")[1];
   const bin=atob(base64);
   const bytes=new Uint8Array(bin.length);
