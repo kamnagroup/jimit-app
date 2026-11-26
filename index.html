@@ -320,9 +320,8 @@ const genReturnNo = ()=>{const n=state.grns.filter(g=>g.kind==="return").length?
 function getStoreStock(itemName){return Math.round((_stkInfo().bal[itemName]||0)*100)/100;}
 function getAllStoreItemNames(){
   const names=new Set();
-  (state.bomMaster||[]).forEach(b=>b.items.forEach(i=>names.add(i.name)));
-  (state.mtBomMaster||[]).forEach(b=>b.items.forEach(i=>names.add(i.name)));
-  (state.storeLedger||[]).forEach(l=>names.add(l.itemName));
+  // v16: naam sirf Store se aate hain (Store Item Master + GRN/Internal/Manual entries). BOM aur planner ki Plan Out entries naam nahi banati.
+  (state.storeLedger||[]).forEach(l=>{if(l.type!=="plan_out")names.add(l.itemName);});
   (state.storeItems||[]).forEach(i=>names.add(i.name));
   return[...names].filter(Boolean).sort();
 }
@@ -2680,7 +2679,7 @@ function renderBomModal(){
   const existing=ed?ed.items:[];
   const rowCount=20;
   const UNIT_OPTS=["Pcs","Mtr","Kg","Ltr","Gram","Box"];
-  const accRows=Array.from({length:rowCount}).map((_,i)=>{const ex=existing[i];const exUnit=(ex&&ex.unit)||"Pcs";return`<tr><td>${i+1}</td><td><input class="inp" id="bomAccName${i}" value="${ex?esc(ex.name):""}" placeholder="Accessory Name" style="margin-bottom:0"></td><td><input class="inp" type="number" step="0.01" id="bomAccQty${i}" value="${ex?esc(ex.qtyPerBox):""}" placeholder="Qty/Box" style="width:100px;margin-bottom:0"></td><td><select class="inp" id="bomAccUnit${i}" style="width:95px;margin-bottom:0">${UNIT_OPTS.map(u=>`<option value="${u}" ${exUnit===u?"selected":""}>${u}</option>`).join("")}</select></td></tr>`;}).join("");
+  const accRows=Array.from({length:rowCount}).map((_,i)=>{const ex=existing[i];const exUnit=(ex&&ex.unit)||"Pcs";return`<tr><td>${i+1}</td><td><input class="inp" id="bomAccName${i}" data-acc="1" autocomplete="off" value="${ex?esc(ex.name):""}" placeholder="Accessory Name (type karo → store se suggest hoga)" style="margin-bottom:0"></td><td><input class="inp" type="number" step="0.01" id="bomAccQty${i}" value="${ex?esc(ex.qtyPerBox):""}" placeholder="Qty/Box" style="width:100px;margin-bottom:0"></td><td><select class="inp" id="bomAccUnit${i}" style="width:95px;margin-bottom:0">${UNIT_OPTS.map(u=>`<option value="${u}" ${exUnit===u?"selected":""}>${u}</option>`).join("")}</select></td></tr>`;}).join("");
   const listRows=state.bomMaster.map(b=>`<tr><td><b>${esc(b.productName)}</b></td><td>${b.batch?`<span class="badge" style="background:#c5cae9;color:#1a237e">${esc(b.batch)}</span>`:"—"}</td><td>${b.items.length} accessories</td><td><button class="btn btn-sm btn-primary" onclick="App.editBom(${b.id})">Edit</button> <button class="btn btn-sm btn-danger" onclick="App.deleteBom(${b.id})">Del</button></td></tr>`).join("")||`<tr><td colspan="4" style="text-align:center;color:#999;padding:16px">Koi BOM nahi banaya abhi</td></tr>`;
   return`<div class="modal-overlay" onclick="if(event.target===this)App.closeBomModal()"><div class="modal-box"><div class="modal-head"><span style="font-weight:700;font-size:16px">📐 BOM Master (Bill of Materials) — ${state.bomMaster.length}</span><button class="btn" style="background:rgba(255,255,255,.2)" onclick="App.closeBomModal()">✕ Close</button></div><div style="padding:24px"><div style="background:#f3f4ff;border:1px solid #c5cae9;border-radius:10px;padding:16px;margin-bottom:20px"><b style="color:#1a237e">${ed?"✏️ Edit BOM":"➕ Naya BOM Banao"}</b><div class="grid2" style="margin-top:12px"><div><label class="lbl">Product * <span style="font-weight:400;color:#888">(Item Master se)</span></label><select class="inp" id="bomProduct" ${ed?"disabled":""}><option value="">-- Select Product --</option>${itemMasterNames.map(p=>`<option value="${esc(p)}" ${ed&&ed.productName===p?"selected":""}>${esc(p)}</option>`).join("")}</select></div><div><label class="lbl">Batch <span style="font-weight:400;color:#888">(grouping ke liye — Inventory Stock mein filter hoga)</span></label><div style="display:flex;gap:6px"><select class="inp" id="bomBatch" style="flex:1;margin-bottom:0"><option value="">-- None --</option>${state.batchOptions.map(b=>`<option value="${esc(b)}" ${ed&&ed.batch===b?"selected":""}>${esc(b)}</option>`).join("")}</select><button class="btn btn-primary" style="width:36px;padding:0" onclick="App.addBatchOptionBom()">+</button></div></div></div><div style="margin-top:12px;background:#fff8e1;border:1px solid #ffe082;border-radius:8px;padding:10px 12px"><label class="lbl" style="margin-top:0">📋 BOM Copy — kisi dusre product ka BOM copy karo</label><div style="display:flex;gap:8px;flex-wrap:wrap;align-items:center"><select class="inp" id="bomCopySrc" style="flex:1;min-width:220px;margin-bottom:0"><option value="">-- Copy karne ke liye BOM select karo --</option>${state.bomMaster.map(b=>`<option value="${b.id}">${esc(b.productName)}</option>`).join("")}</select><button class="btn" style="background:#f9a825;color:#fff" onclick="App.copyBomFrom()">📋 Copy</button></div><div style="font-size:11px;color:#888;margin-top:4px">Copy dabane par neeche ke saare accessories bhar jaayenge. Phir upar naya Product select karo, zaroorat ho to qty badlo aur Save BOM dabao.</div></div><div style="margin-top:14px"><label class="lbl">1 Box banane ke liye Accessories — ek saath 20 tak bhar sakte ho</label><div style="overflow-x:auto;max-height:380px;overflow-y:auto;border:1px solid #ddd;border-radius:8px"><table class="tbl" style="margin:0"><thead><tr style="background:#37474f;color:#fff;position:sticky;top:0"><th>#</th><th>Accessory Name</th><th>Qty/Box</th><th>Unit</th></tr></thead><tbody>${accRows}</tbody></table></div></div><div style="display:flex;gap:8px;margin-top:12px"><button class="btn btn-primary" onclick="App.saveBom()">${ed?"✏️ Update BOM":"💾 Save BOM"}</button>${ed?`<button class="btn btn-secondary" onclick="App.cancelEditBom()">Cancel</button>`:""}</div></div><b style="font-size:13px;color:#1a237e">📋 Saved BOMs</b><table class="tbl" style="margin-top:8px"><thead><tr style="background:#1a237e;color:#fff"><th>Product</th><th>Batch</th><th>Accessories</th><th>Actions</th></tr></thead><tbody>${listRows}</tbody></table></div></div></div>`;
 }
@@ -2875,6 +2874,7 @@ const PlannerApp={
       items.push({name,qtyPerBox:qty,unit:unitEl?unitEl.value:"Pcs"});
     }
     if(!items.length){alert("Kam se kam ek accessory (Name + Qty/Box) bharo");return;}
+    if(!accValidate(items))return;
     const entry={id:temp.bomEditId||uid(),productName:pn,batch,items};
     if(temp.bomEditId){state.bomMaster=state.bomMaster.map(b=>b.id===entry.id?entry:b);temp.bomEditId=null;}else state.bomMaster.push(entry);
     persist("bom_master",state.bomMaster);
@@ -3092,6 +3092,7 @@ function renderInventoryStockTab(){
       <button class="btn" style="background:${temp.invSortAZ?"#4527a0":"#5e35b1"};color:#fff" onclick="App.toggleInvSort()">🔤 A-Z ${temp.invSortAZ?"✓":""}</button>
       ${reportBtns("inv")}
       ${!isRO()?`<button class="btn" style="background:#6a1b9a;color:#fff" onclick="App.openManualStockAdjust()">✋ Manual Adjustment</button>`:""}
+      ${isAdminU()?`<button class="btn" style="background:#b71c1c;color:#fff" onclick="App.openStoreCleanup()">🧹 Store Names Saaf Karo</button>`:""}
     </div>
     ${temp.invProductFilter?`<div style="background:#e8eaf6;border:1px solid #c5cae9;border-radius:6px;padding:8px 12px;font-size:12px;color:#1a237e;margin-bottom:10px">📐 Ye <b>${esc(temp.invProductFilter)}</b> banane ke liye jitne bhi items (BOM se) use hote hain, unki current stock dikhayi ja rahi hai.</div>`:""}
     ${rows.length===1&&temp.invSearch?invItemCard(rows[0]):""}
@@ -3383,7 +3384,7 @@ function renderMtBomModal(){
   const mtItemNames=[...new Set(state.mtItems.map(i=>i.itemDesc))].filter(Boolean).sort();
   const existing=ed?ed.items:[];
   const rowCount=20;
-  const accRows=Array.from({length:rowCount}).map((_,i)=>{const ex=existing[i];return`<tr><td>${i+1}</td><td><input class="inp" id="mtBomAccName${i}" value="${ex?esc(ex.name):""}" placeholder="Accessory Name" style="margin-bottom:0"></td><td><input class="inp" type="number" step="0.01" id="mtBomAccQty${i}" value="${ex?esc(ex.qtyPerBox):""}" placeholder="Qty/Box" style="width:120px;margin-bottom:0"></td></tr>`;}).join("");
+  const accRows=Array.from({length:rowCount}).map((_,i)=>{const ex=existing[i];return`<tr><td>${i+1}</td><td><input class="inp" id="mtBomAccName${i}" data-acc="1" autocomplete="off" value="${ex?esc(ex.name):""}" placeholder="Accessory Name (type karo → store se suggest hoga)" style="margin-bottom:0"></td><td><input class="inp" type="number" step="0.01" id="mtBomAccQty${i}" value="${ex?esc(ex.qtyPerBox):""}" placeholder="Qty/Box" style="width:120px;margin-bottom:0"></td></tr>`;}).join("");
   const listRows=state.mtBomMaster.map(b=>`<tr><td><b>${esc(b.productName)}</b></td><td>${b.items.length} accessories</td><td><button class="btn btn-sm btn-primary" onclick="App.editMtBom(${b.id})">Edit</button> <button class="btn btn-sm btn-danger" onclick="App.deleteMtBom(${b.id})">Del</button></td></tr>`).join("")||`<tr><td colspan="3" style="text-align:center;color:#999;padding:16px">Koi MT BOM nahi banaya abhi</td></tr>`;
   return`<div class="modal-overlay" onclick="if(event.target===this)App.closeMtBomModal()"><div class="modal-box"><div class="modal-head"><span style="font-weight:700;font-size:16px">📐 MT BOM Master (Bill of Materials) — ${state.mtBomMaster.length}</span><button class="btn" style="background:rgba(255,255,255,.2)" onclick="App.closeMtBomModal()">✕ Close</button></div><div style="padding:24px"><div style="background:#f3f4ff;border:1px solid #c5cae9;border-radius:10px;padding:16px;margin-bottom:20px"><b style="color:#1a237e">${ed?"✏️ Edit MT BOM":"➕ Naya MT BOM Banao"}</b><div style="margin-top:12px"><label class="lbl">MT Item * <span style="font-weight:400;color:#888">(MT Item Master se)</span></label><select class="inp" id="mtBomProduct" ${ed?"disabled":""}><option value="">-- Select MT Item --</option>${mtItemNames.map(p=>`<option value="${esc(p)}" ${ed&&ed.productName===p?"selected":""}>${esc(p)}</option>`).join("")}</select></div><div style="margin-top:14px"><label class="lbl">1 Box banane ke liye Accessories — ek saath 20 tak bhar sakte ho</label><div style="overflow-x:auto;max-height:380px;overflow-y:auto;border:1px solid #ddd;border-radius:8px"><table class="tbl" style="margin:0"><thead><tr style="background:#37474f;color:#fff;position:sticky;top:0"><th>#</th><th>Accessory Name</th><th>Qty/Box</th></tr></thead><tbody>${accRows}</tbody></table></div></div><div style="display:flex;gap:8px;margin-top:12px"><button class="btn btn-primary" onclick="App.saveMtBom()">${ed?"✏️ Update MT BOM":"💾 Save MT BOM"}</button>${ed?`<button class="btn btn-secondary" onclick="App.cancelEditMtBom()">Cancel</button>`:""}</div></div><b style="font-size:13px;color:#1a237e">📋 Saved MT BOMs</b><table class="tbl" style="margin-top:8px"><thead><tr style="background:#1a237e;color:#fff"><th>MT Item</th><th>Accessories</th><th>Actions</th></tr></thead><tbody>${listRows}</tbody></table></div></div></div>`;
 }
@@ -3514,6 +3515,7 @@ const MtPlannerApp={
       items.push({name,qtyPerBox:qty});
     }
     if(!items.length){alert("Kam se kam ek accessory (Name + Qty/Box) bharo");return;}
+    if(!accValidate(items))return;
     const entry={id:temp.mtBomEditId||uid(),productName:pn,items};
     if(temp.mtBomEditId){state.mtBomMaster=state.mtBomMaster.map(b=>b.id===entry.id?entry:b);temp.mtBomEditId=null;}else state.mtBomMaster.push(entry);
     persist("mt_bom_master",state.mtBomMaster);
@@ -5417,7 +5419,7 @@ function mouldProdModalHtml(){
   const lines=f.lines.map((l,i)=>{
     const nameCell=l.type==="mould"
       ?`<select class="inp" style="margin:0;min-width:190px" id="pbN${i}"><option value="">-- Moulding item --</option>${items.map(it=>`<option value="${it.id}" ${it.id===l.itemId?"selected":""}>${esc(it.name)}</option>`).join("")}</select>`
-      :`<input class="inp" style="margin:0;min-width:190px" id="pbN${i}" list="pbStoreList" value="${esc(l.name)}" placeholder="Store item / naam">`;
+      :`<input class="inp" style="margin:0;min-width:190px" id="pbN${i}" data-acc="1" autocomplete="off" value="${esc(l.name)}" placeholder="Accessory — type karo, store se suggest hoga">`;
     const unitCell=l.type==="mould"?`<span style="font-size:12px">pcs</span>`:`<select class="inp" style="margin:0;width:75px" id="pbU${i}">${MOULD_UNITS.map(u=>`<option ${u===l.unit?"selected":""}>${u}</option>`).join("")}</select>`;
     const colCell=l.type==="mould"?`<select class="inp" style="margin:0;min-width:150px" id="pbC${i}"><option value="split" ${l.colMode==="split"?"selected":""}>Plan ke colours me split</option><option value="none" ${l.colMode==="none"?"selected":""}>Koi colour nahi (natural)</option>${state.mouldColours.map(c=>`<option value="fix:${esc(c.name)}" ${l.colMode==="fix:"+c.name?"selected":""}>Fixed: ${esc(c.name)}</option>`).join("")}</select>`:`<span style="color:#aaa">—</span>`;
     return `<tr><td><select class="inp" style="margin:0;width:120px" onchange="App.mouldProdType(${i},this.value)"><option value="mould" ${l.type==="mould"?"selected":""}>🏭 Moulded part</option><option value="acc" ${l.type==="acc"?"selected":""}>🧰 Accessory</option></select></td>
@@ -5772,6 +5774,7 @@ const MouldApp={
       lines.push({...l,qty:mldN(l.qty)});
     }
     if(!lines.length){alert("Kam se kam ek line add karo");return;}
+    if(!accValidate(lines.filter(l=>l.type==="acc")))return;
     const rec={id:f.id||uid(),name:f.name.trim(),unitName:f.unitName||"Set",pcsPerCarton:mldN(f.pcsPerCarton),pcsPerInner:mldN(f.pcsPerInner),lines};
     if(f.id)state.mouldProducts=state.mouldProducts.map(p=>p.id===f.id?rec:p);else state.mouldProducts.push(rec);
     await persist("mould_products",state.mouldProducts);temp.mouldProdForm=mouldBlankProd();mouldShowModal("🧾 Product BOM",mouldProdModalHtml());
@@ -9102,6 +9105,233 @@ _idleInit();_polInit();_sxInit();
 
 
 
+
+// ══════════ v16: Accessory name typeahead (BOM / MT BOM / Mould Product BOM) + Store names saaf karne ka admin tool ══════════
+// Naam ka ek hi source: STORE (Store Item Master + GRN/Internal/Manual entries). BOM aur planner ki "Plan Out" entries ab naam nahi banati.
+// BOM ki accessory line me naam type karo -> neeche store ke milte-julte naam (spelling galat ho tab bhi) dikhte hain -> chuno.
+var _accCache=null;
+function accNames(){
+  const L=state.storeLedger||[],S=state.storeItems||[];
+  const key=L.length+"|"+S.length+"|"+(L.length?L[L.length-1].id:"")+"|"+(S.length?S[S.length-1].id:"");
+  if(_accCache&&_accCache.ref1===L&&_accCache.ref2===S&&_accCache.key===key)return _accCache;
+  const arr=getAllStoreItemNames(),map=new Map(),list=arr.map(function(n){const nk=normItemKey(n);map.set(nk,n);return{n:n,nk:nk};});
+  const cat={};S.forEach(function(i){if(i&&i.name&&i.category)cat[i.name]=i.category;});
+  _accCache={ref1:L,ref2:S,key:key,list:list,map:map,cat:cat};
+  return _accCache;
+}
+function accLev(a,b,max){
+  // Damerau-Levenshtein (do akshar ulte likhne par bhi 1 galti): 'bottel' vs 'bottle' = 1
+  if(a===b)return 0;
+  const la=a.length,lb=b.length;if(Math.abs(la-lb)>max)return max+1;
+  const d=[];
+  for(let i=0;i<=la;i++){d[i]=[i];}
+  for(let j=1;j<=lb;j++)d[0][j]=j;
+  for(let i=1;i<=la;i++){
+    let rm=max+1;
+    for(let j=1;j<=lb;j++){
+      const c=a.charCodeAt(i-1)===b.charCodeAt(j-1)?0:1;
+      let v=Math.min(d[i-1][j]+1,d[i][j-1]+1,d[i-1][j-1]+c);
+      if(i>1&&j>1&&a.charCodeAt(i-1)===b.charCodeAt(j-2)&&a.charCodeAt(i-2)===b.charCodeAt(j-1))v=Math.min(v,d[i-2][j-2]+1);
+      d[i][j]=v;if(v<rm)rm=v;
+    }
+    if(rm>max)return max+1;
+  }
+  return d[la][lb];
+}
+function accTol(len){return len<=3?0:(len<=5?1:2);}
+function accSubseq(t,w){
+  // 'rng' -> 'ring' (pehla akshar same, baaki akshar kram me)
+  if(t.length<3||t.charAt(0)!==w.charAt(0))return false;
+  let j=0;for(let i=0;i<w.length&&j<t.length;i++){if(w.charAt(i)===t.charAt(j))j++;}
+  return j===t.length;
+}
+function accScore(qk,nk){
+  if(nk===qk)return{s:1000,fz:false};
+  if(nk.indexOf(qk)===0)return{s:900-(nk.length-qk.length)/1000,fz:false};
+  const qt=qk.split(" ").filter(Boolean),nt=nk.split(" ");
+  let total=0,fz=false;
+  for(let k=0;k<qt.length;k++){
+    const t=qt[k];
+    if(nk.indexOf(t)>=0){total+=100;continue;}
+    const tol=accTol(t.length);let ok=false;
+    for(let w=0;w<nt.length&&!ok;w++){
+      if(accLev(t,nt[w],tol)<=tol)ok=true;
+      else if(nt[w].length>t.length&&accLev(t,nt[w].slice(0,t.length),tol)<=tol)ok=true;
+      else if(accSubseq(t,nt[w]))ok=true;
+      else if(t.length===3&&nt[w].length===3&&t.split("").sort().join("")===nt[w].split("").sort().join(""))ok=true; // 'kai' vs 'kia'
+    }
+    if(ok){total+=60;fz=true;continue;}
+    if(t.length>=4&&nk.replace(/ /g,"").indexOf(t)>=0){total+=70;fz=true;continue;}
+    return null;
+  }
+  return{s:total/qt.length+(fz?0:50)-(nk.length-qk.length)/1000,fz:fz};
+}
+function accSuggest(q,limit){
+  const qk=normItemKey(q);if(!qk)return[];
+  const c=accNames(),out=[];
+  c.list.forEach(function(x){const r=accScore(qk,x.nk);if(r)out.push({n:x.n,s:r.s,fz:r.fz});});
+  out.sort(function(a,b){return b.s-a.s||a.n.localeCompare(b.n);});
+  return out.slice(0,limit||8);
+}
+function accValidate(arr){
+  const c=accNames();
+  if(!c.list.length)return true; // store abhi khali hai (naam dobara ban rahe hain) — check nahi
+  const bad=[];
+  (arr||[]).forEach(function(it){
+    const nm=String(it.name||"").trim();if(!nm)return;
+    const hit=c.map.get(normItemKey(nm));
+    if(hit)it.name=hit;else bad.push(nm);
+  });
+  if(!bad.length)return true;
+  const lines=bad.slice(0,12).map(function(b){const sg=accSuggest(b,3).map(function(x){return x.n;});return "• "+b+(sg.length?"   →  shayad: "+sg.join(" / "):"   →  store me milta-julta naam nahi");});
+  return confirm("⚠️ Ye naam Store me nahi mile:\n\n"+lines.join("\n")+(bad.length>12?"\n... aur "+(bad.length-12)+" naam":"")+"\n\nSpelling alag hone se planner / stock me mismatch aata hai.\nSahi naam list se chuno, ya pehle Store me ye item jodo.\n\nOK = phir bhi save karo   |   Cancel = wapas jao");
+}
+var ACC={box:null,input:null,items:[],idx:-1};
+function accBox(){
+  if(!ACC.box){
+    const d=document.createElement("div");d.id="accSugBox";
+    d.style.cssText="position:fixed;z-index:100000;background:#fff;border:1px solid #9fa8da;border-radius:8px;box-shadow:0 8px 24px rgba(0,0,0,.25);max-height:290px;overflow:auto;display:none;font-size:13px";
+    d.addEventListener("mousedown",function(e){e.preventDefault();const el=e.target.closest?e.target.closest("[data-i]"):null;if(el)accPick(Number(el.getAttribute("data-i")));});
+    document.body.appendChild(d);ACC.box=d;
+  }
+  return ACC.box;
+}
+function accHide(){if(ACC.box)ACC.box.style.display="none";ACC.items=[];ACC.idx=-1;}
+function accHilite(){
+  if(!ACC.box)return;
+  ACC.box.querySelectorAll("[data-i]").forEach(function(el){el.classList.toggle("on",Number(el.getAttribute("data-i"))===ACC.idx);});
+  const on=ACC.box.querySelector("[data-i].on");if(on&&on.scrollIntoView)on.scrollIntoView({block:"nearest"});
+}
+function accShow(inp,showAll){
+  const q=String(inp.value||"").trim();
+  let list;
+  if(!q){if(!showAll){accHide();return;}list=accNames().list.slice(0,40).map(function(x){return{n:x.n,fz:false};});}
+  else list=accSuggest(q,8);
+  const b=accBox(),c=accNames();ACC.input=inp;ACC.items=list;ACC.idx=list.length?0:-1;
+  if(!list.length){
+    b.innerHTML='<div style="padding:10px 12px;color:#c62828">Store me "'+esc(q)+'" jaisa naam nahi mila.<div style="color:#666;font-size:12px;margin-top:3px">Pehle Store me ye item jodo, ya spelling check karo.</div></div>';
+  }else{
+    b.innerHTML=list.map(function(x,i){
+      const cat=c.cat[x.n];
+      return '<div data-i="'+i+'" style="padding:7px 12px;cursor:pointer;display:flex;justify-content:space-between;gap:12px;align-items:center;border-bottom:1px solid #eee"><span><b>'+esc(x.n)+'</b>'+(x.fz?' <span style="font-size:10px;background:#fff3e0;color:#e65100;border-radius:8px;padding:1px 6px;margin-left:4px">milta-julta</span>':'')+'</span><span style="color:#888;font-size:11px;white-space:nowrap">'+(cat?esc(cat)+' · ':'')+'Stock '+getStoreStock(x.n)+'</span></div>';
+    }).join("");
+  }
+  const r=inp.getBoundingClientRect();
+  b.style.display="block";b.style.left=r.left+"px";b.style.width=Math.max(r.width,300)+"px";
+  const h=b.offsetHeight;
+  b.style.top=((r.bottom+h+8>window.innerHeight&&r.top>h+8)?(r.top-h-2):(r.bottom+2))+"px";
+  accHilite();
+}
+function accPick(i){
+  const it=ACC.items[i],inp=ACC.input;if(!it||!inp)return;
+  inp.value=it.n;
+  inp.dispatchEvent(new Event("input",{bubbles:true}));inp.dispatchEvent(new Event("change",{bubbles:true}));
+  accHide();accMark(inp);
+  const tr=inp.closest?inp.closest("tr"):null,nx=tr?tr.querySelector('input[type="number"]'):null;
+  if(nx)nx.focus();
+}
+function accMark(inp){
+  const v=String(inp.value||"").trim();
+  inp.classList.remove("acc-ok","acc-bad");
+  if(!v)return;
+  const c=accNames();
+  if(!c.list.length)return;
+  inp.classList.add(c.map.has(normItemKey(v))?"acc-ok":"acc-bad");
+}
+function accCanon(inp){
+  const v=String(inp.value||"").trim();if(!v)return;
+  const hit=accNames().map.get(normItemKey(v));
+  if(hit&&hit!==inp.value)inp.value=hit;
+  accMark(inp);
+}
+(function accInit(){
+  function isAcc(t){return !!(t&&t.matches&&t.matches("input[data-acc]"));}
+  const st=document.createElement("style");
+  st.textContent='input[data-acc].acc-ok{border-color:#2e7d32!important;box-shadow:0 0 0 1px #2e7d32 inset}input[data-acc].acc-bad{border-color:#ef6c00!important;box-shadow:0 0 0 1px #ef6c00 inset}#accSugBox [data-i].on{background:#e8eaf6}#accSugBox [data-i]:hover{background:#f3f4ff}';
+  (document.head||document.documentElement).appendChild(st);
+  document.addEventListener("input",function(e){if(isAcc(e.target)){accMark(e.target);accShow(e.target,false);}},true);
+  document.addEventListener("focusin",function(e){if(isAcc(e.target)){accMark(e.target);if(String(e.target.value||"").trim())accShow(e.target,false);}});
+  document.addEventListener("focusout",function(e){const t=e.target;if(isAcc(t))setTimeout(function(){if(ACC.input===t)accHide();accCanon(t);},130);});
+  document.addEventListener("keydown",function(e){
+    const t=e.target;if(!isAcc(t))return;
+    const open=ACC.box&&ACC.box.style.display==="block"&&ACC.input===t;
+    if(e.key==="ArrowDown"){e.preventDefault();if(!open)accShow(t,true);else{ACC.idx=Math.min(ACC.items.length-1,ACC.idx+1);accHilite();}}
+    else if(e.key==="ArrowUp"&&open){e.preventDefault();ACC.idx=Math.max(0,ACC.idx-1);accHilite();}
+    else if(e.key==="Enter"&&open&&ACC.idx>=0&&ACC.items.length){e.preventDefault();e.stopPropagation();accPick(ACC.idx);}
+    else if(e.key==="Escape"&&open){e.preventDefault();accHide();}
+  },true);
+  window.addEventListener("scroll",function(e){if(ACC.box&&e.target===ACC.box)return;accHide();},true);
+  window.addEventListener("resize",accHide);
+  let t=null;
+  new MutationObserver(function(){clearTimeout(t);t=setTimeout(function(){document.querySelectorAll("input[data-acc]").forEach(accMark);},60);}).observe(document.documentElement,{childList:true,subtree:true});
+})();
+
+// ── Store Names Saaf Karo (sirf admin) ──
+function scStats(){
+  const L=state.storeLedger||[],po=L.filter(function(l){return l.type==="plan_out";});
+  const keep=new Set();
+  L.forEach(function(l){if(l.type!=="plan_out")keep.add(l.itemName);});
+  (state.storeItems||[]).forEach(function(i){keep.add(i.name);});
+  const bom=new Set();
+  (state.bomMaster||[]).forEach(function(b){(b.items||[]).forEach(function(i){bom.add(i.name);});});
+  (state.mtBomMaster||[]).forEach(function(b){(b.items||[]).forEach(function(i){bom.add(i.name);});});
+  return{po:po.length,poNames:new Set(po.map(function(l){return l.itemName;})).size,other:L.length-po.length,grns:(state.grns||[]).length,items:(state.storeItems||[]).length,keep:[...keep].filter(Boolean).sort(),bom:bom.size};
+}
+function scHtml(){
+  const s=scStats(),m=temp.scMode||"A";
+  const box=function(v,title,body){return '<label style="display:block;border:2px solid '+(m===v?'#c62828':'#cfd8dc')+';background:'+(m===v?'#fff5f5':'#fff')+';border-radius:10px;padding:12px 14px;margin-bottom:10px;cursor:pointer"><input type="radio" name="scMode" '+(m===v?'checked':'')+' onchange="App.setScMode(\''+v+'\')"> <b>'+title+'</b><div style="font-size:12px;color:#555;margin-top:6px;line-height:1.55">'+body+'</div></label>';};
+  return '<div style="background:#fff;border-radius:12px;max-width:760px;width:100%;max-height:92vh;overflow:auto;padding:18px">'
+   +'<div style="display:flex;justify-content:space-between;align-items:center;margin-bottom:10px"><b style="font-size:17px;color:#b71c1c">🧹 Store Names Saaf Karo</b><button class="btn btn-secondary" onclick="App.closeStoreCleanup()">✕ Close</button></div>'
+   +'<div style="background:#fff3e0;border:1px solid #ffcc80;border-radius:8px;padding:10px 12px;font-size:13px;color:#e65100;margin-bottom:12px">⚠️ Ye sirf <b>abhi chal rahe saal</b> ka store data saaf karta hai. Saaf karne se pehle poore app ka <b>backup file apne aap download</b> hoga.</div>'
+   +'<div style="font-size:13px;margin-bottom:10px">Abhi: Plan Out entries <b>'+s.po+'</b> ('+s.poNames+' items) | baaki store entries <b>'+s.other+'</b> | GRN history <b>'+s.grns+'</b> | Store Item Master <b>'+s.items+'</b> | BOM ke accessory naam <b>'+s.bom+'</b> (ye ab Store list me nahi aate, BOM jaisa hai waisa rahega)</div>'
+   +box("A","A) Sirf planner ki Plan Out entries hatao","Planner ke approve se bani <b>"+s.po+"</b> entries jayengi.<br>GRN / Internal / Manual entries aur Store Item Master jaise hain waise rahenge, isliye <b style=\"color:#c62828\">"+s.keep.length+" naam bache rahenge</b>"+(s.keep.length?": <span style=\"color:#444\">"+s.keep.slice(0,25).map(esc).join(", ")+(s.keep.length>25?" ...":"")+"</span>":"."))
+   +box("B","B) Poora store saaf (koi naam nahi bachega)","Plan Out + GRN / Internal / Manual / Min-stock sab entries (<b>"+(s.po+s.other)+"</b>), GRN history (<b>"+s.grns+"</b>) aur Store Item Master (<b>"+s.items+"</b> items) hat jayenge. <b>Categories bachi rahengi</b>, taaki aap category ke hisab se naam dobara bana sako.")
+   +'<div style="margin:12px 0 6px;font-size:13px">Confirm ke liye neeche <b>HATAO</b> likho:</div><input class="inp" id="scConfirm" placeholder="HATAO" autocomplete="off" style="max-width:220px">'
+   +'<div style="display:flex;gap:8px;margin-top:6px;flex-wrap:wrap"><button class="btn" style="background:#b71c1c;color:#fff" onclick="App.runStoreCleanup()">💾 Backup download karke Saaf Karo</button><button class="btn btn-secondary" onclick="App.closeStoreCleanup()">Cancel</button></div>'
+   +'<div style="font-size:11px;color:#777;margin-top:10px;line-height:1.5">Cloud sync me "Bahut saari entries delete hone wali hain" ka warning aa sakta hai (kyunki ek saath bahut entries hat rahi hain). Wo sahi hai — wahan delete ki permission de dena.</div></div>';
+}
+const StoreV8App={
+  openStoreCleanup(){
+    if(!isAdminU()){alert("🔒 Ye kaam sirf admin kar sakta hai.");return;}
+    temp.scMode="A";
+    const old=document.getElementById("scModal");if(old)old.remove();
+    const d=document.createElement("div");d.id="scModal";
+    d.style.cssText="position:fixed;inset:0;background:rgba(0,0,0,.5);z-index:9999;display:flex;align-items:center;justify-content:center;padding:14px";
+    d.onclick=function(e){if(e.target===d)App.closeStoreCleanup();};
+    d.innerHTML=scHtml();document.body.appendChild(d);
+  },
+  closeStoreCleanup(){const d=document.getElementById("scModal");if(d)d.remove();},
+  setScMode(m){temp.scMode=m;const d=document.getElementById("scModal");if(d){const v=(document.getElementById("scConfirm")||{}).value||"";d.innerHTML=scHtml();const c=document.getElementById("scConfirm");if(c)c.value=v;}},
+  async runStoreCleanup(){
+    if(!isAdminU()){alert("🔒 Ye kaam sirf admin kar sakta hai.");return;}
+    const mode=temp.scMode||"A",v=String((document.getElementById("scConfirm")||{}).value||"").trim().toUpperCase();
+    if(v!=="HATAO"){alert("Confirm ke liye box me HATAO likho.");return;}
+    const s=scStats();
+    try{
+      const backup=await buildFullBackup();
+      const blob=new Blob([JSON.stringify(backup,null,2)],{type:"application/json"});
+      const url=URL.createObjectURL(blob),a=document.createElement("a"),ts=new Date().toISOString().slice(0,19).replace(/[:T]/g,"-");
+      a.href=url;a.download="JimitPetLLP-BeforeStoreClean-"+ts+".json";document.body.appendChild(a);a.click();a.remove();
+      setTimeout(function(){URL.revokeObjectURL(url);},4000);
+    }catch(e){alert("⚠️ Backup nahi ban paya, isliye saaf karna roka gaya.\n"+(e&&e.message?e.message:e));return;}
+    await new Promise(function(r){setTimeout(r,700);});
+    if(mode==="B"){
+      state.storeCategories=getStoreCategoryList();persist("store_categories",state.storeCategories);
+      state.storeLedger=[];persist("store_ledger",state.storeLedger);
+      state.grns=[];persist("grns",state.grns);
+      state.storeItems=[];persist("store_items",state.storeItems);
+    }else{
+      state.storeLedger=(state.storeLedger||[]).filter(function(l){return l.type!=="plan_out";});
+      persist("store_ledger",state.storeLedger);
+    }
+    try{auditEvent("Store Names Saaf",(mode==="B"?"Poora store saaf":"Plan Out entries saaf")+" | Plan Out "+s.po+", baaki entries "+(mode==="B"?s.other:0)+", GRN "+(mode==="B"?s.grns:0)+", items "+(mode==="B"?s.items:0));}catch(e){}
+    StoreV8App.closeStoreCleanup();
+    _accCache=null;
+    renderTabContent();
+    alert("✅ Saaf ho gaya.\n\n"+(mode==="B"?"Ab Store me koi naam nahi bacha. Categories bachi hain — Store Item Master se naam category ke hisab se dobara bana lo.":"Planner ki Plan Out entries hat gayi.")+"\n\nBackup file Downloads folder me hai — sambhal kar rakhna.");
+  }
+};
+Object.assign(App,StoreV8App);
 
 window.App=App; window.AC=AC;
 
