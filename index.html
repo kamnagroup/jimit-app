@@ -282,7 +282,7 @@ let state = {
   lastPendingCategoryEmailDate:"",
   lastProductionReminderDate:"",
   itemMaster:[], dispatches:[], purchaseOrders:[], gatePasses:[],
-  mtItems:[], mtPos:[], mtDispatches:[], mtPackings:[], bomMaster:[], productionPlans:[], storeLedger:[], grns:[], mtBomMaster:[], mtProductionPlans:[], mtDivisions:["AVENUE","STYLE","VISHAL MEGA MART"], storeItems:[], storeQtyTypes:["Box","Pcs","Kgs"], storeCategories:[], auditLog:[], stockRequests:[], storeGatePasses:[], storeBatches:[],
+  mtItems:[], mtPos:[], mtDispatches:[], mtPackings:[], bomMaster:[], productionPlans:[], storeLedger:[], grns:[], mtBomMaster:[], mtProductionPlans:[], mtDivisions:["AVENUE","STYLE","VISHAL MEGA MART"], storeItems:[], storeQtyTypes:["Box","Pcs","Kgs"], storeCategories:[], auditLog:[], stockRequests:[], storeGatePasses:[], editRequests:[], storeBatches:[],
   mouldItems:[], mouldMats:[], mouldColours:[], mouldPrograms:[], mouldProducts:[], mouldGroups:[], appSettings:{},
   activeTab:"packing"
 };
@@ -1807,7 +1807,7 @@ function backfillDispatchItemBatches(){
 function buildBackupData(){
   const map={users:"users",packings:"packings",categories:"categories",dispatches:"dispatches",
     purchaseOrders:"pos",mtPos:"mt_pos",mtDispatches:"mt_dispatches",batchOptions:"batch_options",
-    mtItems:"mt_items",mtPackings:"mt_packings",itemMaster:"item_master",bomMaster:"bom_master",productionPlans:"production_plans",storeLedger:"store_ledger",grns:"grns",mtBomMaster:"mt_bom_master",mouldItems:"mould_items",mouldMats:"mould_mats",mouldColours:"mould_colours",mouldPrograms:"mould_programs",mouldProducts:"mould_products",mouldGroups:"mould_groups",appSettings:"app_settings",mtProductionPlans:"mt_production_plans",mtDivisions:"mt_divisions",storeItems:"store_items",storeQtyTypes:"store_qty_types",storeCategories:"store_categories",auditLog:"audit_log",stockRequests:"stock_requests",storeGatePasses:"store_gate_passes",storeBatches:"store_batches",recycleBin:"recycle_bin",nextChallanOverride:"next_challan_override",partyEmails:"party_emails",autoTriggeredProducts:"auto_triggered_products",lastAutoBackupDate:"last_auto_backup_date",lastAutoEmailDate:"last_auto_email_date",lastMtAlertEmailDate:"last_mt_alert_email_date",lastPendingCategoryEmailDate:"last_pending_category_email_date",lastProductionReminderDate:"last_production_reminder_date",gatePasses:"gate_passes",parties:"parties",accBills:"acc_bills",accReceipts:"acc_receipts",invoices:"invoices",creditNotes:"credit_notes",debitNotes:"debit_notes",itemRates:"item_rates",company:"company"};
+    mtItems:"mt_items",mtPackings:"mt_packings",itemMaster:"item_master",bomMaster:"bom_master",productionPlans:"production_plans",storeLedger:"store_ledger",grns:"grns",mtBomMaster:"mt_bom_master",mouldItems:"mould_items",mouldMats:"mould_mats",mouldColours:"mould_colours",mouldPrograms:"mould_programs",mouldProducts:"mould_products",mouldGroups:"mould_groups",appSettings:"app_settings",mtProductionPlans:"mt_production_plans",mtDivisions:"mt_divisions",storeItems:"store_items",storeQtyTypes:"store_qty_types",storeCategories:"store_categories",auditLog:"audit_log",stockRequests:"stock_requests",storeGatePasses:"store_gate_passes",editRequests:"edit_requests",storeBatches:"store_batches",recycleBin:"recycle_bin",nextChallanOverride:"next_challan_override",partyEmails:"party_emails",autoTriggeredProducts:"auto_triggered_products",lastAutoBackupDate:"last_auto_backup_date",lastAutoEmailDate:"last_auto_email_date",lastMtAlertEmailDate:"last_mt_alert_email_date",lastPendingCategoryEmailDate:"last_pending_category_email_date",lastProductionReminderDate:"last_production_reminder_date",gatePasses:"gate_passes",parties:"parties",accBills:"acc_bills",accReceipts:"acc_receipts",invoices:"invoices",creditNotes:"credit_notes",debitNotes:"debit_notes",itemRates:"item_rates",company:"company"};
   const backup={ _meta:{app:"JimitPetLLP",exportedAt:new Date().toISOString(),version:1}, data:{} };
   Object.entries(map).forEach(([sk,dbk])=>{ backup.data[dbk]=state[sk]; });
   backup.data.tombstones=Tombstone.get();
@@ -6037,7 +6037,7 @@ const MtWhyApp={
 // ══════════════════════════════════════════════════════════════════════════
 const CLOUD_URL="https://hawuifhzjwvdaieowpkj.supabase.co";
 const CLOUD_KEY="sb_publishable_hnfEhQ7HBPEFLjYoXpQiMw_JePcUjuB";
-const CLOUD_PROP_OF={users:"users",packings:"packings",categories:"categories",dispatches:"dispatches",pos:"purchaseOrders",mt_pos:"mtPos",mt_dispatches:"mtDispatches",batch_options:"batchOptions",mt_items:"mtItems",mt_packings:"mtPackings",item_master:"itemMaster",bom_master:"bomMaster",production_plans:"productionPlans",store_ledger:"storeLedger",grns:"grns",mt_bom_master:"mtBomMaster",mould_items:"mouldItems",mould_mats:"mouldMats",mould_colours:"mouldColours",mould_programs:"mouldPrograms",mould_products:"mouldProducts",mould_groups:"mouldGroups",app_settings:"appSettings",mt_production_plans:"mtProductionPlans",mt_divisions:"mtDivisions",store_items:"storeItems",store_qty_types:"storeQtyTypes",store_categories:"storeCategories",audit_log:"auditLog",stock_requests:"stockRequests",store_gate_passes:"storeGatePasses",store_batches:"storeBatches",recycle_bin:"recycleBin",next_challan_override:"nextChallanOverride",party_emails:"partyEmails",auto_triggered_products:"autoTriggeredProducts",gate_passes:"gatePasses",parties:"parties",acc_bills:"accBills",acc_receipts:"accReceipts",invoices:"invoices",credit_notes:"creditNotes",debit_notes:"debitNotes",item_rates:"itemRates",company:"company"};
+const CLOUD_PROP_OF={users:"users",packings:"packings",categories:"categories",dispatches:"dispatches",pos:"purchaseOrders",mt_pos:"mtPos",mt_dispatches:"mtDispatches",batch_options:"batchOptions",mt_items:"mtItems",mt_packings:"mtPackings",item_master:"itemMaster",bom_master:"bomMaster",production_plans:"productionPlans",store_ledger:"storeLedger",grns:"grns",mt_bom_master:"mtBomMaster",mould_items:"mouldItems",mould_mats:"mouldMats",mould_colours:"mouldColours",mould_programs:"mouldPrograms",mould_products:"mouldProducts",mould_groups:"mouldGroups",app_settings:"appSettings",mt_production_plans:"mtProductionPlans",mt_divisions:"mtDivisions",store_items:"storeItems",store_qty_types:"storeQtyTypes",store_categories:"storeCategories",audit_log:"auditLog",stock_requests:"stockRequests",store_gate_passes:"storeGatePasses",edit_requests:"editRequests",store_batches:"storeBatches",recycle_bin:"recycleBin",next_challan_override:"nextChallanOverride",party_emails:"partyEmails",auto_triggered_products:"autoTriggeredProducts",gate_passes:"gatePasses",parties:"parties",acc_bills:"accBills",acc_receipts:"accReceipts",invoices:"invoices",credit_notes:"creditNotes",debit_notes:"debitNotes",item_rates:"itemRates",company:"company"};
 function cloudStable(v){
   if(v===undefined||v===null)return "null";
   if(typeof v!=="object")return JSON.stringify(v);
@@ -9333,6 +9333,283 @@ const StoreV8App={
 };
 Object.assign(App,StoreV8App);
 
+// ══════════ v17: EDIT REQUEST / ADMIN APPROVAL ══════════
+// Admin: edit seedha hota hai.  Baaki koi bhi user: EDIT karke Save dabaye to data NAHI badalta —
+// sirf ek "Edit Request" ban kar admin ke paas jaati hai. Admin Approve kare tabhi badlav lagta hai. Reject = koi change nahi.
+// Naya record banana (add) aur baaki normal kaam (dispatch, packing add, etc.) pehle jaise chalte hain.
+const ER_PROP_SKIP=["users","editRequests","auditLog"];
+const ER={busy:false};
+const ER_GATES=[
+  ["savePacking",function(){return !!temp.editPackingId;},"cancelEditPacking"],
+  ["saveDispatch",function(){return !!temp.editDispatchId;},"cancelEditDispatch"],
+  ["savePO",function(){return !!temp.editPOId;},"cancelEditPO"],
+  ["saveMtPo",function(){return !!temp.editMtPoId;},"cancelEditMtPo"],
+  ["saveMtDispatch",function(){return !!temp.editMtDispatchId;},"cancelEditMtDispatch"],
+  ["saveMtPacking",function(){return !!temp.editMtPackingId;},"cancelEditMtPacking"],
+  ["saveProgram",function(){return !!temp.editProgramId;},null],
+  ["saveMtProgram",function(){return !!temp.editMtProgramId;},null],
+  ["saveIMItem",function(){return !!temp.itemMasterEditId;},"cancelEditIMItem"],
+  ["saveMtItem",function(){return !!temp.mtModalEditId;},"cancelEditMtItem"],
+  ["saveBom",function(){return !!temp.bomEditId;},"cancelEditBom"],
+  ["saveMtBom",function(){return !!temp.mtBomEditId;},"cancelEditMtBom"],
+  ["saveStoreItem",function(){return !!temp.storeItemEditId;},"cancelEditStoreItem"],
+  ["createGatePass",function(){return !!temp.gpEditId;},"cancelGpEdit"],
+  ["paySave",function(){return !!temp.payEdit;},"payCancel"],
+  ["abSave",function(){return !!temp.abEdit;},"abCancel"],
+  ["apSave",function(){return !!temp.apEdit;},"apCancel"],
+  ["cnSave",function(){const d=temp.invDraft;return !!(d&&d.kind==="credit"&&d.id&&(state.creditNotes||[]).some(function(c){return String(c.id)===String(d.id);}));},null],
+  ["dnSave",function(){const d=temp.invDraft;return !!(d&&d.kind==="debit"&&d.id&&(state.debitNotes||[]).some(function(c){return String(c.id)===String(d.id);}));},null],
+  ["mouldFormSave",function(){return !!(temp.mouldForm&&temp.mouldForm.id);},null],
+  ["mouldProdSave",function(){return !!(temp.mouldProdForm&&temp.mouldProdForm.id);},null],
+  ["mouldMatField",function(){return true;},null],
+  ["mouldColourCode",function(){return true;},null],
+  ["mouldColourRename",function(){return true;},null]
+];
+function erProps(){return Object.keys(CLOUD_PROP_OF).map(function(k){return CLOUD_PROP_OF[k];}).filter(function(p){return ER_PROP_SKIP.indexOf(p)<0;});}
+function erDbKey(prop){for(const k in CLOUD_PROP_OF){if(CLOUD_PROP_OF[k]===prop)return k;}return prop;}
+function erList(){if(!Array.isArray(state.editRequests))state.editRequests=[];return state.editRequests;}
+function erGenNo(){
+  const mx=erList().reduce(function(m,r){return Math.max(m,Number(String(r.reqNo||"").replace(/\D/g,""))||0);},0);
+  return "ER-"+String(mx+1).padStart(4,"0");
+}
+function erIsRec(a){return Array.isArray(a)&&a.every(function(x){return x&&typeof x==="object"&&!Array.isArray(x)&&x.id!==undefined&&x.id!==null;});}
+function erDiffProp(beforeJson,after){
+  const before=beforeJson===undefined?undefined:JSON.parse(beforeJson);
+  if(erIsRec(before)&&erIsRec(after)){
+    const bm=new Map(before.map(function(r){return[String(r.id),r];})),am=new Map(after.map(function(r){return[String(r.id),r];}));
+    const changed=[],added=[],removed=[];
+    am.forEach(function(r,id){if(!bm.has(id))added.push(JSON.parse(JSON.stringify(r)));else if(JSON.stringify(bm.get(id))!==JSON.stringify(r))changed.push({id:r.id,before:bm.get(id),after:JSON.parse(JSON.stringify(r))});});
+    bm.forEach(function(r,id){if(!am.has(id))removed.push(r);});
+    if(!changed.length&&!added.length&&!removed.length)return null;
+    return{mode:"records",changed:changed,added:added,removed:removed};
+  }
+  return{mode:"replace",before:before,after:after===undefined?undefined:JSON.parse(JSON.stringify(after))};
+}
+async function erDryRun(name,orig,ctx,args){
+  ER.busy=true;
+  const props=erProps(),snap={},had={},audLen=(state.auditLog||[]).length;
+  props.forEach(function(p){had[p]=Object.prototype.hasOwnProperty.call(state,p)&&state[p]!==undefined;snap[p]=had[p]?JSON.stringify(state[p]):undefined;});
+  const alerts=[],_al=window.alert,_persist=persist;
+  window.alert=function(m){alerts.push(String(m));};
+  persist=function(){return Promise.resolve();};
+  let err=null;
+  try{const r=orig.apply(ctx,args);if(r&&typeof r.then==="function")await r;}catch(e){err=e;}
+  finally{window.alert=_al;persist=_persist;}
+  const patch={};let any=false;
+  props.forEach(function(p){
+    const nowJ=(state[p]===undefined)?undefined:JSON.stringify(state[p]);
+    if(nowJ===snap[p])return;
+    const d=erDiffProp(snap[p],state[p]);
+    if(d){patch[p]=d;any=true;}
+    if(had[p])state[p]=JSON.parse(snap[p]);else delete state[p];
+  });
+  if(state.auditLog&&state.auditLog.length>audLen)state.auditLog.length=audLen;
+  ER.busy=false;
+  if(!any){
+    if(err){console.error(err);alert("⚠️ Edit request nahi ban payi: "+(err.message||err));return;}
+    if(alerts.length){alerts.forEach(function(m){window.alert(m);});return;}
+    alert("Koi badlav nahi mila, isliye request nahi banayi.");return;
+  }
+  const u=state.currentUser,first=erFirstChanged(patch);
+  const req={id:uid(),reqNo:erGenNo(),by:u.name||u.username,byUser:u.username,byId:u.id,at:nowStr(),_ts:Date.now(),action:name,title:first.title,module:first.module,patch:patch,status:"pending"};
+  erList().push(req);
+  await persist("edit_requests",erList());
+  try{auditEvent("Edit Request",req.reqNo+" | "+req.module+" | "+req.title+" | by "+req.by);}catch(e){}
+  const g=ER_GATES.find(function(x){return x[0]===name;});
+  try{if(g&&g[1]()&&g[2]&&typeof App[g[2]]==="function")App[g[2]]();}catch(e){}
+  try{renderTabContent();}catch(e){}
+  try{if(document.querySelector(".modal-overlay"))_refreshModal();}catch(e){}
+  erChipRefresh();
+  window.alert("📨 Edit request admin ko bhej di gayi ("+req.reqNo+").\n\nAdmin Approve karega tabhi badlav lagega.\nReject hua to koi change nahi hoga.");
+}
+function erRecLabel(prop,rec){
+  try{const l=recycleBinItemLabel(erDbKey(prop),rec);if(l&&String(l)!=="undefined")return String(l);}catch(e){}
+  return String(rec&&(rec.name||rec.productName||rec.challanNo||rec.id)||"");
+}
+function erFirstChanged(patch){
+  for(const p in patch){
+    const d=patch[p],mod=(typeof RECYCLE_MODULE_LABELS!=="undefined"&&RECYCLE_MODULE_LABELS[erDbKey(p)])||erDbKey(p);
+    if(d.mode==="records"){
+      const r=(d.changed[0]&&d.changed[0].after)||d.added[0]||d.removed[0];
+      if(r)return{module:mod,title:erRecLabel(p,r)};
+    }
+  }
+  const k=Object.keys(patch)[0]||"";return{module:erDbKey(k),title:""};
+}
+function erShort(v){
+  if(v===undefined||v===null||v==="")return "—";
+  if(typeof v==="object"){let s;try{s=Array.isArray(v)?(v.length+" item"):JSON.stringify(v);}catch(e){s="?";}return s.length>60?s.slice(0,57)+"…":s;}
+  const s=String(v);return s.length>60?s.slice(0,57)+"…":s;
+}
+function erItemKey(x){return x&&typeof x==="object"?String(x.name||x.itemName||x.product||x.productName||x.item||x.id||JSON.stringify(x).slice(0,30)):String(x);}
+function erFieldDiff(b,a){
+  const out=[],skip={_ts:1,savedAt:1,editedAt:1,editedBy:1,updatedAt:1};
+  const keys=[...new Set(Object.keys(b||{}).concat(Object.keys(a||{})))];
+  keys.forEach(function(k){
+    if(skip[k])return;
+    const x=b?b[k]:undefined,y=a?a[k]:undefined;
+    if(JSON.stringify(x)===JSON.stringify(y))return;
+    if(Array.isArray(x)&&Array.isArray(y)&&typeof((x[0]!==undefined?x[0]:y[0]))==="object"){
+      const mb=new Map(x.map(function(i){return[erItemKey(i),i];})),ma=new Map(y.map(function(i){return[erItemKey(i),i];}));
+      ma.forEach(function(v,kk){
+        if(!mb.has(kk))out.push(k+": + "+kk+((v&&v.qty!==undefined)?" ("+v.qty+")":""));
+        else if(JSON.stringify(mb.get(kk))!==JSON.stringify(v)){
+          const o=mb.get(kk),ch=[];
+          Object.keys(Object.assign({},o,v)).forEach(function(f){if(JSON.stringify(o[f])!==JSON.stringify(v[f]))ch.push(f+" "+erShort(o[f])+" → "+erShort(v[f]));});
+          out.push(k+": "+kk+" — "+ch.join(", "));
+        }
+      });
+      mb.forEach(function(v,kk){if(!ma.has(kk))out.push(k+": − "+kk);});
+    }else out.push(k+": "+erShort(x)+" → "+erShort(y));
+  });
+  return out;
+}
+function erDescribe(req){
+  const lines=[];
+  for(const p in (req.patch||{})){
+    const d=req.patch[p],mod=(typeof RECYCLE_MODULE_LABELS!=="undefined"&&RECYCLE_MODULE_LABELS[erDbKey(p)])||erDbKey(p);
+    if(d.mode==="records"){
+      d.changed.forEach(function(c){lines.push({h:mod+" — "+erRecLabel(p,c.after),items:erFieldDiff(c.before,c.after)});});
+      d.added.forEach(function(r){lines.push({h:mod+" — naya: "+erRecLabel(p,r),items:[]});});
+      d.removed.forEach(function(r){lines.push({h:mod+" — hat jayega: "+erRecLabel(p,r),items:[]});});
+    }else lines.push({h:erDbKey(p)+" (poori list badlegi)",items:[erShort(d.before)+" → "+erShort(d.after)]});
+  }
+  return lines;
+}
+function erPendingCount(){
+  const u=state.currentUser;if(!u)return 0;
+  return erList().filter(function(r){return r.status==="pending"&&(u.role==="admin"||r.byId===u.id||r.byUser===u.username);}).length;
+}
+function erChipInner(){const n=erPendingCount();return "📝 Edit Requests"+(n?' <span style="background:#c62828;color:#fff;border-radius:10px;padding:1px 7px;margin-left:3px;font-weight:700">'+n+'</span>':"");}
+function erChipHtml(){
+  if(!state.currentUser)return "";
+  return '<span id="erChip" title="Edit requests — admin approval" style="font-size:12px;cursor:pointer;background:rgba(255,255,255,.18);padding:4px 9px;border-radius:12px;margin-right:6px" onclick="App.erOpen()">'+erChipInner()+'</span>';
+}
+function erChipRefresh(){const c=document.getElementById("erChip");if(c)c.innerHTML=erChipInner();}
+(function(){const _cd=cloudDotHtml;cloudDotHtml=function(){return erChipHtml()+_cd();};})();
+setInterval(erChipRefresh,10000);
+
+function erHtml(){
+  const u=state.currentUser,admin=isAdminU(),flt=temp.erFilter||"pending";
+  const mine=erList().filter(function(r){return admin||r.byId===u.id||r.byUser===u.username;}).slice().sort(function(a,b){return (b._ts||0)-(a._ts||0);});
+  const cnt=function(s){return mine.filter(function(r){return r.status===s;}).length;};
+  const tab=function(s,l,c){return '<button class="btn btn-sm" style="'+(flt===s?'background:'+c+';color:#fff':'background:#eceff1;color:#37474f')+'" onclick="App.erFilter(\''+s+'\')">'+l+' ('+cnt(s)+')</button>';};
+  const list=mine.filter(function(r){return r.status===flt;});
+  const badge={pending:["#f9a825","⏳ Pending"],approved:["#2e7d32","✅ Approved"],rejected:["#c62828","❌ Rejected"]};
+  const cards=list.map(function(r){
+    const b=badge[r.status]||["#777",r.status];
+    const dl=erDescribe(r).map(function(x){return '<div style="margin-top:6px"><b style="font-size:13px">'+esc(x.h)+'</b>'+(x.items.length?'<ul style="margin:3px 0 0 18px;padding:0;font-size:12px;color:#37474f">'+x.items.slice(0,14).map(function(i){return '<li>'+esc(i)+'</li>';}).join("")+(x.items.length>14?'<li>... aur '+(x.items.length-14)+' badlav</li>':'')+'</ul>':'')+'</div>';}).join("");
+    return '<div style="border:1px solid #cfd8dc;border-left:5px solid '+b[0]+';border-radius:8px;padding:10px 14px;margin-bottom:10px;background:#fff">'
+      +'<div style="display:flex;justify-content:space-between;gap:8px;flex-wrap:wrap"><span><b>'+esc(r.reqNo)+'</b> &nbsp;<span class="badge" style="background:'+b[0]+'">'+b[1]+'</span></span><span style="font-size:12px;color:#666">'+esc(r.by)+' | '+esc(r.at)+'</span></div>'
+      +dl
+      +(r.status==="rejected"&&r.reason?'<div style="margin-top:6px;font-size:12px;color:#c62828">Karan: '+esc(r.reason)+'</div>':'')
+      +(r.status!=="pending"?'<div style="margin-top:6px;font-size:11px;color:#777">'+(r.status==="approved"?"Approve":"Reject")+' kiya: '+esc(r.decidedBy||"")+' | '+esc(r.decidedAt||"")+'</div>':'')
+      +(admin&&r.status==="pending"?'<div style="margin-top:8px;display:flex;gap:8px"><button class="btn btn-success btn-sm" onclick="App.erApprove('+r.id+')">✅ Approve (badlav lagao)</button><button class="btn btn-danger btn-sm" onclick="App.erReject('+r.id+')">❌ Reject (koi change nahi)</button></div>':'')
+      +(!admin&&r.status==="pending"?'<div style="margin-top:8px"><button class="btn btn-secondary btn-sm" onclick="App.erWithdraw('+r.id+')">↩️ Request wapas lo</button></div>':'')
+      +'</div>';
+  }).join("")||'<div style="text-align:center;color:#999;padding:24px">Koi request nahi</div>';
+  return '<div style="background:#fff;border-radius:12px;max-width:780px;width:100%;max-height:92vh;overflow:auto;padding:18px">'
+    +'<div style="display:flex;justify-content:space-between;align-items:center;margin-bottom:6px"><b style="font-size:17px;color:#1a237e">📝 Edit Requests'+(admin?'':' (meri)')+'</b><button class="btn btn-secondary" onclick="App.erClose()">✕ Close</button></div>'
+    +'<div style="font-size:12px;color:#666;margin-bottom:10px">'+(admin?'User ke edit yahan aate hain. Approve karoge tabhi badlav lagega; Reject karne par kuch nahi badlega.':'Aapke edit admin ke approve ke baad hi lagte hain.')+'</div>'
+    +'<div style="display:flex;gap:6px;margin-bottom:12px;flex-wrap:wrap">'+tab("pending","⏳ Pending","#f9a825")+tab("approved","✅ Approved","#2e7d32")+tab("rejected","❌ Rejected","#c62828")+'</div>'+cards+'</div>';
+}
+function erConflicts(req){
+  const out=[];
+  for(const p in req.patch){
+    const d=req.patch[p];
+    if(d.mode==="records"){
+      const arr=Array.isArray(state[p])?state[p]:[];
+      d.changed.forEach(function(c){
+        const cur=arr.find(function(x){return String(x.id)===String(c.id);});
+        if(!cur)out.push(erRecLabel(p,c.after)+" — ye record ab maujood nahi hai");
+        else if(JSON.stringify(cur)!==JSON.stringify(c.before))out.push(erRecLabel(p,c.after)+" — request ke baad ye record kisi ne badal diya hai");
+      });
+      d.removed.forEach(function(r){if(!arr.some(function(x){return String(x.id)===String(r.id);}))out.push(erRecLabel(p,r)+" — pehle hi hat chuka hai");});
+    }
+  }
+  return out;
+}
+const StoreV9App={
+  erOpen(){
+    const old=document.getElementById("erModal");if(old)old.remove();
+    const d=document.createElement("div");d.id="erModal";
+    d.style.cssText="position:fixed;inset:0;background:rgba(0,0,0,.5);z-index:9999;display:flex;align-items:center;justify-content:center;padding:14px";
+    d.onclick=function(e){if(e.target===d)App.erClose();};
+    d.innerHTML=erHtml();document.body.appendChild(d);
+  },
+  erClose(){const d=document.getElementById("erModal");if(d)d.remove();erChipRefresh();},
+  erFilter(f){temp.erFilter=f;const d=document.getElementById("erModal");if(d)d.innerHTML=erHtml();},
+  erRefresh(){const d=document.getElementById("erModal");if(d)d.innerHTML=erHtml();erChipRefresh();},
+  async erApprove(id){
+    if(!isAdminU()){alert("🔒 Sirf admin approve kar sakta hai.");return;}
+    const req=erList().find(function(r){return r.id==id;});if(!req||req.status!=="pending")return;
+    const cf=erConflicts(req);
+    if(cf.length&&!confirm("⚠️ Dhyan do:\n\n"+cf.join("\n")+"\n\nPhir bhi approve karke ye badlav lagana hai?"))return;
+    const touched=[];
+    for(const p in req.patch){
+      const d=req.patch[p];
+      if(d.mode==="records"){
+        let arr=Array.isArray(state[p])?state[p]:(state[p]=[]);
+        d.changed.forEach(function(c){const i=arr.findIndex(function(x){return String(x.id)===String(c.id);});if(i>=0)arr[i]=c.after;else arr.push(c.after);});
+        d.added.forEach(function(r){if(!arr.some(function(x){return String(x.id)===String(r.id);}))arr.push(r);});
+        if(d.removed.length){const ids=new Set(d.removed.map(function(r){return String(r.id);}));state[p]=arr=arr.filter(function(x){return !ids.has(String(x.id));});}
+      }else{state[p]=d.after;}
+      touched.push(p);
+    }
+    for(const p of touched){await persist(erDbKey(p),state[p]);}
+    req.status="approved";req.decidedBy=state.currentUser.name;req.decidedAt=nowStr();
+    await persist("edit_requests",erList());
+    try{auditEvent("Edit Approved",req.reqNo+" | "+req.module+" | "+req.title+" | by "+req.by);}catch(e){}
+    try{renderTabContent();}catch(e){}
+    App.erRefresh();
+    try{showSyncPill("ok",req.reqNo+" approve ho gayi, badlav lag gaya",3500);}catch(e){}
+  },
+  async erReject(id){
+    if(!isAdminU()){alert("🔒 Sirf admin reject kar sakta hai.");return;}
+    const req=erList().find(function(r){return r.id==id;});if(!req||req.status!=="pending")return;
+    const why=prompt("Reject karne ka karan (optional):","");
+    if(why===null)return;
+    req.status="rejected";req.reason=String(why||"").trim();req.decidedBy=state.currentUser.name;req.decidedAt=nowStr();
+    await persist("edit_requests",erList());
+    try{auditEvent("Edit Rejected",req.reqNo+" | "+req.module+" | "+req.title+" | by "+req.by);}catch(e){}
+    App.erRefresh();
+  },
+  async erWithdraw(id){
+    const u=state.currentUser,req=erList().find(function(r){return r.id==id;});
+    if(!req||req.status!=="pending"||!(req.byId===u.id||req.byUser===u.username))return;
+    if(!confirm("Ye request wapas leni hai?"))return;
+    state.editRequests=erList().filter(function(r){return r.id!=id;});
+    await persist("edit_requests",state.editRequests);
+    App.erRefresh();
+  }
+};
+Object.assign(App,StoreV9App);
+// Gate lagao (sirf non-admin, sirf edit-mode me)
+ER_GATES.forEach(function(g){
+  const name=g[0],pred=g[1],orig=App[name];
+  if(typeof orig!=="function"){console.warn("ER gate: function nahi mila",name);return;}
+  App[name]=function(){
+    const u=state.currentUser;let isEdit=false;
+    try{isEdit=!!pred();}catch(e){}
+    if(!u||u.role==="admin"||!isEdit||ER.busy)return orig.apply(this,arguments);
+    return erDryRun(name,orig,this,arguments);
+  };
+});
+// Edit-mode me Save button ka naam badlo (non-admin ko)
+(function(){
+  let t=null;
+  function relabel(){
+    const u=state.currentUser;if(!u||u.role==="admin")return;
+    ER_GATES.forEach(function(g){
+      if(g[0].indexOf("mould")===0&&g[0]!=="mouldFormSave"&&g[0]!=="mouldProdSave")return;
+      let on=false;try{on=!!g[1]();}catch(e){}
+      if(!on)return;
+      document.querySelectorAll('button[onclick*="App.'+g[0]+'("]').forEach(function(b){if(b.getAttribute("data-er")!=="1"){b.setAttribute("data-er","1");b.textContent="📨 Edit Request Bhejo";}});
+    });
+  }
+  new MutationObserver(function(){clearTimeout(t);t=setTimeout(relabel,80);}).observe(document.documentElement,{childList:true,subtree:true});
+})();
+
 window.App=App; window.AC=AC;
 
 // ── INIT ──────────────────────────────────────────────────
@@ -9352,7 +9629,7 @@ window.App=App; window.AC=AC;
   try{sessionStorage.setItem("jpl_fy",FY.label);}catch(e){}
   const map={users:"users",packings:"packings",categories:"categories",dispatches:"dispatches",
     purchaseOrders:"pos",mtPos:"mt_pos",mtDispatches:"mt_dispatches",batchOptions:"batch_options",
-    mtItems:"mt_items",mtPackings:"mt_packings",itemMaster:"item_master",bomMaster:"bom_master",productionPlans:"production_plans",storeLedger:"store_ledger",grns:"grns",mtBomMaster:"mt_bom_master",mouldItems:"mould_items",mouldMats:"mould_mats",mouldColours:"mould_colours",mouldPrograms:"mould_programs",mouldProducts:"mould_products",mouldGroups:"mould_groups",appSettings:"app_settings",mtProductionPlans:"mt_production_plans",mtDivisions:"mt_divisions",storeItems:"store_items",storeQtyTypes:"store_qty_types",storeCategories:"store_categories",auditLog:"audit_log",stockRequests:"stock_requests",storeGatePasses:"store_gate_passes",storeBatches:"store_batches",recycleBin:"recycle_bin",nextChallanOverride:"next_challan_override",partyEmails:"party_emails",autoTriggeredProducts:"auto_triggered_products",lastAutoBackupDate:"last_auto_backup_date",lastAutoEmailDate:"last_auto_email_date",lastMtAlertEmailDate:"last_mt_alert_email_date",lastPendingCategoryEmailDate:"last_pending_category_email_date",lastProductionReminderDate:"last_production_reminder_date",gatePasses:"gate_passes",parties:"parties",accBills:"acc_bills",accReceipts:"acc_receipts",invoices:"invoices",creditNotes:"credit_notes",debitNotes:"debit_notes",itemRates:"item_rates",company:"company"};
+    mtItems:"mt_items",mtPackings:"mt_packings",itemMaster:"item_master",bomMaster:"bom_master",productionPlans:"production_plans",storeLedger:"store_ledger",grns:"grns",mtBomMaster:"mt_bom_master",mouldItems:"mould_items",mouldMats:"mould_mats",mouldColours:"mould_colours",mouldPrograms:"mould_programs",mouldProducts:"mould_products",mouldGroups:"mould_groups",appSettings:"app_settings",mtProductionPlans:"mt_production_plans",mtDivisions:"mt_divisions",storeItems:"store_items",storeQtyTypes:"store_qty_types",storeCategories:"store_categories",auditLog:"audit_log",stockRequests:"stock_requests",storeGatePasses:"store_gate_passes",editRequests:"edit_requests",storeBatches:"store_batches",recycleBin:"recycle_bin",nextChallanOverride:"next_challan_override",partyEmails:"party_emails",autoTriggeredProducts:"auto_triggered_products",lastAutoBackupDate:"last_auto_backup_date",lastAutoEmailDate:"last_auto_email_date",lastMtAlertEmailDate:"last_mt_alert_email_date",lastPendingCategoryEmailDate:"last_pending_category_email_date",lastProductionReminderDate:"last_production_reminder_date",gatePasses:"gate_passes",parties:"parties",accBills:"acc_bills",accReceipts:"acc_receipts",invoices:"invoices",creditNotes:"credit_notes",debitNotes:"debit_notes",itemRates:"item_rates",company:"company"};
   for(const [sk,dbk] of Object.entries(map)){ const d=await DB.get(dbk); if(d)state[sk]=d; }
   await migratePlaintextPasswords();
   backfillDispatchBatches();
