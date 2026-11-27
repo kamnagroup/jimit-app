@@ -3087,7 +3087,9 @@ function renderInventoryStockTab(){
   const suppliers=[...new Set(state.grns.filter(g=>g.kind==="purchase").map(g=>g.supplier).filter(Boolean))].sort();
   const allLocations=[...new Set((state.storeLedger||[]).map(l=>l.location).filter(Boolean))].sort();
   const allParties=[...new Set((state.storeLedger||[]).map(l=>l.party).filter(Boolean))].sort();
-  const stockRows=rows.map(r=>`<tr><td><b>${esc(r.name)}</b></td><td>${r.category?`<span class="badge" style="background:#ffe0b2;color:#e65100">${esc(r.category)}</span>`:"—"}</td><td>${r.batches.length?r.batches.map(b=>`<span class="badge" style="background:#c5cae9;color:#1a237e;margin:1px">${esc(b)}</span>`).join(""):"—"}</td><td>${esc(r.location)||"—"}</td><td style="font-size:11px">${esc(r.supplier)||"—"}</td><td style="font-weight:700;color:${r.stock<=0?"#c62828":r.stock<getMinStock(r.name)?"#e65100":"#2e7d32"}">${r.stock}${r.stock<=0?` <span style="font-size:10px;background:#ffcdd2;color:#b71c1c;padding:1px 5px;border-radius:6px">OUT</span>`:r.stock<getMinStock(r.name)?` <span style="font-size:10px;background:#ffe0b2;color:#e65100;padding:1px 5px;border-radius:6px">LOW</span>`:""}</td></tr>`).join("")||`<tr><td colspan="6" style="text-align:center;color:#999;padding:16px">Koi item nahi mila</td></tr>`;
+  temp.invRowNames=rows.map(r=>r.name);
+  const _adm=isAdminU();
+  const stockRows=rows.map((r,ri)=>`<tr><td><b>${esc(r.name)}</b></td><td>${r.category?`<span class="badge" style="background:#ffe0b2;color:#e65100">${esc(r.category)}</span>`:"—"}</td><td>${r.batches.length?r.batches.map(b=>`<span class="badge" style="background:#c5cae9;color:#1a237e;margin:1px">${esc(b)}</span>`).join(""):"—"}</td><td>${esc(r.location)||"—"}</td><td style="font-size:11px">${esc(r.supplier)||"—"}</td><td style="font-weight:700;color:${r.stock<=0?"#c62828":r.stock<getMinStock(r.name)?"#e65100":"#2e7d32"}">${r.stock}${r.stock<=0?` <span style="font-size:10px;background:#ffcdd2;color:#b71c1c;padding:1px 5px;border-radius:6px">OUT</span>`:r.stock<getMinStock(r.name)?` <span style="font-size:10px;background:#ffe0b2;color:#e65100;padding:1px 5px;border-radius:6px">LOW</span>`:""}</td>${_adm?`<td><button class="btn btn-sm btn-primary" title="Item ka naam / detail badlo" onclick="App.editInvItem(${ri})">✏️ Edit</button></td>`:""}</tr>`).join("")||`<tr><td colspan="7" style="text-align:center;color:#999;padding:16px">Koi item nahi mila</td></tr>`;
   // movement history filters
   const dFrom=temp.invMoveFrom||"",dTo=temp.invMoveTo||"",partyF=temp.invMoveParty||"";
   let moves=inventoryMoves();
@@ -3116,7 +3118,7 @@ function renderInventoryStockTab(){
     </div>
     ${temp.invProductFilter?`<div style="background:#e8eaf6;border:1px solid #c5cae9;border-radius:6px;padding:8px 12px;font-size:12px;color:#1a237e;margin-bottom:10px">📐 Ye <b>${esc(temp.invProductFilter)}</b> banane ke liye jitne bhi items (BOM se) use hote hain, unki current stock dikhayi ja rahi hai.</div>`:""}
     ${rows.length===1&&temp.invSearch?invItemCard(rows[0]):""}
-    <div style="max-height:600px;overflow-y:auto;border:1px solid #e0e0e0;border-radius:6px"><table class="tbl" style="margin:0"><thead><tr style="background:#1a237e;color:#fff;position:sticky;top:0;z-index:10"><th>Item Name</th><th>Category</th><th>Batch</th><th>Location (Kaha Rakha Hai)</th><th>Supplier</th><th>Current Stock</th></tr></thead><tbody>${stockRows}</tbody></table></div>
+    <div style="max-height:600px;overflow-y:auto;border:1px solid #e0e0e0;border-radius:6px"><table class="tbl" style="margin:0"><thead><tr style="background:#1a237e;color:#fff;position:sticky;top:0;z-index:10"><th>Item Name</th><th>Category</th><th>Batch</th><th>Location (Kaha Rakha Hai)</th><th>Supplier</th><th>Current Stock</th>${_adm?"<th></th>":""}</tr></thead><tbody>${stockRows}</tbody></table></div>
   </div></div>
   <div class="card"><div class="card-title">📜 Stock Movement History</div><div class="card-body">
     <div style="display:flex;gap:8px;flex-wrap:wrap;align-items:flex-end;margin-bottom:14px">
@@ -3222,13 +3224,13 @@ function getStoreItemsForBatch(batch){
 }
 function renderStoreItemModal(){
   if(!temp.storeItemModalOpen)return"";
-  const ed=temp.storeItemEditId?state.storeItems.find(i=>i.id===temp.storeItemEditId):null;
+  const ed=temp.storeItemEditId?state.storeItems.find(i=>i.id===temp.storeItemEditId):(temp.storeItemEditName?{name:temp.storeItemEditName,batch:"",category:"",qtyType:"",perBoxQty:"",_virtual:true}:null);
   const rows=state.storeItems.filter(i=>!i.minOnly).map(it=>`<tr><td><b>${esc(it.name)}</b></td><td>${it.batch?`<span class="badge" style="background:#c5cae9;color:#1a237e">${esc(it.batch)}</span>`:"—"}</td><td>${esc(it.category)||"—"}</td><td>${esc(it.qtyType)||"—"}</td><td>${esc(it.perBoxQty)||"—"}</td><td><button class="btn btn-sm btn-primary" onclick="App.editStoreItem(${it.id})">Edit</button> <button class="btn btn-sm btn-danger" onclick="App.deleteStoreItem(${it.id})">Del</button></td></tr>`).join("")||`<tr><td colspan="6" style="text-align:center;color:#999;padding:16px">Koi item nahi.</td></tr>`;
-  return`<div class="modal-overlay" onclick="if(event.target===this)App.closeStoreItemModal()"><div class="modal-box"><div class="modal-head"><span style="font-weight:700;font-size:16px">📋 Store Item Master (${storeItemCount()})</span><button class="btn" style="background:rgba(255,255,255,.2)" onclick="App.closeStoreItemModal()">✕ Close</button></div><div style="padding:24px"><div style="background:#f3f4ff;border:1px solid #c5cae9;border-radius:10px;padding:16px;margin-bottom:20px"><b style="color:#1a237e">${ed?"✏️ Edit Item":"➕ Add New Item"}</b><div style="display:grid;grid-template-columns:2fr 1.3fr 1.3fr;gap:10px;margin-top:12px"><div><label class="lbl">Item Name *${ed?(isAdminU()?' <span style="font-weight:400;color:#2e7d32">(admin: naam badlo to sab jagah badal jayega)</span>':' <span style="font-weight:400;color:#888">(naam sirf admin badal sakta hai)</span>'):""}</label><input class="inp" id="storeItemName" value="${ed?esc(ed.name):""}" placeholder="Item name"></div><div><label class="lbl">Batch <span style="font-weight:400;color:#888">(naya bhi bana sakte ho)</span></label><div style="display:flex;gap:6px"><select class="inp" id="storeItemBatch" style="flex:1;margin-bottom:0"><option value="">-- None --</option>${state.storeBatches.map(b=>`<option value="${esc(b)}" ${ed&&ed.batch===b?"selected":""}>${esc(b)}</option>`).join("")}</select><button class="btn btn-primary" style="width:36px;padding:0" onclick="App.addStoreBatchOption()">+</button></div></div><div><label class="lbl">Category <span style="font-weight:400;color:#888">(naya bhi bana sakte ho)</span></label><div style="display:flex;gap:6px"><select class="inp" id="storeItemCategory" style="flex:1;margin-bottom:0"><option value="">-- None --</option>${getStoreCategoryList().map(c=>`<option value="${esc(c)}" ${ed&&ed.category===c?"selected":""}>${esc(c)}</option>`).join("")}</select><button class="btn btn-primary" style="width:36px;padding:0" onclick="App.addStoreCategoryOption()">+</button></div></div></div><div class="grid2" style="margin-top:10px"><div><label class="lbl">Qty Type <span style="font-weight:400;color:#888">(naya bhi bana sakte ho)</span></label><div style="display:flex;gap:6px"><select class="inp" id="storeItemQtyType" style="flex:1;margin-bottom:0"><option value="">-- None --</option>${state.storeQtyTypes.map(q=>`<option value="${esc(q)}" ${ed&&ed.qtyType===q?"selected":""}>${esc(q)}</option>`).join("")}</select><button class="btn btn-primary" style="width:36px;padding:0" onclick="App.addStoreQtyTypeOption()">+</button></div></div><div><label class="lbl">Per Box/Pkt/Bundle Qty</label><input class="inp" type="number" step="0.01" id="storeItemPerBoxQty" value="${ed?esc(ed.perBoxQty):""}" placeholder="e.g. 100"></div></div><div style="display:flex;gap:8px;margin-top:12px"><button class="btn btn-primary" onclick="App.saveStoreItem()">${ed?"✏️ Update":"💾 Save"}</button>${ed?`<button class="btn btn-secondary" onclick="App.cancelEditStoreItem()">Cancel</button>`:""}</div></div><table class="tbl"><thead><tr style="background:#37474f;color:#fff"><th>Item</th><th>Batch</th><th>Category</th><th>Qty Type</th><th>Per Box Qty</th><th>Actions</th></tr></thead><tbody>${rows}</tbody></table></div></div></div>`;
+  return`<div class="modal-overlay" onclick="if(event.target===this)App.closeStoreItemModal()"><div class="modal-box"><div class="modal-head"><span style="font-weight:700;font-size:16px">📋 Store Item Master (${storeItemCount()})</span><button class="btn" style="background:rgba(255,255,255,.2)" onclick="App.closeStoreItemModal()">✕ Close</button></div><div style="padding:24px"><div style="background:#f3f4ff;border:1px solid #c5cae9;border-radius:10px;padding:16px;margin-bottom:20px"><b style="color:#1a237e">${ed?"✏️ Edit Item":"➕ Add New Item"}</b>${ed&&ed._virtual?' <span style="font-weight:400;font-size:12px;color:#e65100">(ye item abhi Master me nahi hai — Update karne par Master me add ho jayega)</span>':""}<div style="display:grid;grid-template-columns:2fr 1.3fr 1.3fr;gap:10px;margin-top:12px"><div><label class="lbl">Item Name *${ed?(isAdminU()?' <span style="font-weight:400;color:#2e7d32">(admin: naam badlo to sab jagah badal jayega)</span>':' <span style="font-weight:400;color:#888">(naam sirf admin badal sakta hai)</span>'):""}</label><input class="inp" id="storeItemName" value="${ed?esc(ed.name):""}" placeholder="Item name"></div><div><label class="lbl">Batch <span style="font-weight:400;color:#888">(naya bhi bana sakte ho)</span></label><div style="display:flex;gap:6px"><select class="inp" id="storeItemBatch" style="flex:1;margin-bottom:0"><option value="">-- None --</option>${state.storeBatches.map(b=>`<option value="${esc(b)}" ${ed&&ed.batch===b?"selected":""}>${esc(b)}</option>`).join("")}</select><button class="btn btn-primary" style="width:36px;padding:0" onclick="App.addStoreBatchOption()">+</button></div></div><div><label class="lbl">Category <span style="font-weight:400;color:#888">(naya bhi bana sakte ho)</span></label><div style="display:flex;gap:6px"><select class="inp" id="storeItemCategory" style="flex:1;margin-bottom:0"><option value="">-- None --</option>${getStoreCategoryList().map(c=>`<option value="${esc(c)}" ${ed&&ed.category===c?"selected":""}>${esc(c)}</option>`).join("")}</select><button class="btn btn-primary" style="width:36px;padding:0" onclick="App.addStoreCategoryOption()">+</button></div></div></div><div class="grid2" style="margin-top:10px"><div><label class="lbl">Qty Type <span style="font-weight:400;color:#888">(naya bhi bana sakte ho)</span></label><div style="display:flex;gap:6px"><select class="inp" id="storeItemQtyType" style="flex:1;margin-bottom:0"><option value="">-- None --</option>${state.storeQtyTypes.map(q=>`<option value="${esc(q)}" ${ed&&ed.qtyType===q?"selected":""}>${esc(q)}</option>`).join("")}</select><button class="btn btn-primary" style="width:36px;padding:0" onclick="App.addStoreQtyTypeOption()">+</button></div></div><div><label class="lbl">Per Box/Pkt/Bundle Qty</label><input class="inp" type="number" step="0.01" id="storeItemPerBoxQty" value="${ed?esc(ed.perBoxQty):""}" placeholder="e.g. 100"></div></div><div style="display:flex;gap:8px;margin-top:12px"><button class="btn btn-primary" onclick="App.saveStoreItem()">${ed?"✏️ Update":"💾 Save"}</button>${ed?`<button class="btn btn-secondary" onclick="App.cancelEditStoreItem()">Cancel</button>`:""}</div></div><table class="tbl"><thead><tr style="background:#37474f;color:#fff"><th>Item</th><th>Batch</th><th>Category</th><th>Qty Type</th><th>Per Box Qty</th><th>Actions</th></tr></thead><tbody>${rows}</tbody></table></div></div></div>`;
 }
 const StoreItemApp={
-  openStoreItemModal(){temp.storeItemModalOpen=true;temp.storeItemEditId=null;_refreshModal();},
-  closeStoreItemModal(){temp.storeItemModalOpen=false;temp.storeItemEditId=null;_refreshModal();renderTabContent();},
+  openStoreItemModal(){temp.storeItemModalOpen=true;temp.storeItemEditId=null;temp.storeItemEditName=null;_refreshModal();},
+  closeStoreItemModal(){temp.storeItemModalOpen=false;temp.storeItemEditId=null;temp.storeItemEditName=null;_refreshModal();renderTabContent();},
   addStoreBatchOption(){const v=prompt("Naya Batch naam:");if(!v)return;const t=v.trim().toUpperCase();if(!t||state.storeBatches.includes(t)){alert(t?"Already exists!":"Empty input");return;}state.storeBatches.push(t);persist("store_batches",state.storeBatches);const sel=document.getElementById("storeItemBatch");if(sel){const o=document.createElement("option");o.value=t;o.textContent=t;sel.appendChild(o);sel.value=t;}},
   addStoreCategoryOption(){const v=prompt("Nayi Category naam:");if(!v)return;const t=v.trim();if(!t||getStoreCategoryList().some(c=>c.toLowerCase()===t.toLowerCase())){alert(t?"Already exists!":"Empty input");return;}state.storeCategories=state.storeCategories||[];state.storeCategories.push(t);persist("store_categories",state.storeCategories);const sel=document.getElementById("storeItemCategory");if(sel){const o=document.createElement("option");o.value=t;o.textContent=t;sel.appendChild(o);sel.value=t;}},
   addStoreQtyTypeOption(){const v=prompt("Naya Qty Type naam (e.g. Bundle, Roll):");if(!v)return;const t=v.trim();if(!t||state.storeQtyTypes.includes(t)){alert(t?"Already exists!":"Empty input");return;}state.storeQtyTypes.push(t);persist("store_qty_types",state.storeQtyTypes);const sel=document.getElementById("storeItemQtyType");if(sel){const o=document.createElement("option");o.value=t;o.textContent=t;sel.appendChild(o);sel.value=t;}},
@@ -3236,27 +3238,45 @@ const StoreItemApp={
     if(denyAction("store"))return;
     const name=document.getElementById("storeItemName").value.trim().replace(/\s+/g," ");
     if(!name){alert("Item Name required");return;}
-    {const _cur=temp.storeItemEditId?state.storeItems.find(i=>i.id===temp.storeItemEditId):null;
-     if(_cur&&!_cur.minOnly&&_cur.name!==name){
-       if(!isAdminU()){alert("⚠️ Item ka naam sirf admin badal sakta hai.");return;}
-       const _k=normItemKey(name);
-       if(state.storeItems.some(i=>i.id!==_cur.id&&normItemKey(i.name)===_k)){alert('⚠️ "'+name+'" naam ka item pehle se hai. Duplicate nahi ban sakta.');return;}
-       if(!storeRenameEverywhere(_cur.name,name))return;
-     }}
-    const k=normItemKey(name),dup=state.storeItems.find(i=>normItemKey(i.name)===k&&i.id!==temp.storeItemEditId);
-    if(dup&&!dup.minOnly){alert('⚠️ "'+dup.name+'" naam ka item Master me pehle se hai. Duplicate nahi ban sakta.');return;}
-    const editId=dup?dup.id:temp.storeItemEditId;
-    const prev=editId?state.storeItems.find(i=>i.id===editId):null;
-    if(prev&&!prev.minOnly&&prev.name!==name){alert("⚠️ Item ka naam yahan se nahi badal sakte, kyunki stock purane naam se ledger me juda hai.\nNaya item banao, aur purane ka stock Manual Adjustment se shift karo.");return;}
-    const entry={id:editId||uid(),name,batch:document.getElementById("storeItemBatch").value,category:document.getElementById("storeItemCategory").value,qtyType:document.getElementById("storeItemQtyType").value,perBoxQty:document.getElementById("storeItemPerBoxQty").value};
-    if(prev&&prev.minStock!=null)entry.minStock=prev.minStock;
-    if(editId){state.storeItems=state.storeItems.map(i=>i.id===entry.id?entry:i);}else state.storeItems.push(entry);
-    temp.storeItemEditId=null;
+    const editId=temp.storeItemEditId||null,virt=temp.storeItemEditName||null;
+    const cur=editId?state.storeItems.find(i=>i.id===editId):null;
+    const oldName=cur?cur.name:virt;
+    // v20: naam badalna — Master ke item se ho ya Inventory list ke (Master me na bane) item se, dono me sab jagah badlega
+    if(oldName&&oldName!==name){
+      if(!isAdminU()){alert("⚠️ Item ka naam sirf admin badal sakta hai.");return;}
+      const nk=normItemKey(name);
+      if(nk!==normItemKey(oldName)&&getAllStoreItemNames().some(n=>normItemKey(n)===nk)){alert('⚠️ "'+name+'" naam ka item pehle se hai. Duplicate nahi ban sakta.');return;}
+      if(!storeRenameEverywhere(oldName,name))return;
+      if(temp.invSearch===oldName)temp.invSearch=name;
+      if(temp.invMoveItem===oldName)temp.invMoveItem=name;
+    }
+    let target=cur?state.storeItems.find(i=>i.id===cur.id):null;
+    if(!cur&&virt)target=state.storeItems.find(i=>i.name===name)||null;
+    if(!cur&&!virt){
+      const dup=state.storeItems.find(i=>normItemKey(i.name)===normItemKey(name));
+      if(dup&&!dup.minOnly){alert('⚠️ "'+dup.name+'" naam ka item Master me pehle se hai. Duplicate nahi ban sakta.');return;}
+      target=dup||null;
+    }
+    const entry=Object.assign({},target||{},{id:target?target.id:uid(),name,batch:document.getElementById("storeItemBatch").value,category:document.getElementById("storeItemCategory").value,qtyType:document.getElementById("storeItemQtyType").value,perBoxQty:document.getElementById("storeItemPerBoxQty").value});
+    delete entry.minOnly;
+    if(target)state.storeItems=state.storeItems.map(i=>i.id===entry.id?entry:i);else state.storeItems.push(entry);
+    temp.storeItemEditId=null;temp.storeItemEditName=null;
     persist("store_items",state.storeItems);
+    _accCache=null;
+    _refreshModal();renderTabContent();
+  },
+  editStoreItem(id){temp.storeItemEditId=id;temp.storeItemEditName=null;_refreshModal();},
+  cancelEditStoreItem(){temp.storeItemEditId=null;temp.storeItemEditName=null;_refreshModal();},
+  // v20: Inventory Stock list ke ✏️ button se (admin) — item Master me ho ya na ho
+  editInvItem(idx){
+    if(!isAdminU()){alert("⚠️ Item ka naam sirf admin badal sakta hai.");return;}
+    const name=(temp.invRowNames||[])[idx];if(!name)return;
+    const rec=(state.storeItems||[]).find(i=>i.name===name&&!i.minOnly);
+    temp.storeItemModalOpen=true;
+    if(rec){temp.storeItemEditId=rec.id;temp.storeItemEditName=null;}
+    else{temp.storeItemEditId=null;temp.storeItemEditName=name;}
     _refreshModal();
   },
-  editStoreItem(id){temp.storeItemEditId=id;_refreshModal();},
-  cancelEditStoreItem(){temp.storeItemEditId=null;_refreshModal();},
   deleteStoreItem(id){if(denyAction("store"))return;if(!confirm("Ye item delete karna hai?"))return;const item=state.storeItems.find(i=>i.id===id);moveToRecycleBin("store_items",item);state.storeItems=state.storeItems.filter(i=>i.id!==id);persist("store_items",state.storeItems);_refreshModal();},
   onGrnBatchSelect(){
     const batch=document.getElementById("grnItemBatch").value;
@@ -9638,7 +9658,7 @@ ER_GATES.forEach(function(g){
   new MutationObserver(function(){clearTimeout(t);t=setTimeout(relabel,80);}).observe(document.documentElement,{childList:true,subtree:true});
 })();
 
-// ══════════ v19: Store Item ka NAAM badalna (sirf admin) — naya naam sab jagah apne aap badal jaata hai ══════════
+// ══════════ v20: Store Item ka NAAM badalna (sirf admin) — Item Master ya Inventory Stock list se; naya naam sab jagah apne aap badal jaata hai ══════════
 function rnDeep(v,o,n){
   if(Array.isArray(v)){let ch=false;const a=v.map(function(x){const r=rnDeep(x,o,n);if(r[1])ch=true;return r[0];});return[ch?a:v,ch];}
   if(v&&typeof v==="object"){
@@ -9649,46 +9669,81 @@ function rnDeep(v,o,n){
   if(typeof v==="string"&&v===o)return[n,true];
   return[v,false];
 }
+function rnMapArr(arr,fn,o,n){
+  let ch=0;
+  const out=arr.map(function(r){if(!r||typeof r!=="object")return r;const x=fn(r,o,n);if(x){ch++;return x;}return r;});
+  return{arr:out,ch:ch};
+}
+const RN_byItems=function(r,o,n){
+  if(!Array.isArray(r.items)||!r.items.some(function(i){return i&&i.name===o;}))return null;
+  return Object.assign({},r,{items:r.items.map(function(i){return(i&&i.name===o)?Object.assign({},i,{name:n}):i;})});
+};
+const RN_planFn=function(r,o,n){
+  let ch=false,res=r.result,lot=r.lotReport;
+  if(res){const x=rnDeep(res,o,n);if(x[1]){res=x[0];ch=true;}}
+  if(lot&&Array.isArray(lot.acc)){const x=rnDeep(lot.acc,o,n);if(x[1]){lot=Object.assign({},lot,{acc:x[0]});ch=true;}}
+  return ch?Object.assign({},r,{result:res,lotReport:lot}):null;
+};
+// [state property, dikhne wala naam, record badalne wala function, har Financial Year me alag se judta hai?]
+const RN_SPEC=[
+  ["storeItems","Store Item Master",function(r,o,n){return r.name===o?Object.assign({},r,{name:n}):null;},false],
+  ["storeLedger","Store ledger entries",function(r,o,n){return r.itemName===o?Object.assign({},r,{itemName:n}):null;},true],
+  ["grns","GRN / Internal entries",RN_byItems,true],
+  ["bomMaster","BOM",RN_byItems,false],
+  ["mtBomMaster","MT BOM",RN_byItems,false],
+  ["storeGatePasses","Gate Pass",RN_byItems,false],
+  ["stockRequests","Stock Requests",function(r,o,n){return r.item===o?Object.assign({},r,{item:n}):null;},false],
+  ["mouldProducts","Mould Product BOM",function(r,o,n){
+    if(!Array.isArray(r.lines)||!r.lines.some(function(l){return l&&l.type==="acc"&&l.name===o;}))return null;
+    return Object.assign({},r,{lines:r.lines.map(function(l){return(l&&l.type==="acc"&&l.name===o)?Object.assign({},l,{name:n}):l;})});
+  },false],
+  ["mouldPrograms","Moulding Programs (saved)",function(r,o,n){
+    if(!Array.isArray(r.acc)||!r.acc.some(function(a){return a&&a.name===o;}))return null;
+    return Object.assign({},r,{acc:r.acc.map(function(a){return(a&&a.name===o)?Object.assign({},a,{name:n}):a;})});
+  },false],
+  ["productionPlans","Planner Programs",RN_planFn,true],
+  ["mtProductionPlans","MT Planner Programs",RN_planFn,true]
+];
 function storeRenamePlan(o,n){
   const out={},counts={};
-  const mapRecs=function(prop,label,fn){
-    const arr=state[prop];if(!Array.isArray(arr))return;
-    let ch=0;
-    const na=arr.map(function(r){const x=fn(r);if(x){ch++;return x;}return r;});
-    if(ch){out[prop]=na;counts[label]=(counts[label]||0)+ch;}
-  };
-  const byItems=function(r){
-    if(!(r.items||[]).some(function(i){return i&&i.name===o;}))return null;
-    return Object.assign({},r,{items:r.items.map(function(i){return(i&&i.name===o)?Object.assign({},i,{name:n}):i;})});
-  };
-  mapRecs("storeItems","Store Item Master",function(r){return r.name===o?Object.assign({},r,{name:n}):null;});
-  mapRecs("storeLedger","Store ledger entries",function(r){return r.itemName===o?Object.assign({},r,{itemName:n}):null;});
-  mapRecs("grns","GRN / Internal entries",byItems);
-  mapRecs("bomMaster","BOM",byItems);
-  mapRecs("mtBomMaster","MT BOM",byItems);
-  mapRecs("storeGatePasses","Gate Pass",byItems);
-  mapRecs("stockRequests","Stock Requests",function(r){return r.item===o?Object.assign({},r,{item:n}):null;});
-  mapRecs("mouldProducts","Mould Product BOM",function(r){
-    if(!(r.lines||[]).some(function(l){return l.type==="acc"&&l.name===o;}))return null;
-    return Object.assign({},r,{lines:r.lines.map(function(l){return(l.type==="acc"&&l.name===o)?Object.assign({},l,{name:n}):l;})});
+  RN_SPEC.forEach(function(s){
+    const arr=state[s[0]];if(!Array.isArray(arr))return;
+    const r=rnMapArr(arr,s[2],o,n);
+    if(r.ch){out[s[0]]=r.arr;counts[s[1]]=r.ch;}
   });
-  const planFn=function(r){
-    let ch=false,res=r.result,lot=r.lotReport;
-    if(res){const x=rnDeep(res,o,n);if(x[1]){res=x[0];ch=true;}}
-    if(lot&&Array.isArray(lot.acc)){const x=rnDeep(lot.acc,o,n);if(x[1]){lot=Object.assign({},lot,{acc:x[0]});ch=true;}}
-    return ch?Object.assign({},r,{result:res,lotReport:lot}):null;
-  };
-  mapRecs("productionPlans","Planner Programs",planFn);
-  mapRecs("mtProductionPlans","MT Planner Programs",planFn);
   return{out:out,counts:counts};
+}
+// Purane Financial Years ka (year-wise) data: ledger, GRN, planner — wahan bhi naya naam
+async function storeRenameOtherYears(o,n){
+  let total=0;
+  for(const y of (FY.years||[])){
+    if(y.label===FY.label)continue;
+    for(const s of RN_SPEC){
+      if(!s[3])continue;
+      const dbk=erDbKey(s[0]),key="jpl_"+(y.prefix||"")+dbk;
+      let arr=null;
+      try{arr=await IDB.get(key);}catch(e){continue;}
+      if(!Array.isArray(arr))continue;
+      const r=rnMapArr(arr,s[2],o,n);
+      if(!r.ch)continue;
+      try{await IDB.set(key,r.arr);}catch(e){console.error(e);continue;}
+      try{Cloud.onSave((y.prefix||"")+dbk,r.arr);}catch(e){}
+      total+=r.ch;
+    }
+  }
+  return total;
 }
 function storeRenameEverywhere(o,n){
   const plan=storeRenamePlan(o,n);
-  const lines=Object.keys(plan.counts).map(function(k){return "• "+k+": "+plan.counts[k];}).join("\n");
-  if(!confirm('Item ka naam badalna hai?\n\n"'+o+'"  →  "'+n+'"\n\nNaya naam in jagah lagega (sirf abhi chal rahe saal ka data):\n'+lines+'\n\nAage badhna hai?'))return false;
+  const lines=Object.keys(plan.counts).map(function(k){return "• "+k+": "+plan.counts[k];}).join("\n")||"• (abhi sirf Item Master me hai)";
+  const multi=(FY.years||[]).length>1;
+  if(!confirm('Item ka naam badalna hai?\n\n"'+o+'"  →  "'+n+'"\n\nNaya naam in jagah lagega (chal rahe saal ka data):\n'+lines+(multi?'\n\nPurane Financial Years ke ledger / GRN / Planner me bhi naam badal diya jayega.':'')+'\n\nAage badhna hai?'))return false;
   for(const prop in plan.out){state[prop]=plan.out[prop];persist(erDbKey(prop),state[prop]);}
   try{auditEvent("Store Item Rename",o+" → "+n+" | "+Object.keys(plan.counts).map(function(k){return k+" "+plan.counts[k];}).join(", "));}catch(e){}
   _accCache=null;
+  if(multi){
+    storeRenameOtherYears(o,n).then(function(c){if(c){try{showSyncPill("ok","✅ Purane saalon me bhi naam badla ("+c+" entries)",4000);}catch(e){}}}).catch(function(e){console.error("Rename other years",e);});
+  }
   return true;
 }
 
