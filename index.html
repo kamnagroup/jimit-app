@@ -1903,7 +1903,7 @@ function shellHtml(){
           ?`<input type="file" id="restoreFileInput" style="display:none" onchange="App.restoreBackup(event)"><button id="userMenuBtn" class="btn" style="background:rgba(255,255,255,.15);border:1px solid rgba(255,255,255,.4);padding:5px 12px;font-size:13px" onclick="App.toggleUserMenu(this)" title="Backup, Import, Restore, FY, Clear All">👤 ${esc(state.currentUser.name)} ▾</button>${cloudDotHtml()}`
           :state.currentUser.role==="owner"
           ?`<button class="btn" style="background:#2e7d32;border:1px solid rgba(255,255,255,.4);padding:5px 12px;font-size:12px" onclick="App.dailyReport()">📤 Daily Report</button><span style="font-size:13px">👁 ${esc(state.currentUser.name)}</span>${cloudDotHtml()}`
-          :`${fyBadgeHtml()}<span style="font-size:13px">👤 ${esc(state.currentUser.name)}</span>`}
+          :`${erChipHtml()}${fyBadgeHtml()}<span style="font-size:13px">👤 ${esc(state.currentUser.name)}</span>`}
         <button class="btn" style="background:rgba(255,255,255,.2);border:1px solid rgba(255,255,255,.4);padding:5px 14px;margin-right:6px" onclick="App.openScan()">📷 Scan</button><button class="btn" style="background:rgba(255,255,255,.2);border:1px solid rgba(255,255,255,.4);padding:5px 14px" onclick="App.logout()">Logout</button>
       </div>
     </div>
@@ -9449,6 +9449,7 @@ function erFieldDiff(b,a){
     if(skip[k])return;
     const x=b?b[k]:undefined,y=a?a[k]:undefined;
     if(JSON.stringify(x)===JSON.stringify(y))return;
+    if((x===undefined||x===null||x==="")&&(y===undefined||y===null||y===""))return;
     if(Array.isArray(x)&&Array.isArray(y)&&typeof((x[0]!==undefined?x[0]:y[0]))==="object"){
       const mb=new Map(x.map(function(i){return[erItemKey(i),i];})),ma=new Map(y.map(function(i){return[erItemKey(i),i];}));
       ma.forEach(function(v,kk){
@@ -9481,37 +9482,39 @@ function erPendingCount(){
   return erList().filter(function(r){return r.status==="pending"&&(u.role==="admin"||r.byId===u.id||r.byUser===u.username);}).length;
 }
 function erChipInner(){const n=erPendingCount();return "📝 Edit Requests"+(n?' <span style="background:#c62828;color:#fff;border-radius:10px;padding:1px 7px;margin-left:3px;font-weight:700">'+n+'</span>':"");}
+function erChipShow(){return isAdminU()||erPendingCount()>0;}
 function erChipHtml(){
   if(!state.currentUser)return "";
-  return '<span id="erChip" title="Edit requests — admin approval" style="font-size:12px;cursor:pointer;background:rgba(255,255,255,.18);padding:4px 9px;border-radius:12px;margin-right:6px" onclick="App.erOpen()">'+erChipInner()+'</span>';
+  return '<span id="erChip" title="Edit requests — admin approval" style="font-size:12px;cursor:pointer;background:rgba(255,255,255,.18);padding:4px 9px;border-radius:12px;margin-right:6px;display:'+(erChipShow()?'inline-block':'none')+'" onclick="App.erOpen()">'+erChipInner()+'</span>';
 }
-function erChipRefresh(){const c=document.getElementById("erChip");if(c)c.innerHTML=erChipInner();}
+function erChipRefresh(){const c=document.getElementById("erChip");if(c){c.innerHTML=erChipInner();c.style.display=erChipShow()?"inline-block":"none";}}
 (function(){const _cd=cloudDotHtml;cloudDotHtml=function(){return erChipHtml()+_cd();};})();
 setInterval(erChipRefresh,10000);
 
-function erHtml(){
-  const u=state.currentUser,admin=isAdminU(),flt=temp.erFilter||"pending";
-  const mine=erList().filter(function(r){return admin||r.byId===u.id||r.byUser===u.username;}).slice().sort(function(a,b){return (b._ts||0)-(a._ts||0);});
-  const cnt=function(s){return mine.filter(function(r){return r.status===s;}).length;};
-  const tab=function(s,l,c){return '<button class="btn btn-sm" style="'+(flt===s?'background:'+c+';color:#fff':'background:#eceff1;color:#37474f')+'" onclick="App.erFilter(\''+s+'\')">'+l+' ('+cnt(s)+')</button>';};
-  const list=mine.filter(function(r){return r.status===flt;});
+function erCard(r,admin){
   const badge={pending:["#f9a825","⏳ Pending"],approved:["#2e7d32","✅ Approved"],rejected:["#c62828","❌ Rejected"]};
-  const cards=list.map(function(r){
-    const b=badge[r.status]||["#777",r.status];
-    const dl=erDescribe(r).map(function(x){return '<div style="margin-top:6px"><b style="font-size:13px">'+esc(x.h)+'</b>'+(x.items.length?'<ul style="margin:3px 0 0 18px;padding:0;font-size:12px;color:#37474f">'+x.items.slice(0,14).map(function(i){return '<li>'+esc(i)+'</li>';}).join("")+(x.items.length>14?'<li>... aur '+(x.items.length-14)+' badlav</li>':'')+'</ul>':'')+'</div>';}).join("");
-    return '<div style="border:1px solid #cfd8dc;border-left:5px solid '+b[0]+';border-radius:8px;padding:10px 14px;margin-bottom:10px;background:#fff">'
-      +'<div style="display:flex;justify-content:space-between;gap:8px;flex-wrap:wrap"><span><b>'+esc(r.reqNo)+'</b> &nbsp;<span class="badge" style="background:'+b[0]+'">'+b[1]+'</span></span><span style="font-size:12px;color:#666">'+esc(r.by)+' | '+esc(r.at)+'</span></div>'
-      +dl
-      +(r.status==="rejected"&&r.reason?'<div style="margin-top:6px;font-size:12px;color:#c62828">Karan: '+esc(r.reason)+'</div>':'')
-      +(r.status!=="pending"?'<div style="margin-top:6px;font-size:11px;color:#777">'+(r.status==="approved"?"Approve":"Reject")+' kiya: '+esc(r.decidedBy||"")+' | '+esc(r.decidedAt||"")+'</div>':'')
-      +(admin&&r.status==="pending"?'<div style="margin-top:8px;display:flex;gap:8px"><button class="btn btn-success btn-sm" onclick="App.erApprove('+r.id+')">✅ Approve (badlav lagao)</button><button class="btn btn-danger btn-sm" onclick="App.erReject('+r.id+')">❌ Reject (koi change nahi)</button></div>':'')
-      +(!admin&&r.status==="pending"?'<div style="margin-top:8px"><button class="btn btn-secondary btn-sm" onclick="App.erWithdraw('+r.id+')">↩️ Request wapas lo</button></div>':'')
-      +'</div>';
-  }).join("")||'<div style="text-align:center;color:#999;padding:24px">Koi request nahi</div>';
+  const b=badge[r.status]||["#777",r.status];
+  const dl=erDescribe(r).map(function(x){return '<div style="margin-top:6px"><b style="font-size:13px">'+esc(x.h)+'</b>'+(x.items.length?'<ul style="margin:3px 0 0 18px;padding:0;font-size:12px;color:#37474f">'+x.items.slice(0,14).map(function(i){return '<li>'+esc(i)+'</li>';}).join("")+(x.items.length>14?'<li>... aur '+(x.items.length-14)+' badlav</li>':'')+'</ul>':'')+'</div>';}).join("");
+  return '<div style="border:1px solid #cfd8dc;border-left:5px solid '+b[0]+';border-radius:8px;padding:10px 14px;margin-bottom:10px;background:#fff">'
+    +'<div style="display:flex;justify-content:space-between;gap:8px;flex-wrap:wrap"><span><b>'+esc(r.reqNo)+'</b> &nbsp;<span class="badge" style="background:'+b[0]+'">'+b[1]+'</span></span><span style="font-size:12px;color:#666">'+esc(r.by)+' | '+esc(r.at)+'</span></div>'
+    +dl
+    +(r.status==="rejected"&&r.reason?'<div style="margin-top:6px;font-size:12px;color:#c62828">Karan: '+esc(r.reason)+'</div>':'')
+    +(r.status!=="pending"?'<div style="margin-top:6px;font-size:11px;color:#777">'+(r.status==="approved"?"Approve":"Reject")+' kiya: '+esc(r.decidedBy||"")+' | '+esc(r.decidedAt||"")+'</div>':'')
+    +(admin&&r.status==="pending"?'<div style="margin-top:8px;display:flex;gap:8px"><button class="btn btn-success btn-sm" onclick="App.erApprove('+r.id+')">✅ Approve (badlav lagao)</button><button class="btn btn-danger btn-sm" onclick="App.erReject('+r.id+')">❌ Reject (koi change nahi)</button></div>':'')
+    +(!admin&&r.status==="pending"?'<div style="margin-top:8px"><button class="btn btn-secondary btn-sm" onclick="App.erWithdraw('+r.id+')">↩️ Request wapas lo</button></div>':'')
+    +'</div>';
+}
+function erHtml(){
+  // Pending request dikhti rahti hai; approve / reject ke baad hat jaati hai (sirf "Pichhli requests" me band rehti hai)
+  const u=state.currentUser,admin=isAdminU();
+  const mine=erList().filter(function(r){return admin||r.byId===u.id||r.byUser===u.username;}).slice().sort(function(a,b){return (b._ts||0)-(a._ts||0);});
+  const pend=mine.filter(function(r){return r.status==="pending";}),old=mine.filter(function(r){return r.status!=="pending";}).slice(0,50);
   return '<div style="background:#fff;border-radius:12px;max-width:780px;width:100%;max-height:92vh;overflow:auto;padding:18px">'
-    +'<div style="display:flex;justify-content:space-between;align-items:center;margin-bottom:6px"><b style="font-size:17px;color:#1a237e">📝 Edit Requests'+(admin?'':' (meri)')+'</b><button class="btn btn-secondary" onclick="App.erClose()">✕ Close</button></div>'
+    +'<div style="display:flex;justify-content:space-between;align-items:center;margin-bottom:6px"><b style="font-size:17px;color:#1a237e">📝 Edit Requests'+(admin?'':' (meri)')+' — '+pend.length+' pending</b><button class="btn btn-secondary" onclick="App.erClose()">✕ Close</button></div>'
     +'<div style="font-size:12px;color:#666;margin-bottom:10px">'+(admin?'User ke edit yahan aate hain. Approve karoge tabhi badlav lagega; Reject karne par kuch nahi badlega.':'Aapke edit admin ke approve ke baad hi lagte hain.')+'</div>'
-    +'<div style="display:flex;gap:6px;margin-bottom:12px;flex-wrap:wrap">'+tab("pending","⏳ Pending","#f9a825")+tab("approved","✅ Approved","#2e7d32")+tab("rejected","❌ Rejected","#c62828")+'</div>'+cards+'</div>';
+    +(pend.length?pend.map(function(r){return erCard(r,admin);}).join(""):'<div style="color:#2e7d32;padding:10px 0">✅ Koi request pending nahi hai.</div>')
+    +(old.length?'<details style="margin-top:8px"><summary style="cursor:pointer;color:#555;font-size:13px">Pichhli requests ('+old.length+')</summary><div style="margin-top:8px">'+old.map(function(r){return erCard(r,admin);}).join("")+'</div></details>':'')
+    +'</div>';
 }
 function erConflicts(req){
   const out=[];
@@ -9538,7 +9541,6 @@ const StoreV9App={
     d.innerHTML=erHtml();document.body.appendChild(d);
   },
   erClose(){const d=document.getElementById("erModal");if(d)d.remove();erChipRefresh();},
-  erFilter(f){temp.erFilter=f;const d=document.getElementById("erModal");if(d)d.innerHTML=erHtml();},
   erRefresh(){const d=document.getElementById("erModal");if(d)d.innerHTML=erHtml();erChipRefresh();},
   async erApprove(id){
     if(!isAdminU()){alert("🔒 Sirf admin approve kar sakta hai.");return;}
