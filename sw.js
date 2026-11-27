@@ -1,6 +1,6 @@
 /* Jimit Pet LLP — service worker
    Har baar index.html badalne par neeche ka SW_VERSION bhi badal dena, taaki sab device par naya version turant aaye. */
-const SW_VERSION = "2026-11-27-editrequest-2";
+const SW_VERSION = "2026-11-27-store-rename-1";
 const CACHE = "jpl-shell-" + SW_VERSION;
 const SHELL = ["./", "index.html", "manifest.json"];
 const CDN_HOSTS = ["cdnjs.cloudflare.com", "cdn.jsdelivr.net"];

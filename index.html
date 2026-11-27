@@ -337,6 +337,18 @@ function getItemsForBatch(batchName){
   (state.mtBomMaster||[]).forEach(b=>{if(b.batch===batchName)b.items.forEach(i=>names.add(i.name));});
   return names;
 }
+// v18: Inventory Stock ka Batch filter ab Store Item banate samay chuna gaya batch use karta hai (planner/BOM ka nahi)
+function getStoreItemBatches(itemName){
+  const b=new Set();
+  (state.storeItems||[]).forEach(i=>{if(i.name===itemName&&i.batch)b.add(i.batch);});
+  return[...b];
+}
+function getItemsForStoreBatch(batchName){
+  if(!batchName)return null; // null = no filter
+  const names=new Set();
+  (state.storeItems||[]).forEach(i=>{if(i.batch===batchName)names.add(i.name);});
+  return names;
+}
 function getItemCategory(itemName){
   const found=(state.storeItems||[]).find(i=>i.name===itemName&&i.category);
   return found?found.category:"";
@@ -360,8 +372,15 @@ function getItemSupplier(itemName){return _stkInfo().sup[itemName]||"";}
 const getDays    = d=>{if(!d)return null;const t=new Date();t.setHours(0,0,0,0);const dd=new Date(d);dd.setHours(0,0,0,0);return Math.ceil((dd-t)/86400000);};
 
 function exportCSV(headers,rows,fn){
-  const csv=[headers.join(","),...rows.map(r=>r.map(c=>`"${String(c??"").replace(/"/g,'""')}"`).join(","))].join("\n");
-  const a=Object.assign(document.createElement("a"),{href:URL.createObjectURL(new Blob([csv],{type:"text/csv"})),download:fn});
+  // CSV ab nahi: ye function ab hamesha EXCEL file banata hai (purane saare "Export" button isi se chalte hain)
+  const base=String(fn||"export").replace(/\.csv$/i,"");
+  if(typeof XLSX!=="undefined"){
+    const ws=XLSX.utils.aoa_to_sheet([headers,...rows]);
+    ws["!cols"]=headers.map((h,i)=>({wch:Math.min(45,Math.max(String(h).length,...rows.slice(0,300).map(r=>String(r[i]==null?"":r[i]).length))+2)}));
+    const wb=XLSX.utils.book_new();XLSX.utils.book_append_sheet(wb,ws,"Report");XLSX.writeFile(wb,base+".xlsx");return;
+  }
+  const html="\ufeff<html><head><meta charset='utf-8'></head><body><table border='1'><tr>"+headers.map(h=>"<th>"+esc(h)+"</th>").join("")+"</tr>"+rows.map(r=>"<tr>"+r.map(c=>"<td>"+esc(c)+"</td>").join("")+"</tr>").join("")+"</table></body></html>";
+  const a=Object.assign(document.createElement("a"),{href:URL.createObjectURL(new Blob([html],{type:"application/vnd.ms-excel"})),download:base+".xls"});
   document.body.appendChild(a);a.click();a.remove();
 }
 // ── EMAIL (EmailJS — real auto-send, no mail app needed) ──
@@ -644,9 +663,10 @@ function invItemCard(r){
 }
 // ── EXPORT: Excel / CSV / Print / PDF (ek hi jagah se sab reports ke liye) ──
 function reportBtns(k,skipPrint){
-  return '<button class="btn btn-success" onclick="App.reportOut(\''+k+'\',\'xls\')">📊 Excel</button><button class="btn" style="background:#00695c;color:#fff" onclick="App.reportOut(\''+k+'\',\'csv\')">📄 CSV</button>'
+  // CSV hata diya. Inventory Stock (k==="inv") me sirf Excel + Print; baaki reports me Excel + Print + PDF
+  return '<button class="btn btn-success" onclick="App.reportOut(\''+k+'\',\'xls\')">📊 Excel</button>'
    +(skipPrint?"":'<button class="btn btn-primary" onclick="App.reportOut(\''+k+'\',\'print\')">🖨️ Print</button>')
-   +'<button class="btn" style="background:#c62828;color:#fff" onclick="App.reportOut(\''+k+'\',\'pdf\')">📑 PDF</button>';
+   +(k==="inv"?"":'<button class="btn" style="background:#c62828;color:#fff" onclick="App.reportOut(\''+k+'\',\'pdf\')">📑 PDF</button>');
 }
 function _rptHtml(title,headers,rows,sub,autoPrint){
   const th=headers.map(h=>"<th>"+esc(h)+"</th>").join("");
@@ -656,7 +676,7 @@ function _rptHtml(title,headers,rows,sub,autoPrint){
 function reportOutRun(fmt,title,headers,rows,fname,sub){
   const fn=(fname||"report")+"_"+new Date().toISOString().slice(0,10);
   sub=sub||("Printed: "+nowStr());
-  if(fmt==="csv"){exportCSV(headers,rows,fn+".csv");return;}
+  if(fmt==="csv")fmt="xls"; // CSV band: Excel banega
   if(fmt==="xls"){
     if(typeof XLSX!=="undefined"){
       const ws=XLSX.utils.aoa_to_sheet([[title],[sub],[],headers,...rows]);
@@ -1073,14 +1093,14 @@ function stockReqHtml(){
   if(isAdminU()){
     const pend=all.filter(function(r){return r.status==="pending";}).sort(function(a,b){return a.ts-b.ts;});
     const done=all.filter(function(r){return r.status!=="pending";}).sort(function(a,b){return(b.decidedTs||0)-(a.decidedTs||0);}).slice(0,15);
-    if(!pend.length&&!done.length)return"";
+    if(!pend.length)return"";
     const prow=pend.map(function(r){const cur=getStoreStock(r.item),dl=_srDelta(r,cur),af=Math.round((cur+dl)*100)/100;return'<tr><td '+td+'>'+esc(r.date)+'</td><td '+td+'><b>'+esc(r.by)+'</b></td><td '+td+'><b>'+esc(r.item)+'</b></td><td '+td+'>'+esc(_srTxt(r))+'</td><td '+td+'>'+cur+' → <b style="color:'+(af<0?"#c62828":"#1b5e20")+'">'+af+'</b></td><td '+td+'>'+esc(r.reason||"")+'</td><td '+td+' style="white-space:nowrap"><button class="btn btn-sm btn-success" onclick="App.approveStockReq('+r.id+')">✅ Approve</button> <button class="btn btn-sm btn-danger" onclick="App.rejectStockReq('+r.id+')">✖ Reject</button></td></tr>';}).join("");
     const drow=done.map(function(r){return'<tr><td '+td+'>'+esc(r.date)+'</td><td '+td+'>'+esc(r.by)+'</td><td '+td+'>'+esc(r.item)+'</td><td '+td+'>'+esc(_srTxt(r))+'</td><td '+td+'>'+chip(r.status)+'</td><td '+td+'>'+esc(r.note||r.reason||"")+'</td><td '+td+'>'+esc(r.decidedBy||"")+'</td></tr>';}).join("");
     return'<div class="card" style="border:2px solid '+(pend.length?'#e65100':'#c5cae9')+'"><div class="card-title" style="background:'+(pend.length?'#e65100':'#37474f')+'">📥 Stock Requests (Store se) — '+pend.length+' pending</div><div class="card-body">'
      +(pend.length?'<div style="font-size:12px;color:#555;margin-bottom:6px">Ye store ki manual stock adjust requests hain. <b>Approve</b> karne par hi stock badlega.</div><div style="overflow-x:auto"><table style="width:100%;border-collapse:collapse"><thead><tr><th '+th+'>Date</th><th '+th+'>Kisne</th><th '+th+'>Item</th><th '+th+'>Request</th><th '+th+'>Stock (abhi → baad me)</th><th '+th+'>Reason / Program</th><th '+th+'></th></tr></thead><tbody>'+prow+'</tbody></table></div>':'<div style="color:#2e7d32;font-size:13px">✅ Koi request pending nahi hai.</div>')
-     +(drow?'<details style="margin-top:10px"><summary style="cursor:pointer;font-size:12px;color:#555">Pichhli requests ('+done.length+')</summary><div style="overflow-x:auto;margin-top:6px"><table style="width:100%;border-collapse:collapse"><thead><tr><th '+th+'>Date</th><th '+th+'>Kisne</th><th '+th+'>Item</th><th '+th+'>Request</th><th '+th+'>Status</th><th '+th+'>Note</th><th '+th+'>Admin</th></tr></thead><tbody>'+drow+'</tbody></table></div></details>':'')+'</div></div>';
+     +'</div></div>';
   }
-  const mine=all.filter(function(r){return r.by===u.name;}).slice(-15).reverse();
+  const mine=all.filter(function(r){return r.by===u.name&&r.status==="pending";}).slice(-15).reverse();
   if(!mine.length)return"";
   return'<div class="card"><div class="card-title">📨 Meri Stock Requests</div><div class="card-body"><div style="font-size:12px;color:#555;margin-bottom:6px">Admin approve karega tab hi stock badlega.</div><div style="overflow-x:auto"><table style="width:100%;border-collapse:collapse"><thead><tr><th '+th+'>Date</th><th '+th+'>Item</th><th '+th+'>Request</th><th '+th+'>Status</th><th '+th+'>Note</th></tr></thead><tbody>'+mine.map(function(r){return'<tr><td '+td+'>'+esc(r.date)+'</td><td '+td+'>'+esc(r.item)+'</td><td '+td+'>'+esc(_srTxt(r))+'</td><td '+td+'>'+chip(r.status)+'</td><td '+td+'>'+esc(r.note||r.reason||"")+'</td></tr>';}).join("")+'</tbody></table></div></div></div>';
 }
@@ -3038,7 +3058,7 @@ function inventoryStockRows(){
   const locationFilter=temp.invLocationFilter||"";
   const supplierFilter=temp.invSupplierFilter||"";
   const statusFilter=temp.invStatusFilter||"";
-  const batchSet=getItemsForBatch(batchFilter);
+  const batchSet=getItemsForStoreBatch(batchFilter);
   const productSet=getItemsForProduct(productFilter);
   let names=getAllStoreItemNames();
   if(search){const toks=search.split(/\s+/).filter(Boolean);names=names.filter(n=>{const nl=n.toLowerCase();return toks.every(t=>nl.includes(t));});}
@@ -3047,7 +3067,7 @@ function inventoryStockRows(){
   if(categoryFilter)names=names.filter(n=>getItemCategory(n)===categoryFilter);
   if(locationFilter)names=names.filter(n=>getItemLocation(n)===locationFilter);
   if(supplierFilter)names=names.filter(n=>getItemSupplier(n)===supplierFilter);
-  let rows=names.map(n=>({name:n,batches:getItemBatches(n),category:getItemCategory(n),location:getItemLocation(n),supplier:getItemSupplier(n),stock:getStoreStock(n)}));
+  let rows=names.map(n=>({name:n,batches:getStoreItemBatches(n),category:getItemCategory(n),location:getItemLocation(n),supplier:getItemSupplier(n),stock:getStoreStock(n)}));
   if(statusFilter){
     rows=rows.filter(r=>{
       if(statusFilter==="out")return r.stock<=0;
@@ -3061,7 +3081,7 @@ function inventoryStockRows(){
 }
 function renderInventoryStockTab(){
   const rows=inventoryStockRows();
-  const allBatches=[...new Set((state.bomMaster||[]).map(b=>b.batch).filter(Boolean))].sort();
+  const allBatches=[...new Set((state.storeBatches||[]).concat((state.storeItems||[]).map(i=>i.batch)).filter(Boolean))].sort();
   const allCategories=[...new Set((state.storeItems||[]).map(i=>i.category).filter(Boolean))].sort();
   const allBomProducts=getAllBomProductNames();
   const suppliers=[...new Set(state.grns.filter(g=>g.kind==="purchase").map(g=>g.supplier).filter(Boolean))].sort();
@@ -3204,7 +3224,7 @@ function renderStoreItemModal(){
   if(!temp.storeItemModalOpen)return"";
   const ed=temp.storeItemEditId?state.storeItems.find(i=>i.id===temp.storeItemEditId):null;
   const rows=state.storeItems.filter(i=>!i.minOnly).map(it=>`<tr><td><b>${esc(it.name)}</b></td><td>${it.batch?`<span class="badge" style="background:#c5cae9;color:#1a237e">${esc(it.batch)}</span>`:"—"}</td><td>${esc(it.category)||"—"}</td><td>${esc(it.qtyType)||"—"}</td><td>${esc(it.perBoxQty)||"—"}</td><td><button class="btn btn-sm btn-primary" onclick="App.editStoreItem(${it.id})">Edit</button> <button class="btn btn-sm btn-danger" onclick="App.deleteStoreItem(${it.id})">Del</button></td></tr>`).join("")||`<tr><td colspan="6" style="text-align:center;color:#999;padding:16px">Koi item nahi.</td></tr>`;
-  return`<div class="modal-overlay" onclick="if(event.target===this)App.closeStoreItemModal()"><div class="modal-box"><div class="modal-head"><span style="font-weight:700;font-size:16px">📋 Store Item Master (${storeItemCount()})</span><button class="btn" style="background:rgba(255,255,255,.2)" onclick="App.closeStoreItemModal()">✕ Close</button></div><div style="padding:24px"><div style="background:#f3f4ff;border:1px solid #c5cae9;border-radius:10px;padding:16px;margin-bottom:20px"><b style="color:#1a237e">${ed?"✏️ Edit Item":"➕ Add New Item"}</b><div style="display:grid;grid-template-columns:2fr 1.3fr 1.3fr;gap:10px;margin-top:12px"><div><label class="lbl">Item Name *</label><input class="inp" id="storeItemName" value="${ed?esc(ed.name):""}" placeholder="Item name"></div><div><label class="lbl">Batch <span style="font-weight:400;color:#888">(naya bhi bana sakte ho)</span></label><div style="display:flex;gap:6px"><select class="inp" id="storeItemBatch" style="flex:1;margin-bottom:0"><option value="">-- None --</option>${state.storeBatches.map(b=>`<option value="${esc(b)}" ${ed&&ed.batch===b?"selected":""}>${esc(b)}</option>`).join("")}</select><button class="btn btn-primary" style="width:36px;padding:0" onclick="App.addStoreBatchOption()">+</button></div></div><div><label class="lbl">Category <span style="font-weight:400;color:#888">(naya bhi bana sakte ho)</span></label><div style="display:flex;gap:6px"><select class="inp" id="storeItemCategory" style="flex:1;margin-bottom:0"><option value="">-- None --</option>${getStoreCategoryList().map(c=>`<option value="${esc(c)}" ${ed&&ed.category===c?"selected":""}>${esc(c)}</option>`).join("")}</select><button class="btn btn-primary" style="width:36px;padding:0" onclick="App.addStoreCategoryOption()">+</button></div></div></div><div class="grid2" style="margin-top:10px"><div><label class="lbl">Qty Type <span style="font-weight:400;color:#888">(naya bhi bana sakte ho)</span></label><div style="display:flex;gap:6px"><select class="inp" id="storeItemQtyType" style="flex:1;margin-bottom:0"><option value="">-- None --</option>${state.storeQtyTypes.map(q=>`<option value="${esc(q)}" ${ed&&ed.qtyType===q?"selected":""}>${esc(q)}</option>`).join("")}</select><button class="btn btn-primary" style="width:36px;padding:0" onclick="App.addStoreQtyTypeOption()">+</button></div></div><div><label class="lbl">Per Box/Pkt/Bundle Qty</label><input class="inp" type="number" step="0.01" id="storeItemPerBoxQty" value="${ed?esc(ed.perBoxQty):""}" placeholder="e.g. 100"></div></div><div style="display:flex;gap:8px;margin-top:12px"><button class="btn btn-primary" onclick="App.saveStoreItem()">${ed?"✏️ Update":"💾 Save"}</button>${ed?`<button class="btn btn-secondary" onclick="App.cancelEditStoreItem()">Cancel</button>`:""}</div></div><table class="tbl"><thead><tr style="background:#37474f;color:#fff"><th>Item</th><th>Batch</th><th>Category</th><th>Qty Type</th><th>Per Box Qty</th><th>Actions</th></tr></thead><tbody>${rows}</tbody></table></div></div></div>`;
+  return`<div class="modal-overlay" onclick="if(event.target===this)App.closeStoreItemModal()"><div class="modal-box"><div class="modal-head"><span style="font-weight:700;font-size:16px">📋 Store Item Master (${storeItemCount()})</span><button class="btn" style="background:rgba(255,255,255,.2)" onclick="App.closeStoreItemModal()">✕ Close</button></div><div style="padding:24px"><div style="background:#f3f4ff;border:1px solid #c5cae9;border-radius:10px;padding:16px;margin-bottom:20px"><b style="color:#1a237e">${ed?"✏️ Edit Item":"➕ Add New Item"}</b><div style="display:grid;grid-template-columns:2fr 1.3fr 1.3fr;gap:10px;margin-top:12px"><div><label class="lbl">Item Name *${ed?(isAdminU()?' <span style="font-weight:400;color:#2e7d32">(admin: naam badlo to sab jagah badal jayega)</span>':' <span style="font-weight:400;color:#888">(naam sirf admin badal sakta hai)</span>'):""}</label><input class="inp" id="storeItemName" value="${ed?esc(ed.name):""}" placeholder="Item name"></div><div><label class="lbl">Batch <span style="font-weight:400;color:#888">(naya bhi bana sakte ho)</span></label><div style="display:flex;gap:6px"><select class="inp" id="storeItemBatch" style="flex:1;margin-bottom:0"><option value="">-- None --</option>${state.storeBatches.map(b=>`<option value="${esc(b)}" ${ed&&ed.batch===b?"selected":""}>${esc(b)}</option>`).join("")}</select><button class="btn btn-primary" style="width:36px;padding:0" onclick="App.addStoreBatchOption()">+</button></div></div><div><label class="lbl">Category <span style="font-weight:400;color:#888">(naya bhi bana sakte ho)</span></label><div style="display:flex;gap:6px"><select class="inp" id="storeItemCategory" style="flex:1;margin-bottom:0"><option value="">-- None --</option>${getStoreCategoryList().map(c=>`<option value="${esc(c)}" ${ed&&ed.category===c?"selected":""}>${esc(c)}</option>`).join("")}</select><button class="btn btn-primary" style="width:36px;padding:0" onclick="App.addStoreCategoryOption()">+</button></div></div></div><div class="grid2" style="margin-top:10px"><div><label class="lbl">Qty Type <span style="font-weight:400;color:#888">(naya bhi bana sakte ho)</span></label><div style="display:flex;gap:6px"><select class="inp" id="storeItemQtyType" style="flex:1;margin-bottom:0"><option value="">-- None --</option>${state.storeQtyTypes.map(q=>`<option value="${esc(q)}" ${ed&&ed.qtyType===q?"selected":""}>${esc(q)}</option>`).join("")}</select><button class="btn btn-primary" style="width:36px;padding:0" onclick="App.addStoreQtyTypeOption()">+</button></div></div><div><label class="lbl">Per Box/Pkt/Bundle Qty</label><input class="inp" type="number" step="0.01" id="storeItemPerBoxQty" value="${ed?esc(ed.perBoxQty):""}" placeholder="e.g. 100"></div></div><div style="display:flex;gap:8px;margin-top:12px"><button class="btn btn-primary" onclick="App.saveStoreItem()">${ed?"✏️ Update":"💾 Save"}</button>${ed?`<button class="btn btn-secondary" onclick="App.cancelEditStoreItem()">Cancel</button>`:""}</div></div><table class="tbl"><thead><tr style="background:#37474f;color:#fff"><th>Item</th><th>Batch</th><th>Category</th><th>Qty Type</th><th>Per Box Qty</th><th>Actions</th></tr></thead><tbody>${rows}</tbody></table></div></div></div>`;
 }
 const StoreItemApp={
   openStoreItemModal(){temp.storeItemModalOpen=true;temp.storeItemEditId=null;_refreshModal();},
@@ -3216,6 +3236,13 @@ const StoreItemApp={
     if(denyAction("store"))return;
     const name=document.getElementById("storeItemName").value.trim().replace(/\s+/g," ");
     if(!name){alert("Item Name required");return;}
+    {const _cur=temp.storeItemEditId?state.storeItems.find(i=>i.id===temp.storeItemEditId):null;
+     if(_cur&&!_cur.minOnly&&_cur.name!==name){
+       if(!isAdminU()){alert("⚠️ Item ka naam sirf admin badal sakta hai.");return;}
+       const _k=normItemKey(name);
+       if(state.storeItems.some(i=>i.id!==_cur.id&&normItemKey(i.name)===_k)){alert('⚠️ "'+name+'" naam ka item pehle se hai. Duplicate nahi ban sakta.');return;}
+       if(!storeRenameEverywhere(_cur.name,name))return;
+     }}
     const k=normItemKey(name),dup=state.storeItems.find(i=>normItemKey(i.name)===k&&i.id!==temp.storeItemEditId);
     if(dup&&!dup.minOnly){alert('⚠️ "'+dup.name+'" naam ka item Master me pehle se hai. Duplicate nahi ban sakta.');return;}
     const editId=dup?dup.id:temp.storeItemEditId;
@@ -7813,7 +7840,7 @@ function renderAccOutTab(){
     <div><label class="lbl">From date</label><input class="inp" type="date" style="margin-bottom:0" value="${esc(from)}" onchange="App.arSet('arFrom',this.value)"></div>
     <div><label class="lbl">To date / As on</label><input class="inp" type="date" style="margin-bottom:0" value="${esc(to)}" onchange="App.arSet('arTo',this.value)"></div>
     <button class="btn btn-secondary" onclick="App.arSet('arClear',1)">✖ Filter hatao</button>
-    <button class="btn btn-success" onclick="App.arExport()">📥 CSV Export</button>
+    <button class="btn btn-success" onclick="App.arExport()">📥 Excel Export</button>
   </div>
   ${body}</div></div>`;
 }
@@ -8611,7 +8638,7 @@ function renderYearEndTab(){
     ${bad?`<div style="color:#c62828;font-size:12px;margin-bottom:10px">⚠️ Naya year ka format sahi nahi ya ${esc(c.src)} se aage ka nahi hai.</div>`:(ex?`<div style="color:#e65100;font-size:12px;margin-bottom:10px">ℹ️ FY ${esc(c.tgt)} pehle se bana hua hai — dobara chalane par sirf opening stock aur pending orders refresh honge.</div>`:"")}
     <div style="display:flex;gap:10px;flex-wrap:wrap;margin-bottom:14px">${box("Finish Goods (General)",s.fgCartons+" Cts",s.fgProducts+" products, "+s.fgRecords+" carton records","#1a237e")}${box("MT Finish Goods",s.mtPcs+" pcs",s.mtItems+" items","#00838f")}${box("Accessories Stock",s.accItems+" items","opening balance","#6a1b9a")}${box("Pending PO (General)",s.poCount+" PO","pending qty ke saath","#e65100")}${box("Pending PO (MT)",s.mtPoCount+" PO","pending box/pcs ke saath","#2e7d32")}</div>
     <div style="font-size:12px;color:#666;margin-bottom:14px;line-height:1.6">❌ Naye year me <b>nahi</b> jayega: purani Packing/Dispatch/GRN history, Production Plans, Gate Pass. Wo FY ${esc(c.src)} me hi rahegi. Masters (Users, Item Master, BOM, Store Items) dono years me common hain.</div>
-    <div style="display:flex;gap:10px;flex-wrap:wrap"><button class="btn" style="background:#37474f" onclick="App.yeExport()">📥 Preview Export (CSV)</button><button class="btn btn-primary" style="padding:11px 24px;font-size:14px" ${bad?"disabled":""} onclick="App.yeRun()">🔒 Year End Karo &amp; Stock Transfer</button></div>
+    <div style="display:flex;gap:10px;flex-wrap:wrap"><button class="btn" style="background:#37474f" onclick="App.yeExport()">📥 Preview Export (Excel)</button><button class="btn btn-primary" style="padding:11px 24px;font-size:14px" ${bad?"disabled":""} onclick="App.yeRun()">🔒 Year End Karo &amp; Stock Transfer</button></div>
   </div></div>`;
 }
 async function yeRun(){
@@ -8717,7 +8744,7 @@ const StoreV2App={
   setGrnFilter(k,v){temp[k]=v;renderTabContent();},
   onGrnSearch(v){temp.grnSearch=v;clearTimeout(temp._gsT);temp._gsT=setTimeout(()=>{renderTabContent();const el=document.getElementById("grnSearchInput");if(el){el.focus();el.setSelectionRange(el.value.length,el.value.length);}},250);},
   clearGrnFilters(){temp.grnFrom="";temp.grnTo="";temp.grnSearch="";temp.grnPartyFilter="";renderTabContent();},
-  exportInventoryStock(){App.reportOut("inv","csv");},
+  exportInventoryStock(){App.reportOut("inv","xls");},
   printInventoryStock(){App.reportOut("inv","print");},
   reportOut(kind,fmt){
     let title="",headers=[],rows=[],fname="",sub="Printed: "+nowStr();
@@ -8773,7 +8800,7 @@ const StoreV3App={
   onAudSearch(v){temp.audQ=v;clearTimeout(temp._audT);temp._audT=setTimeout(()=>{renderTabContent();const el=document.getElementById("audSearchInput");if(el){el.focus();el.setSelectionRange(el.value.length,el.value.length);}},250);},
   toggleMsNoMin(v){temp.msNoMin=v;renderTabContent();},
   printPurchaseList(){App.reportOut("ms","print");},
-  exportPurchaseList(){App.reportOut("ms","csv");},
+  exportPurchaseList(){App.reportOut("ms","xls");},
   autoAssignEan(){
     const miss=(state.itemMaster||[]).filter(i=>!i.ean).length;
     if(!miss){alert("Sab items ko EAN pehle se mila hua hai ✅");return;}
@@ -9482,7 +9509,7 @@ function erPendingCount(){
   return erList().filter(function(r){return r.status==="pending"&&(u.role==="admin"||r.byId===u.id||r.byUser===u.username);}).length;
 }
 function erChipInner(){const n=erPendingCount();return "📝 Edit Requests"+(n?' <span style="background:#c62828;color:#fff;border-radius:10px;padding:1px 7px;margin-left:3px;font-weight:700">'+n+'</span>':"");}
-function erChipShow(){return isAdminU()||erPendingCount()>0;}
+function erChipShow(){return erPendingCount()>0;}
 function erChipHtml(){
   if(!state.currentUser)return "";
   return '<span id="erChip" title="Edit requests — admin approval" style="font-size:12px;cursor:pointer;background:rgba(255,255,255,.18);padding:4px 9px;border-radius:12px;margin-right:6px;display:'+(erChipShow()?'inline-block':'none')+'" onclick="App.erOpen()">'+erChipInner()+'</span>';
@@ -9508,12 +9535,11 @@ function erHtml(){
   // Pending request dikhti rahti hai; approve / reject ke baad hat jaati hai (sirf "Pichhli requests" me band rehti hai)
   const u=state.currentUser,admin=isAdminU();
   const mine=erList().filter(function(r){return admin||r.byId===u.id||r.byUser===u.username;}).slice().sort(function(a,b){return (b._ts||0)-(a._ts||0);});
-  const pend=mine.filter(function(r){return r.status==="pending";}),old=mine.filter(function(r){return r.status!=="pending";}).slice(0,50);
+  const pend=mine.filter(function(r){return r.status==="pending";});
   return '<div style="background:#fff;border-radius:12px;max-width:780px;width:100%;max-height:92vh;overflow:auto;padding:18px">'
     +'<div style="display:flex;justify-content:space-between;align-items:center;margin-bottom:6px"><b style="font-size:17px;color:#1a237e">📝 Edit Requests'+(admin?'':' (meri)')+' — '+pend.length+' pending</b><button class="btn btn-secondary" onclick="App.erClose()">✕ Close</button></div>'
     +'<div style="font-size:12px;color:#666;margin-bottom:10px">'+(admin?'User ke edit yahan aate hain. Approve karoge tabhi badlav lagega; Reject karne par kuch nahi badlega.':'Aapke edit admin ke approve ke baad hi lagte hain.')+'</div>'
     +(pend.length?pend.map(function(r){return erCard(r,admin);}).join(""):'<div style="color:#2e7d32;padding:10px 0">✅ Koi request pending nahi hai.</div>')
-    +(old.length?'<details style="margin-top:8px"><summary style="cursor:pointer;color:#555;font-size:13px">Pichhli requests ('+old.length+')</summary><div style="margin-top:8px">'+old.map(function(r){return erCard(r,admin);}).join("")+'</div></details>':'')
     +'</div>';
 }
 function erConflicts(req){
@@ -9611,6 +9637,60 @@ ER_GATES.forEach(function(g){
   }
   new MutationObserver(function(){clearTimeout(t);t=setTimeout(relabel,80);}).observe(document.documentElement,{childList:true,subtree:true});
 })();
+
+// ══════════ v19: Store Item ka NAAM badalna (sirf admin) — naya naam sab jagah apne aap badal jaata hai ══════════
+function rnDeep(v,o,n){
+  if(Array.isArray(v)){let ch=false;const a=v.map(function(x){const r=rnDeep(x,o,n);if(r[1])ch=true;return r[0];});return[ch?a:v,ch];}
+  if(v&&typeof v==="object"){
+    let ch=false;const out={};
+    Object.keys(v).forEach(function(k){const nk=(k===o)?n:k;if(nk!==k)ch=true;const r=rnDeep(v[k],o,n);if(r[1])ch=true;out[nk]=r[0];});
+    return[ch?out:v,ch];
+  }
+  if(typeof v==="string"&&v===o)return[n,true];
+  return[v,false];
+}
+function storeRenamePlan(o,n){
+  const out={},counts={};
+  const mapRecs=function(prop,label,fn){
+    const arr=state[prop];if(!Array.isArray(arr))return;
+    let ch=0;
+    const na=arr.map(function(r){const x=fn(r);if(x){ch++;return x;}return r;});
+    if(ch){out[prop]=na;counts[label]=(counts[label]||0)+ch;}
+  };
+  const byItems=function(r){
+    if(!(r.items||[]).some(function(i){return i&&i.name===o;}))return null;
+    return Object.assign({},r,{items:r.items.map(function(i){return(i&&i.name===o)?Object.assign({},i,{name:n}):i;})});
+  };
+  mapRecs("storeItems","Store Item Master",function(r){return r.name===o?Object.assign({},r,{name:n}):null;});
+  mapRecs("storeLedger","Store ledger entries",function(r){return r.itemName===o?Object.assign({},r,{itemName:n}):null;});
+  mapRecs("grns","GRN / Internal entries",byItems);
+  mapRecs("bomMaster","BOM",byItems);
+  mapRecs("mtBomMaster","MT BOM",byItems);
+  mapRecs("storeGatePasses","Gate Pass",byItems);
+  mapRecs("stockRequests","Stock Requests",function(r){return r.item===o?Object.assign({},r,{item:n}):null;});
+  mapRecs("mouldProducts","Mould Product BOM",function(r){
+    if(!(r.lines||[]).some(function(l){return l.type==="acc"&&l.name===o;}))return null;
+    return Object.assign({},r,{lines:r.lines.map(function(l){return(l.type==="acc"&&l.name===o)?Object.assign({},l,{name:n}):l;})});
+  });
+  const planFn=function(r){
+    let ch=false,res=r.result,lot=r.lotReport;
+    if(res){const x=rnDeep(res,o,n);if(x[1]){res=x[0];ch=true;}}
+    if(lot&&Array.isArray(lot.acc)){const x=rnDeep(lot.acc,o,n);if(x[1]){lot=Object.assign({},lot,{acc:x[0]});ch=true;}}
+    return ch?Object.assign({},r,{result:res,lotReport:lot}):null;
+  };
+  mapRecs("productionPlans","Planner Programs",planFn);
+  mapRecs("mtProductionPlans","MT Planner Programs",planFn);
+  return{out:out,counts:counts};
+}
+function storeRenameEverywhere(o,n){
+  const plan=storeRenamePlan(o,n);
+  const lines=Object.keys(plan.counts).map(function(k){return "• "+k+": "+plan.counts[k];}).join("\n");
+  if(!confirm('Item ka naam badalna hai?\n\n"'+o+'"  →  "'+n+'"\n\nNaya naam in jagah lagega (sirf abhi chal rahe saal ka data):\n'+lines+'\n\nAage badhna hai?'))return false;
+  for(const prop in plan.out){state[prop]=plan.out[prop];persist(erDbKey(prop),state[prop]);}
+  try{auditEvent("Store Item Rename",o+" → "+n+" | "+Object.keys(plan.counts).map(function(k){return k+" "+plan.counts[k];}).join(", "));}catch(e){}
+  _accCache=null;
+  return true;
+}
 
 window.App=App; window.AC=AC;
 
