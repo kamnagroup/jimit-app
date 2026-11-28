@@ -1,5 +1,5 @@
 <!DOCTYPE html>
-<!-- Jimit Pet LLP - OFFLINE Version (no sync, pure localStorage) -->
+<!-- Jimit Pet LLP - Online (Supabase cloud sync) -->
 <html lang="en">
 <head>
 <meta charset="UTF-8">
@@ -3895,6 +3895,12 @@ function mtPoListRows(){
   </tr>`;}).join("")||`<tr><td colspan="9" style="text-align:center;color:#999;padding:24px">No MT POs yet</td></tr>`)+pgMoreRow("mtpo",_all.length,list.length,9);}
 // ── MT PO: PDF se auto-fill (Sync Data) ──
 async function extractMtPoPdfItems(dataUrl){
+  // v-fix: file ab Supabase Storage me hoti hai ("storage:..." marker) — pehle asli PDF cloud se lao
+  if(CloudFiles.isMarker(dataUrl)){
+    try{dataUrl=await CloudFiles.toDataUrl(dataUrl.slice(8));}
+    catch(e){throw new Error("PDF cloud Storage se nahi aa payi — internet check karo aur Cloud se juda raho ("+(e&&e.message?e.message:e)+")");}
+  }
+  if(dataUrl&&dataUrl.startsWith("data:")&&!dataUrl.startsWith("data:application/pdf")&&/pdf/i.test(dataUrl.slice(0,80)))dataUrl="data:application/pdf"+dataUrl.slice(dataUrl.indexOf(";"));
   if(!dataUrl||!dataUrl.startsWith("data:application/pdf"))throw new Error("Ye file PDF nahi hai (photo/scan nahi chalegi)");
   if(!window.pdfjsLib&&!(await ensureLib("pdfjs")))throw new Error("PDF reader internet se load nahi ho paya — internet check karke 'Sync Data' dobara dabao (ya page refresh karo)");
   const base64=dataUrl.split(",")[1];

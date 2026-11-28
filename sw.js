@@ -1,6 +1,6 @@
-// Jimit Pet LLP — Service Worker  (v20 · 27-Nov-2026)
+// Jimit Pet LLP — Service Worker  (v21 · 28-Nov-2026)
 // Har naye release me CACHE ka naam badlo, tabhi sab devices par update aata hai.
-const CACHE = 'jpl-pwa-v20-20261127';
+const CACHE = 'jpl-pwa-v21-20261128';
 const CORE = ['./', 'index.html', 'manifest.json', 'icon-192.png', 'icon-180.png'];
 const CDN_HOSTS = ['cdnjs.cloudflare.com', 'cdn.jsdelivr.net', 'fonts.googleapis.com', 'fonts.gstatic.com'];
 
